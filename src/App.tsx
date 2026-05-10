@@ -43,10 +43,13 @@ import {
   getProduct,
   getProductsForCategory,
   instructors,
+  moreTopics,
   navLinks,
+  parentTopics,
   products,
   programs,
   studio,
+  studentTopics,
   termsSections,
   testimonials
 } from "./data";
@@ -75,6 +78,22 @@ import {
 
 const demoEvents = generateClassEvents();
 const starterTimes = ["12:30 PM", "1:30 PM", "2:30 PM", "3:30 PM"];
+const appTopicIcons: Record<string, typeof Target> = {
+  today: Home,
+  programs: Target,
+  classes: CalendarDays,
+  "private-lessons": Clock,
+  shop: Package,
+  progress: Award,
+  practice: Target,
+  orders: ShoppingCart,
+  bookings: CheckCircle2,
+  profile: User,
+  help: Mail,
+  contact: Mail,
+  terms: ShieldCheck,
+  about: ShieldCheck
+};
 
 function publicAsset(path: string) {
   const base = import.meta.env.BASE_URL || "/";
@@ -149,7 +168,8 @@ function App() {
     <>
       <Shell>
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<AppLauncherPage />} />
+          <Route path="/more" element={<MoreMenuPage />} />
           <Route path="/about-us" element={<AboutPage />} />
           <Route path="/programs" element={<ProgramsPage />} />
           <Route path="/private-lessons" element={<PrivateLessonsPage />} />
@@ -176,6 +196,7 @@ function Shell({ children }: { children: ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [showTop, setShowTop] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   useEffect(() => {
@@ -194,26 +215,14 @@ function Shell({ children }: { children: ReactNode }) {
     <>
       <header className="app-header">
         <div className="header-inner">
-          {session && (
-            <NavLink className={({ isActive }) => `profile-button ${isActive ? "active" : ""}`} to="/my-account" aria-label="Open profile settings">
-              <User size={18} />
-              <span>Profile</span>
-            </NavLink>
-          )}
-          <button className="icon-button mobile-only" aria-label="Open menu" onClick={() => setDrawerOpen(true)}>
-            <Menu size={22} />
-          </button>
-          <Link className="brand" to="/" aria-label="Cho's Martial Arts home">
-            <span className="brand-mark">C</span>
-            <span>Cho&apos;s Martial Arts</span>
+          <div className="header-left">
+            <button className="icon-button app-menu-button" aria-label="Open menu" onClick={() => setDrawerOpen(true)}>
+              <Menu size={22} />
+            </button>
+          </div>
+          <Link className="chos-menu-link" to="/more" aria-label="Cho's menu">
+            <img src={publicAsset("682e95109aa21_chos-logo.png")} alt="" aria-hidden="true" />
           </Link>
-          <nav className="desktop-nav" aria-label="Primary navigation">
-            {navLinks.map((link) => (
-              <NavLink key={link.path} to={link.path} className={({ isActive }) => (isActive ? "active" : "")}>
-                {link.label}
-              </NavLink>
-            ))}
-          </nav>
           <div className="header-actions">
             <button className="icon-button" aria-label="Search site" onClick={() => setSearchOpen(true)}>
               <Search size={20} />
@@ -222,20 +231,23 @@ function Shell({ children }: { children: ReactNode }) {
               <ShoppingCart size={20} />
               {cartCount > 0 && <span className="cart-count">{cartCount}</span>}
             </Link>
-            <Link className="btn btn-gold desktop-cta" to="/shop">
-              Shop Now
-            </Link>
+            {session && (
+              <NavLink className={({ isActive }) => `profile-button ${isActive ? "active" : ""}`} to="/my-account?topic=profile" aria-label="Open profile settings">
+                <User size={18} />
+                <span>Profile</span>
+              </NavLink>
+            )}
           </div>
         </div>
       </header>
 
       {drawerOpen && <MobileDrawer onClose={() => setDrawerOpen(false)} />}
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
+      {session && <AppPageNavigation onBack={() => navigate(-1)} onForward={() => navigate(1)} />}
 
       <main>{children}</main>
 
-      <Footer />
-      <MobileTabBar cartCount={cartCount} />
+      {session ? <StudentHelpStrip /> : <Footer />}
 
       {showTop && (
         <button className="scroll-top" aria-label="Scroll to top" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
@@ -244,6 +256,70 @@ function Shell({ children }: { children: ReactNode }) {
       )}
 
     </>
+  );
+}
+
+function AppPageNavigation({ onBack, onForward }: { onBack: () => void; onForward: () => void }) {
+  return (
+    <nav className="app-page-navigation" aria-label="App page navigation">
+      <button type="button" className="app-nav-control" aria-label="Go back" onClick={onBack}>
+        <ArrowLeft size={18} />
+        <span>Back</span>
+      </button>
+      <Link className="app-nav-home" to="/">
+        <Home size={18} />
+        <span>Student Home</span>
+      </Link>
+      <button type="button" className="app-nav-control" aria-label="Go forward" onClick={onForward}>
+        <span>Forward</span>
+        <ArrowRight size={18} />
+      </button>
+    </nav>
+  );
+}
+
+interface StudentPageAction {
+  label: string;
+  to?: string;
+  href?: string;
+  onClick?: () => void;
+  icon?: ReactNode;
+}
+
+function StudentAppPage({ title, text, action, children, className = "" }: { title: string; text: string; action?: StudentPageAction; children: ReactNode; className?: string }) {
+  const actionContent = action && (
+    <>
+      {action.icon}
+      <span>{action.label}</span>
+    </>
+  );
+
+  return (
+    <section className={`section student-app-page ${className}`} aria-label={`${title} app page`}>
+      <div className="student-page-header">
+        <div>
+          <p className="eyebrow">Student App</p>
+          <h1>{title}</h1>
+          <p>{text}</p>
+        </div>
+        {action?.to && (
+          <Link className="btn btn-red student-page-action" to={action.to}>
+            {actionContent}
+          </Link>
+        )}
+        {action?.href && (
+          <a className="btn btn-red student-page-action" href={action.href}>
+            {actionContent}
+          </a>
+        )}
+        {action?.onClick && (
+          <button className="btn btn-red student-page-action" type="button" onClick={action.onClick}>
+            {actionContent}
+          </button>
+        )}
+      </div>
+      <div className="student-page-body">{children}</div>
+    </section>
   );
 }
 
@@ -493,17 +569,24 @@ function MobileDrawer({ onClose }: { onClose: () => void }) {
         </button>
       </div>
       <nav className="drawer-nav" aria-label="Mobile navigation">
-        {navLinks.map((link) => (
-          <Link key={link.path} to={link.path} onClick={onClose}>
-            {link.label}
+        <span className="drawer-section-label">Student</span>
+        {studentTopics.map((topic) => (
+          <Link key={topic.slug} to={topic.path} onClick={onClose}>
+            {topic.label}
+          </Link>
+        ))}
+        <span className="drawer-section-label">Grown-ups</span>
+        {parentTopics.map((topic) => (
+          <Link key={topic.slug} to={topic.path} onClick={onClose}>
+            {topic.label}
           </Link>
         ))}
       </nav>
       <h3>Quick Links</h3>
       <div className="chip-list">
-        {["/cart", "/checkout", "/my-account", "/terms-and-conditions"].map((path) => (
+        {["/private-lessons", "/about-us", "/cart", "/terms-and-conditions"].map((path) => (
           <Link key={path} to={path} onClick={onClose} className="chip">
-            {path.replace("/", "").replaceAll("-", " ") || "home"}
+            {path.replace("/", "").replace("?topic=", " ").replaceAll("-", " ") || "home"}
           </Link>
         ))}
       </div>
@@ -621,6 +704,21 @@ function Footer() {
   );
 }
 
+function StudentHelpStrip() {
+  return (
+    <footer className="student-help-strip" aria-label="Student help">
+      <div>
+        <strong>Need help?</strong>
+        <span>Ask a grown-up or contact Cho&apos;s.</span>
+      </div>
+      <div className="student-help-actions">
+        <Link to="/contact-us">Ask for Help</Link>
+        <a href={studio.phoneHref}>{studio.phone}</a>
+      </div>
+    </footer>
+  );
+}
+
 function MobileTabBar({ cartCount }: { cartCount: number }) {
   const tabs = [
     { path: "/", label: "Home", icon: Home },
@@ -644,6 +742,121 @@ function MobileTabBar({ cartCount }: { cartCount: number }) {
         );
       })}
     </nav>
+  );
+}
+
+function AppLauncherPage() {
+  const { session, orders, bookings } = useAppState();
+  const nextClass = demoEvents.find((event) => event.date >= todayIso()) ?? demoEvents[0];
+  const displayName = session?.email.split("@")[0] || "student";
+  const progress = loadStudentProgress();
+  const currentBeltIndex = Math.max(0, beltRanks.findIndex((rank) => rank.slug === progress.currentBeltSlug));
+  const currentBelt = beltRanks[currentBeltIndex] ?? beltRanks[0];
+  const nextBelt = beltRanks[currentBeltIndex + 1];
+  const nextGoal = nextBelt ? `${nextBelt.name} Belt` : "Black Belt training";
+
+  return (
+    <section className="section app-launcher-page student-home-page">
+      <div className="launcher-shell">
+        <div className="student-home-head">
+          <div>
+            <p className="eyebrow">Cho&apos;s Martial Arts</p>
+            <h1>Student Home</h1>
+            <p>Hi, {displayName}. Pick one big button and keep moving.</p>
+          </div>
+          <img src={publicAsset("682e95109aa21_chos-logo.png")} alt="Cho's Martial Arts" />
+        </div>
+
+        <section className="student-today-panel" aria-label="Today at Cho's">
+          <div>
+            <span className="student-today-icon" aria-hidden="true">
+              <CalendarDays size={30} />
+            </span>
+            <div>
+              <p className="eyebrow">Today</p>
+              <h2>{nextClass ? nextClass.title : "Check your class plan"}</h2>
+              <p>{nextClass ? `${displayDate(nextClass.date)} at ${nextClass.startTime}` : "Open classes to see what is next."}</p>
+            </div>
+          </div>
+          <div className="student-today-stats">
+            <div>
+              <span>Current belt</span>
+              <strong>{currentBelt.name}</strong>
+            </div>
+            <div>
+              <span>Next goal</span>
+              <strong>{nextGoal}</strong>
+            </div>
+          </div>
+          <Link className="btn btn-red" to="/classes">
+            View Classes
+          </Link>
+        </section>
+
+        <nav className="app-topic-grid student-topic-grid" aria-label="Student actions">
+          {studentTopics.map((topic) => {
+            const TopicIcon = appTopicIcons[topic.slug] ?? Target;
+            return (
+              <Link className={`app-topic-tile tone-${topic.tone}`} key={topic.slug} to={topic.path} aria-label={topic.label}>
+                <span className="app-topic-icon" aria-hidden="true">
+                  <TopicIcon size={28} />
+                </span>
+                <strong>{topic.label}</strong>
+                <small>{topic.summary}</small>
+              </Link>
+            );
+          })}
+        </nav>
+
+        <section className="parent-topic-section">
+          <div>
+            <p className="eyebrow">Grown-ups</p>
+            <h2>Parent and Account</h2>
+          </div>
+          <nav className="parent-topic-row" aria-label="Parent and account actions">
+            {parentTopics.map((topic) => {
+              const TopicIcon = appTopicIcons[topic.slug] ?? Target;
+              const badge = topic.slug === "orders" ? orders.length : topic.slug === "bookings" ? bookings.length : undefined;
+              return (
+                <Link className={`parent-topic-pill tone-${topic.tone}`} key={topic.slug} to={topic.path} aria-label={topic.label}>
+                  <TopicIcon size={18} />
+                  <span>{topic.label}</span>
+                  {typeof badge === "number" && <small>{badge}</small>}
+                </Link>
+              );
+            })}
+          </nav>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function MoreMenuPage() {
+  return (
+    <StudentAppPage
+      title="Cho's Menu"
+      text="Everything outside student practice and progress lives here."
+      action={{ label: "Student Home", to: "/", icon: <Home size={18} /> }}
+      className="more-menu-page"
+    >
+      <nav className="more-menu-grid" aria-label="Cho's non-student links">
+        {moreTopics.map((topic) => {
+          const TopicIcon = appTopicIcons[topic.slug] ?? Target;
+          return (
+            <Link className={`more-menu-card tone-${topic.tone}`} key={topic.slug} to={topic.path} aria-label={topic.label}>
+              <span className="more-menu-icon" aria-hidden="true">
+                <TopicIcon size={24} />
+              </span>
+              <span>
+                <strong>{topic.label}</strong>
+                <small>{topic.summary}</small>
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
+    </StudentAppPage>
   );
 }
 
@@ -923,56 +1136,61 @@ function AboutPage() {
 
 function ProgramsPage() {
   const [params] = useSearchParams();
-  const initial = params.get("program") ?? programs[0].slug;
-  const [activeProgram, setActiveProgram] = useState(initial);
+  const programFocus = params.get("program");
+  const practiceFocused = params.get("section") === "practice";
+  const [programDetail, setProgramDetail] = useState<(typeof programs)[number] | null>(null);
   const [benefit, setBenefit] = useState<(typeof benefits)[number] | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<ClassEvent | null>(null);
   const upcoming = demoEvents.filter((event) => event.date >= "2026-05-10").slice(0, 4);
-  const selected = programs.find((program) => program.slug === activeProgram) ?? programs[0];
 
   return (
-    <>
-      <PageHero title="Programs" text="At Cho's Martial Arts in Menomonee Falls, we offer a transformative experience that goes beyond physical fitness, cultivating mental strength, inner peace, and lasting friendships..." imageAlt="Martial artists practicing inside Cho's Martial Arts" />
-      <section className="section">
-        <div className="segmented">
-          {programs.map((program) => (
-            <button key={program.slug} className={program.slug === activeProgram ? "active" : ""} onClick={() => setActiveProgram(program.slug)}>
-              {program.title}
-            </button>
+    <StudentAppPage
+      title="Programs"
+      text="Pick the training path you want to learn about."
+      action={{ label: "Start Free Trial", to: "/product/starter-program", icon: <Target size={18} /> }}
+      className="programs-app-page"
+    >
+      <div className="student-card-grid program-choice-grid">
+        {programs.map((program) => (
+          <article className={`student-choice-card ${program.slug === programFocus ? "is-selected" : ""}`} key={program.slug}>
+            <ImagePanel label={program.title} alt={program.imageAlt} tone={program.slug} compact />
+            <div>
+              <h2>{program.title}</h2>
+              <p>{program.shortDescription}</p>
+            </div>
+            <div className="choice-actions">
+              <Link className="btn btn-small btn-red" to={`/product/starter-program?program=${program.slug}`}>
+                Start
+              </Link>
+              <button className="btn btn-small btn-ghost-dark" type="button" onClick={() => setProgramDetail(program)}>
+                More Details
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <section className={`student-compact-section ${practiceFocused ? "is-highlighted" : ""}`} aria-label="Practice goals">
+        <SectionHeader title="Practice" text="Small goals students can understand before the next class." />
+        <div className="student-card-grid practice-card-grid">
+          {[
+            ["Warm Up", "Stretch, bow in, and practice attention stance."],
+            ["Forms", "Move slowly first, then add power after the pattern feels clear."],
+            ["Respect", "Listen the first time and help keep training space safe."]
+          ].map(([title, text]) => (
+            <article className="compact-task-card" key={title}>
+              <Target size={20} />
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </article>
           ))}
         </div>
-        <div className="program-detail">
-          <ImagePanel label={selected.title} alt={selected.imageAlt} tone={selected.slug} />
-          <div>
-            <h2>{selected.title}</h2>
-            <p>{selected.detail}</p>
-            <Link className="btn btn-red" to="/product/starter-program">
-              Start Free Trial
-            </Link>
-          </div>
-        </div>
       </section>
-      <section className="section split">
-        <article className="content-card">
-          <h2>Beginner&apos;s Program</h2>
-          <p>Focused one-on-one instruction introduces four generations of expertise, helps students master fundamentals, builds connection with instructors, and prepares a confident transition into group classes.</p>
-        </article>
-        <article className="content-card">
-          <h2>Adult Martial Arts Programs</h2>
-          <p>Adult programs build full-body conditioning for strength, speed, coordination, flexibility, agility, mobility, lifelong fitness, and a safe supportive environment.</p>
-        </article>
-      </section>
-      <section className="section guarantee">
-        <h2>100% Money-Back Guarantee</h2>
-        <p>We are so sure you will love our program that we offer you a 100% money-back guarantee, if you are not totally satisfied.</p>
-        <Link className="btn btn-gold" to="/product/starter-program">
-          FREE 2-WEEK trial
-        </Link>
-      </section>
-      <section className="section">
-        <SectionHeader title="Why Your Child Should Practice Martial Arts" />
+
+      <section className="student-compact-section">
+        <SectionHeader title="Skills Students Build" text="Tap a skill when you want the longer explanation." />
         <div className="card-grid three">
-          {benefits.map((item) => (
+          {benefits.slice(0, 6).map((item) => (
             <button className="benefit-card" key={item.title} onClick={() => setBenefit(item)}>
               <strong>{item.title}</strong>
               <span>{item.summary}</span>
@@ -980,12 +1198,31 @@ function ProgramsPage() {
           ))}
         </div>
       </section>
-      <section className="section">
-        <SectionHeader title="Upcoming Events" />
+
+      <section className="student-compact-section">
+        <SectionHeader title="Coming Up" text="A few nearby classes and training times." />
         <div className="event-list compact-events">
           {upcoming.map((event) => (
             <EventCard key={event.id} event={event} onOpen={() => setSelectedEvent(event)} compact />
           ))}
+        </div>
+      </section>
+
+      <details className="app-details-panel">
+        <summary>More Details About Cho&apos;s Programs</summary>
+        <div className="details-copy-grid">
+          <article>
+            <h3>Beginner&apos;s Program</h3>
+            <p>Focused one-on-one instruction introduces fundamentals, builds connection with instructors, and prepares a confident transition into group classes.</p>
+          </article>
+          <article>
+            <h3>Adult Martial Arts Programs</h3>
+            <p>Adult programs build conditioning, coordination, flexibility, and a safe supportive training environment.</p>
+          </article>
+          <article>
+            <h3>Money-Back Guarantee</h3>
+            <p>Cho&apos;s offers a satisfaction guarantee for new students trying the program.</p>
+          </article>
         </div>
         <div className="button-row">
           <Link className="btn btn-red" to="/product/starter-program">
@@ -998,14 +1235,22 @@ function ProgramsPage() {
             Contact Us
           </Link>
         </div>
-      </section>
+      </details>
+      {programDetail && (
+        <InfoModal title={programDetail.title} onClose={() => setProgramDetail(null)}>
+          <p>{programDetail.detail}</p>
+          <Link className="btn btn-red" to="/product/starter-program">
+            Start Free Trial
+          </Link>
+        </InfoModal>
+      )}
       {benefit && (
         <InfoModal title={benefit.title} onClose={() => setBenefit(null)}>
           <p>{benefit.detail}</p>
         </InfoModal>
       )}
       {selectedEvent && <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
-    </>
+    </StudentAppPage>
   );
 }
 
@@ -1026,22 +1271,38 @@ function PrivateLessonsPage() {
   };
 
   return (
-    <>
-      <PageHero title="Private Lessons" text="Private lessons are available by appointment only. We'd love to help you schedule a time that works best for you – Please give us a call or text us at (262) 251-6333 to book your sessions in advance. We look forward to hearing from you!" imageAlt="Instructor working one-on-one with a martial arts student" />
-      <section className="section">
-        <div className="button-row">
-          <a className="btn btn-red" href={studio.phoneHref}>
-            <Phone size={18} /> Call Now
+    <StudentAppPage
+      title="Private Lessons"
+      text="Ask for one-on-one help with an instructor."
+      action={{ label: "Request a Lesson", onClick: () => setRequestOpen(true), icon: <Clock size={18} /> }}
+      className="lessons-app-page"
+    >
+      <div className="student-card-grid class-glance-grid">
+        <article className="compact-task-card">
+          <Phone size={22} />
+          <h2>Call</h2>
+          <p>Talk with the studio about the best time.</p>
+          <a className="btn btn-small btn-ghost-dark" href={studio.phoneHref}>
+            Call Now
           </a>
-          <a className="btn btn-dark" href={studio.smsHref}>
+        </article>
+        <article className="compact-task-card">
+          <Mail size={22} />
+          <h2>Text</h2>
+          <p>Send a quick message for scheduling help.</p>
+          <a className="btn btn-small btn-ghost-dark" href={studio.smsHref}>
             Text Us
           </a>
-          <button className="btn btn-gold" onClick={() => setRequestOpen(true)}>
-            Request a Private Lesson
-          </button>
-        </div>
-      </section>
-      <section className="section">
+        </article>
+        <article className="compact-task-card">
+          <CalendarDays size={22} />
+          <h2>Typical Times</h2>
+          <p>Monday-Saturday, 12:30 PM - 4:30 PM.</p>
+        </article>
+      </div>
+
+      <details className="app-details-panel">
+        <summary>Availability Calendar</summary>
         <SectionHeader title="Upcoming Private Lesson Availability" text="Monday-Saturday, 12:30 PM - 4:30 PM" />
         <CalendarControls view={view} setView={setView} cursor={cursor} setCursor={setCursor} />
         <div className="availability-grid">
@@ -1067,10 +1328,10 @@ function PrivateLessonsPage() {
             <Download size={16} /> Export Outlook .ics
           </button>
         </div>
-      </section>
+      </details>
       {requestOpen && <PrivateLessonModal onClose={() => setRequestOpen(false)} />}
       {selectedEvent && <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
-    </>
+    </StudentAppPage>
   );
 }
 
@@ -1080,11 +1341,46 @@ function ClassesPage() {
   const [query, setQuery] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<ClassEvent | null>(null);
   const visible = filterEventsForView(demoEvents, view, cursor, query);
+  const today = todayIso();
+  const todayEvents = demoEvents.filter((event) => event.date === today);
+  const upcoming = demoEvents.filter((event) => event.date >= today).slice(0, 12);
+  const nextClass = upcoming[0];
 
   return (
-    <>
-      <PageHero title="Upcoming Classes" text="Each class is an hour long. Beginner pricing varies, from $98 to $108 depending on which classes are chosen." imageAlt="Class calendar with youth and adult martial arts sessions" />
-      <section className="section calendar-section">
+    <StudentAppPage
+      title="Classes"
+      text="See what is happening today and this week."
+      action={{ label: "Ask About Classes", to: "/contact-us?message=I%20would%20like%20help%20choosing%20a%20class.", icon: <Mail size={18} /> }}
+      className="classes-app-page"
+    >
+      <div className="student-card-grid class-glance-grid">
+        <article className="compact-task-card">
+          <CalendarDays size={22} />
+          <h2>Today</h2>
+          <p>{todayEvents.length ? `${todayEvents.length} class${todayEvents.length === 1 ? "" : "es"} today.` : "No classes today. Check what is next."}</p>
+        </article>
+        <article className="compact-task-card">
+          <Clock size={22} />
+          <h2>Next Class</h2>
+          <p>{nextClass ? `${nextClass.title} on ${displayDate(nextClass.date)} at ${nextClass.startTime}.` : "No class is scheduled yet."}</p>
+        </article>
+        <article className="compact-task-card">
+          <User size={22} />
+          <h2>Need 1-on-1?</h2>
+          <p>Private lessons are by appointment.</p>
+          <Link className="btn btn-small btn-ghost-dark" to="/private-lessons">
+            Private Lessons
+          </Link>
+        </article>
+      </div>
+
+      <section className="student-compact-section">
+        <SectionHeader title="This Week" text="Tap a class to see the time and details." />
+        <EventList events={upcoming} onEventClick={setSelectedEvent} emptyText="No upcoming classes are listed." />
+      </section>
+
+      <details className="app-details-panel">
+        <summary>Search and Calendar</summary>
         <div className="calendar-toolbar">
           <CalendarControls view={view} setView={setView} cursor={cursor} setCursor={setCursor} />
           <label className="search-inline">
@@ -1094,9 +1390,9 @@ function ClassesPage() {
         </div>
         {view === "month" && <MonthGrid events={visible} cursor={cursor} onEventClick={setSelectedEvent} />}
         {view !== "month" && <EventList events={visible} onEventClick={setSelectedEvent} emptyText={view === "day" ? "There are no events on this day." : "No classes match this search."} />}
-      </section>
+      </details>
       {selectedEvent && <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
-    </>
+    </StudentAppPage>
   );
 }
 
@@ -1123,9 +1419,13 @@ function ShopPage() {
   useEffect(() => setPage(1), [categorySlug, query, sort]);
 
   return (
-    <>
-      <PageHero title={category ? category.name : "Our shop is designed exclusively for students"} text="You can purchase any item online and when you come in to pick it up, you will have the opportunity to try it on and select the perfect size for you. We make sure every student finds a comfortable fit." imageAlt="Martial arts uniforms, gloves, and sparring equipment arranged in the studio shop" />
-      <section className="section shop-layout">
+    <StudentAppPage
+      title={category ? category.name : "Shop"}
+      text="Find uniforms, gloves, and training gear for pickup at Cho's."
+      action={{ label: "View Cart", to: "/cart", icon: <ShoppingCart size={18} /> }}
+      className="shop-app-page"
+    >
+      <div className="shop-layout">
         <aside className="shop-sidebar">
           <h3>Categories</h3>
           <Link className={!category ? "active" : ""} to="/shop">
@@ -1169,8 +1469,8 @@ function ShopPage() {
             </button>
           </div>
         </div>
-      </section>
-    </>
+      </div>
+    </StudentAppPage>
   );
 }
 
@@ -1446,6 +1746,7 @@ function CheckoutPage() {
 function AccountPage() {
   const { session, login, logout, register, orders, bookings, contacts, showToast } = useAppState();
   const navigate = useNavigate();
+  const [accountParams] = useSearchParams();
   const [loginForm, setLoginForm] = useState({ email: "", password: "", remembered: true });
   const [registerEmail, setRegisterEmail] = useState("");
   const [track, setTrack] = useState({ orderId: "", email: "" });
@@ -1478,6 +1779,18 @@ function AccountPage() {
   const readinessProgress = Math.round((studentProgress.completedRequirementIds.length / beltReadinessItems.length) * 100);
   const overallProgress = nextBelt ? Math.round((classProgress + readinessProgress) / 2) : 100;
   const classesRemaining = Math.max(0, targetClasses - studentProgress.classesAttended);
+  const requestedTopic = accountParams.get("topic");
+  const activeAccountTopic = requestedTopic === "progress" || requestedTopic === "orders" || requestedTopic === "bookings" || requestedTopic === "profile" ? requestedTopic : "overview";
+  const accountTitle =
+    activeAccountTopic === "progress"
+      ? "My Progress"
+      : activeAccountTopic === "orders"
+        ? "Orders"
+        : activeAccountTopic === "bookings"
+          ? "Bookings"
+          : activeAccountTopic === "profile"
+            ? "Profile"
+            : "My Account";
 
   const updateStudentProgress = (next: StudentProgressSettings, message: string) => {
     setStudentProgress(next);
@@ -1530,10 +1843,25 @@ function AccountPage() {
     showToast("Progress summary downloaded.");
   };
 
+  const accountPageAction: StudentPageAction =
+    activeAccountTopic === "progress"
+      ? { label: "Record Class", onClick: recordClass, icon: <Plus size={18} /> }
+      : activeAccountTopic === "orders"
+        ? { label: "Go to Shop", to: "/shop", icon: <Package size={18} /> }
+        : activeAccountTopic === "bookings"
+          ? { label: "Request Lesson", to: "/private-lessons", icon: <Clock size={18} /> }
+          : { label: "Student Home", to: "/", icon: <Home size={18} /> };
+
   if (session) {
     return (
-      <section className="section account-page">
-        <SectionHeader title="Personal Profile Settings" text={`Welcome back, ${session.email}. Manage your prototype profile and sign out from one place.`} />
+      <StudentAppPage
+        title={accountTitle}
+        text={`Welcome back, ${session.email}. Choose one account task at a time.`}
+        action={accountPageAction}
+        className="account-page"
+      >
+        <AccountTopicNav activeTopic={activeAccountTopic} />
+        {(activeAccountTopic === "overview" || activeAccountTopic === "progress") && (
         <div className="student-progress-shell">
           <article className="content-card belt-collection-card" aria-label="Student belt progression">
             <div className="belt-board-top">
@@ -1619,18 +1947,21 @@ function AccountPage() {
               </div>
             </div>
             <p className="rank-focus"><Target size={18} /> {currentBelt.focus}</p>
-            <div className="readiness-list">
-              {beltReadinessItems.map((item) => {
-                const complete = studentProgress.completedRequirementIds.includes(item.id);
-                return (
-                  <button className={`readiness-item ${complete ? "complete" : ""}`} key={item.id} type="button" onClick={() => toggleRequirement(item.id)} aria-pressed={complete}>
-                    <span>{complete ? <CheckCircle2 size={18} /> : <ShieldCheck size={18} />}</span>
-                    <strong>{item.label}</strong>
-                    <small>{item.detail}</small>
-                  </button>
-                );
-              })}
-            </div>
+            <details className="app-details-panel readiness-details">
+              <summary>Testing Checklist</summary>
+              <div className="readiness-list">
+                {beltReadinessItems.map((item) => {
+                  const complete = studentProgress.completedRequirementIds.includes(item.id);
+                  return (
+                    <button className={`readiness-item ${complete ? "complete" : ""}`} key={item.id} type="button" onClick={() => toggleRequirement(item.id)} aria-pressed={complete}>
+                      <span>{complete ? <CheckCircle2 size={18} /> : <ShieldCheck size={18} />}</span>
+                      <strong>{item.label}</strong>
+                      <small>{item.detail}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            </details>
             <div className="student-progress-actions">
               <button className="btn btn-red" type="button" onClick={recordClass}>
                 <Plus size={18} /> Record Class
@@ -1644,11 +1975,14 @@ function AccountPage() {
             </div>
           </article>
         </div>
-        <div className="dashboard-grid">
-          <DashboardPanel title="Saved Orders" items={orders.map((order) => `${order.orderNumber} - ${formatMoney(order.total)} - ${order.status}`)} empty="No saved orders yet." />
-          <DashboardPanel title="Saved Bookings" items={bookings.map((booking) => `${booking.date} ${booking.time} for ${booking.persons} person(s)`)} empty="No saved bookings yet." />
-          <DashboardPanel title="Saved Contact Requests" items={contacts.map((contact) => `${contact.name}: ${contact.message}`)} empty="No saved contact requests yet." />
-          <form
+        )}
+        {activeAccountTopic !== "progress" && (
+        <div className={`dashboard-grid ${activeAccountTopic !== "overview" ? "account-topic-single" : ""}`}>
+          {(activeAccountTopic === "overview" || activeAccountTopic === "orders") && <DashboardPanel title="Saved Orders" items={orders.map((order) => `${order.orderNumber} - ${formatMoney(order.total)} - ${order.status}`)} empty="No saved orders yet." />}
+          {(activeAccountTopic === "overview" || activeAccountTopic === "bookings") && <DashboardPanel title="Saved Bookings" items={bookings.map((booking) => `${booking.date} ${booking.time} for ${booking.persons} person(s)`)} empty="No saved bookings yet." />}
+          {activeAccountTopic === "overview" && <DashboardPanel title="Saved Contact Requests" items={contacts.map((contact) => `${contact.name}: ${contact.message}`)} empty="No saved contact requests yet." />}
+          {(activeAccountTopic === "overview" || activeAccountTopic === "profile") && (
+            <form
             className="content-card profile-settings-card"
             onSubmit={(event) => {
               event.preventDefault();
@@ -1663,7 +1997,7 @@ function AccountPage() {
             <div className="profile-card-head">
               <User />
               <div>
-                <h3>Profile</h3>
+                <h3>Profile Details</h3>
                 <p>Update the details used for this local demo account.</p>
               </div>
             </div>
@@ -1693,9 +2027,11 @@ function AccountPage() {
                 Log out
               </button>
             </div>
-          </form>
+            </form>
+          )}
         </div>
-      </section>
+        )}
+      </StudentAppPage>
     );
   }
 
@@ -1780,9 +2116,8 @@ function ContactPage() {
   };
 
   return (
-    <>
-      <PageHero title="Get in Touch" text="Questions about classes, private lessons, products, or the starter program? Send a message or contact the studio directly." imageAlt="Cho's Martial Arts studio exterior and map area placeholder" />
-      <section className="section contact-layout">
+    <StudentAppPage title="Ask for Help" text="Send a question or contact the studio." action={{ label: "Call Cho's", href: studio.phoneHref, icon: <Phone size={18} /> }} className="contact-app-page">
+      <div className="contact-layout">
         <div className="content-card">
           <MapPin />
           <h2>Visit Cho&apos;s</h2>
@@ -1827,8 +2162,8 @@ function ContactPage() {
           {errors.captcha && <p className="form-error">{errors.captcha}</p>}
           <button className="btn btn-red" type="submit">Submit</button>
         </form>
-      </section>
-    </>
+      </div>
+    </StudentAppPage>
   );
 }
 
@@ -2077,6 +2412,26 @@ function DashboardPanel({ title, items, empty }: { title: string; items: string[
       <h3>{title}</h3>
       {items.length ? items.map((item) => <p key={item}>{item}</p>) : <p className="muted">{empty}</p>}
     </div>
+  );
+}
+
+function AccountTopicNav({ activeTopic }: { activeTopic: string }) {
+  const topics = [
+    { topic: "overview", label: "Overview", path: "/my-account" },
+    { topic: "progress", label: "Progress", path: "/my-account?topic=progress" },
+    { topic: "orders", label: "Orders", path: "/my-account?topic=orders" },
+    { topic: "bookings", label: "Bookings", path: "/my-account?topic=bookings" },
+    { topic: "profile", label: "Profile", path: "/my-account?topic=profile" }
+  ];
+
+  return (
+    <nav className="account-topic-nav" aria-label="Account topics">
+      {topics.map((topic) => (
+        <Link className={activeTopic === topic.topic ? "active" : ""} key={topic.topic} to={topic.path}>
+          {topic.label}
+        </Link>
+      ))}
+    </nav>
   );
 }
 

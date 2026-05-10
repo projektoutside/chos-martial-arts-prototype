@@ -1,4 +1,4 @@
-import type { BeltRank, BeltReadinessItem, Benefit, ClassRule, Instructor, Product, ProductCategory, Program, TermSection, Testimonial } from "./types";
+import type { AppTopic, BeltRank, BeltReadinessItem, Benefit, ClassRule, Instructor, Product, ProductCategory, Program, TermSection, Testimonial } from "./types";
 
 export const studio = {
   name: "Cho's Martial Arts",
@@ -22,6 +22,32 @@ export const navLinks = [
   { label: "Shop", path: "/shop" },
   { label: "Contact Us", path: "/contact-us" }
 ];
+
+export const studentTopics: AppTopic[] = [
+  { slug: "today", label: "Today", summary: "See what to do next.", path: "/", tone: "today", group: "student" },
+  { slug: "classes", label: "Classes", summary: "Find today and this week.", path: "/classes", tone: "schedule", group: "student" },
+  { slug: "progress", label: "My Progress", summary: "Check belt rank and goals.", path: "/my-account?topic=progress", tone: "progress", group: "student" },
+  { slug: "practice", label: "Practice", summary: "Review simple training goals.", path: "/programs?section=practice", tone: "practice", group: "student" },
+  { slug: "programs", label: "Programs", summary: "Pick a training path.", path: "/programs", tone: "training", group: "student" },
+  { slug: "help", label: "Ask for Help", summary: "Send a quick question.", path: "/contact-us", tone: "contact", group: "student" }
+];
+
+export const parentTopics: AppTopic[] = [
+  { slug: "shop", label: "Shop", summary: "Uniforms and gear.", path: "/shop", tone: "shop", group: "parent" },
+  { slug: "bookings", label: "Bookings", summary: "Saved class requests.", path: "/my-account?topic=bookings", tone: "bookings", group: "parent" },
+  { slug: "orders", label: "Orders", summary: "Pickup and order history.", path: "/my-account?topic=orders", tone: "orders", group: "parent" },
+  { slug: "profile", label: "Profile", summary: "Student contact settings.", path: "/my-account?topic=profile", tone: "profile", group: "parent" }
+];
+
+export const moreTopics: AppTopic[] = [
+  ...parentTopics,
+  { slug: "private-lessons", label: "Private Lessons", summary: "Request one-on-one instructor time.", path: "/private-lessons", tone: "lesson", group: "parent" },
+  { slug: "about", label: "About Cho's", summary: "Studio story and instructors.", path: "/about-us", tone: "about", group: "parent" },
+  { slug: "contact", label: "Contact", summary: "Call, message, or visit Cho's.", path: "/contact-us", tone: "contact", group: "parent" },
+  { slug: "terms", label: "Terms", summary: "Policies and prototype terms.", path: "/terms-and-conditions", tone: "terms", group: "parent" }
+];
+
+export const appTopics: AppTopic[] = [...studentTopics, ...parentTopics];
 
 export const beltRanks: BeltRank[] = [
   {

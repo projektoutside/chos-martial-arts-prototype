@@ -1,5 +1,5 @@
 import { addDays, compareAsc, format, parseISO, startOfDay } from "date-fns";
-import { benefits, classRules, instructors, navLinks, products, programs, termsSections } from "./data";
+import { appTopics, benefits, classRules, instructors, navLinks, products, programs, termsSections } from "./data";
 import type { AccountSession, CartItem, ClassEvent, ContactSubmission, Coupon, CustomerInfo, Order, SearchResult } from "./types";
 
 export const TAX_RATE = 0.05;
@@ -157,6 +157,7 @@ export function searchSite(query: string): SearchResult[] {
   if (!q) return [];
 
   const entries: SearchResult[] = [
+    ...appTopics.map((topic) => ({ title: topic.label, subtitle: topic.summary, path: topic.path, type: "App Topic" })),
     ...navLinks.map((link) => ({ title: link.label, subtitle: "Page", path: link.path, type: "Page" })),
     ...programs.map((program) => ({ title: program.title, subtitle: program.shortDescription, path: `/programs?program=${program.slug}`, type: "Program" })),
     ...benefits.map((benefit) => ({ title: benefit.title, subtitle: benefit.summary, path: "/programs", type: "Benefit" })),

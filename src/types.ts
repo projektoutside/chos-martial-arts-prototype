@@ -1,5 +1,6 @@
 export type RoutePath =
   | "/"
+  | "/more"
   | "/about-us"
   | "/programs"
   | "/private-lessons"
@@ -81,6 +82,15 @@ export interface ClassEvent {
 export interface TermSection {
   title: string;
   content: string;
+}
+
+export interface AppTopic {
+  slug: string;
+  label: string;
+  summary: string;
+  path: string;
+  tone: string;
+  group: "student" | "parent";
 }
 
 export interface BeltRank {

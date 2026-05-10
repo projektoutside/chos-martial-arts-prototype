@@ -73,6 +73,12 @@ describe("calendar and search utilities", () => {
     expect(searchSite("sales tax").some((result) => result.path === "/terms-and-conditions")).toBe(true);
     expect(searchSite(products[1].name).some((result) => result.path === "/product/leadership-uniform")).toBe(true);
   });
+
+  it("indexes post-login app launcher topics", () => {
+    expect(searchSite("my progress").some((result) => result.path === "/my-account?topic=progress" && result.type === "App Topic")).toBe(true);
+    expect(searchSite("practice").some((result) => result.path === "/programs?section=practice" && result.type === "App Topic")).toBe(true);
+    expect(searchSite("bookings").some((result) => result.path === "/my-account?topic=bookings" && result.type === "App Topic")).toBe(true);
+  });
 });
 
 describe("form validation", () => {
