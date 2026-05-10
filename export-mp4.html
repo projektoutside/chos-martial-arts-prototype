@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Cho's Martial Arts Loader MP4 Export</title>
+  <style>
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: #030405;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    canvas {
+      width: min(100vw, 1280px);
+      height: auto;
+      aspect-ratio: 16 / 9;
+      display: block;
+      background: transparent;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="exportCanvas" width="1280" height="720" aria-label="Cho's Martial Arts loader export canvas"></canvas>
+
+  <script>
+    const FRAME_COUNT = 60;
+    const LOADER_DURATION_MS = 3000;
+    const FIGHTER_DURATION_MS = 1850;
+    const LOGO_RATIO = 1036 / 419;
+    const FRAME_VERSION = 'clean-no-lines-2';
+    const FRAME_SOURCES = Array.from(
+      { length: FRAME_COUNT },
+      (_, index) => `roundhouse-frames/frame-${String(index).padStart(2, '0')}.png?v=${FRAME_VERSION}`
+    );
+    const LOGO_SOURCE = '682e95109aa21_chos-logo.png';
+
+    const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
+    const lerp = (a, b, p) => a + (b - a) * p;
+    const easeOutCubic = (p) => 1 - Math.pow(1 - clamp(p), 3);
+    const easeInOut = (p) => {
+      const n = clamp(p);
+      return n < 0.5 ? 4 * n * n * n : 1 - Math.pow(-2 * n + 2, 3) / 2;
+    };
+
+    function at(ms, percent) {
+      return (percent / 100) * ms;
+    }
+
+    function interpolate(t, points, easing = (p) => p) {
+      if (t <= points[0][0]) {
+        return points[0][1];
+      }
+      for (let i = 1; i < points.length; i += 1) {
+        const [time, value] = points[i];
+        const [previousTime, previousValue] = points[i - 1];
+        if (t <= time) {
+          const p = easing((t - previousTime) / (time - previousTime || 1));
+          return lerp(previousValue, value, p);
+        }
+      }
+      return points[points.length - 1][1];
+    }
+
+    function loadImage(src) {
+      return new Promise((resolve) => {
+        const image = new Image();
+        image.decoding = 'async';
+        image.onload = () => resolve(image);
+        image.onerror = () => resolve(image);
+        image.src = src;
+      });
+    }
+
+    let assetsPromise = null;
+
+    async function loadAssets() {
+      const [logo, ...frames] = await Promise.all([
+        loadImage(LOGO_SOURCE),
+        ...FRAME_SOURCES.map(loadImage)
+      ]);
+      return { logo, frames };
+    }
+
+    function getAssets() {
+      if (!assetsPromise) {
+        assetsPromise = loadAssets();
+      }
+      return assetsPromise;
+    }
+
+    function getStage(canvas) {
+      const width = Math.min(canvas.width * 0.86, 860);
+      const height = width / LOGO_RATIO;
+      return {
+        x: (canvas.width - width) / 2,
+        y: (canvas.height - height) / 2,
+        width,
+        height
+      };
+    }
+
+    function drawRadial(ctx, x, y, radius, stops) {
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      stops.forEach(([offset, color]) => gradient.addColorStop(offset, color));
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
+
+    function drawPreviewBackground(ctx) {
+      const { width, height } = ctx.canvas;
+      ctx.save();
+      ctx.fillStyle = '#030405';
+      ctx.fillRect(0, 0, width, height);
+      drawRadial(ctx, width * 0.5, height * 0.46, width * 0.21, [
+        [0, 'rgba(255,255,255,0.08)'],
+        [1, 'rgba(255,255,255,0)']
+      ]);
+      drawRadial(ctx, width * 0.5, height * 0.74, width * 0.38, [
+        [0, 'rgba(255,255,255,0.045)'],
+        [1, 'rgba(255,255,255,0)']
+      ]);
+      const topWash = ctx.createLinearGradient(0, 0, 0, height * 0.34);
+      topWash.addColorStop(0, 'rgba(255,255,255,0.045)');
+      topWash.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = topWash;
+      ctx.fillRect(0, 0, width, height * 0.34);
+      ctx.restore();
+    }
+
+    function drawStageAtmosphere(ctx, stage, t) {
+      const floorOpacity = interpolate(t, [
+        [0, 0.16],
+        [at(LOADER_DURATION_MS, 48), 0.32],
+        [at(LOADER_DURATION_MS, 84), 0],
+        [LOADER_DURATION_MS, 0]
+      ]);
+      const hazeOpacity = interpolate(t, [
+        [0, 0.22],
+        [at(LOADER_DURATION_MS, 48), 0.38],
+        [at(LOADER_DURATION_MS, 78), 0.14],
+        [at(LOADER_DURATION_MS, 84), 0],
+        [LOADER_DURATION_MS, 0]
+      ]);
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.filter = 'blur(18px)';
+      ctx.globalAlpha = hazeOpacity;
+      drawRadial(ctx, stage.x + stage.width * 0.28, stage.y + stage.height * 0.44, stage.width * 0.36, [
+        [0, 'rgba(255,255,255,0.2)'],
+        [1, 'rgba(255,255,255,0)']
+      ]);
+      drawRadial(ctx, stage.x + stage.width * 0.58, stage.y + stage.height * 0.42, stage.width * 0.48, [
+        [0, 'rgba(255,255,255,0.13)'],
+        [1, 'rgba(255,255,255,0)']
+      ]);
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.filter = 'blur(9px)';
+      ctx.globalAlpha = floorOpacity;
+      const floor = ctx.createRadialGradient(
+        stage.x + stage.width / 2,
+        stage.y + stage.height,
+        0,
+        stage.x + stage.width / 2,
+        stage.y + stage.height,
+        stage.width * 0.58
+      );
+      floor.addColorStop(0, 'rgba(255,255,255,0.18)');
+      floor.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = floor;
+      ctx.fillRect(stage.x - stage.width * 0.1, stage.y + stage.height * 0.78, stage.width * 1.2, stage.height * 0.35);
+      ctx.restore();
+    }
+
+    function drawContain(ctx, image, box, alpha = 1, filter = 'none') {
+      if (!image || !image.complete) {
+        return;
+      }
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.filter = filter;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(image, box.x, box.y, box.width, box.height);
+      ctx.restore();
+    }
+
+    function drawFighter(ctx, frames, stage, t) {
+      if (t > FIGHTER_DURATION_MS) {
+        return;
+      }
+      const frameIndex = Math.min(
+        FRAME_COUNT - 1,
+        Math.floor((Math.min(t, FIGHTER_DURATION_MS) / FIGHTER_DURATION_MS) * (FRAME_COUNT - 1))
+      );
+      drawContain(
+        ctx,
+        frames[frameIndex],
+        stage,
+        1,
+        'brightness(1.16) contrast(1.08) drop-shadow(0 0 16px rgba(255,255,255,0.56)) drop-shadow(0 0 28px rgba(255,255,255,0.24))'
+      );
+    }
+
+    function drawImpactFlash(ctx, stage, t) {
+      const opacity = interpolate(t, [
+        [0, 0],
+        [at(LOADER_DURATION_MS, 40), 0],
+        [at(LOADER_DURATION_MS, 42), 1],
+        [at(LOADER_DURATION_MS, 52), 0.62],
+        [at(LOADER_DURATION_MS, 65), 0],
+        [LOADER_DURATION_MS, 0]
+      ]);
+      if (opacity <= 0) {
+        return;
+      }
+      const scale = interpolate(t, [
+        [at(LOADER_DURATION_MS, 40), 0.12],
+        [at(LOADER_DURATION_MS, 42), 1.16],
+        [at(LOADER_DURATION_MS, 52), 2.55],
+        [at(LOADER_DURATION_MS, 65), 3.08]
+      ], easeOutCubic);
+      const cx = stage.x + stage.width * 0.345;
+      const cy = stage.y + stage.height * 0.07;
+      const radius = stage.width * 0.105 * scale;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = opacity;
+      ctx.filter = 'blur(1px) drop-shadow(0 0 42px rgba(255,255,255,0.98))';
+      const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+      gradient.addColorStop(0, '#fff');
+      gradient.addColorStop(0.14, '#fff');
+      gradient.addColorStop(0.34, 'rgba(255,255,255,0.94)');
+      gradient.addColorStop(0.54, 'rgba(255,255,255,0.38)');
+      gradient.addColorStop(0.74, 'rgba(255,255,255,0)');
+      gradient.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawLogoAura(ctx, stage, t) {
+      const opacity = interpolate(t, [
+        [0, 0],
+        [at(LOADER_DURATION_MS, 41), 0],
+        [at(LOADER_DURATION_MS, 56), 0.62],
+        [at(LOADER_DURATION_MS, 76), 0.18],
+        [at(LOADER_DURATION_MS, 84), 0],
+        [LOADER_DURATION_MS, 0]
+      ]);
+      if (opacity <= 0) {
+        return;
+      }
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = opacity;
+      ctx.filter = 'blur(18px)';
+      drawRadial(ctx, stage.x + stage.width * 0.35, stage.y + stage.height * 0.12, stage.width * 0.22, [
+        [0, 'rgba(255,255,255,0.46)'],
+        [1, 'rgba(255,255,255,0)']
+      ]);
+      drawRadial(ctx, stage.x + stage.width * 0.61, stage.y + stage.height * 0.55, stage.width * 0.54, [
+        [0, 'rgba(255,255,255,0.24)'],
+        [1, 'rgba(255,255,255,0)']
+      ]);
+      ctx.restore();
+    }
+
+    function drawLogoReveal(ctx, logo, stage, t) {
+      const glowOpacity = interpolate(t, [
+        [0, 0],
+        [at(LOADER_DURATION_MS, 44), 0],
+        [at(LOADER_DURATION_MS, 62), 0.78],
+        [at(LOADER_DURATION_MS, 76), 0.24],
+        [at(LOADER_DURATION_MS, 84), 0],
+        [LOADER_DURATION_MS, 0]
+      ]);
+      if (glowOpacity > 0) {
+        drawContain(ctx, logo, stage, glowOpacity, 'blur(13px) drop-shadow(0 0 24px rgba(255,255,255,0.76))');
+      }
+
+      const revealOpacity = interpolate(t, [
+        [0, 0],
+        [at(LOADER_DURATION_MS, 46), 0],
+        [at(LOADER_DURATION_MS, 55), 1],
+        [at(LOADER_DURATION_MS, 78.33), 1],
+        [at(LOADER_DURATION_MS, 84), 0],
+        [LOADER_DURATION_MS, 0]
+      ]);
+      if (revealOpacity > 0) {
+        const radiusPct = interpolate(t, [
+          [at(LOADER_DURATION_MS, 46), 0],
+          [at(LOADER_DURATION_MS, 55), 0.24],
+          [at(LOADER_DURATION_MS, 78.33), 1.24],
+          [at(LOADER_DURATION_MS, 84), 1.4]
+        ], easeInOut);
+        const cx = stage.x + stage.width * 0.35;
+        const cy = stage.y + stage.height * 0.08;
+        const radius = Math.max(stage.width, stage.height) * radiusPct;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.clip();
+        drawContain(ctx, logo, stage, revealOpacity, 'drop-shadow(0 0 16px rgba(255,255,255,0.58))');
+        ctx.restore();
+      }
+    }
+
+    function drawSparks(ctx, stage, t) {
+      const opacity = interpolate(t, [
+        [0, 0],
+        [at(LOADER_DURATION_MS, 54), 0],
+        [at(LOADER_DURATION_MS, 66), 1],
+        [at(LOADER_DURATION_MS, 81), 0.34],
+        [at(LOADER_DURATION_MS, 84), 0],
+        [LOADER_DURATION_MS, 0]
+      ]);
+      if (opacity <= 0) {
+        return;
+      }
+      const sparkPoints = [
+        [0.39, 0.23, 5],
+        [0.52, 0.40, 4],
+        [0.70, 0.33, 4.6],
+        [0.88, 0.24, 5],
+        [0.59, 0.79, 4.6],
+        [0.82, 0.82, 4.2]
+      ];
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = opacity;
+      ctx.filter = 'drop-shadow(0 0 9px #fff)';
+      ctx.fillStyle = '#fff';
+      sparkPoints.forEach(([x, y, radius]) => {
+        ctx.beginPath();
+        ctx.arc(stage.x + stage.width * x, stage.y + stage.height * y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
+    function drawFinalLogo(ctx, logo, stage, t) {
+      const opacity = t >= at(LOADER_DURATION_MS, 78.33) ? 1 : 0;
+      if (opacity > 0) {
+        drawContain(ctx, logo, stage, opacity, 'none');
+      }
+    }
+
+    function renderFrame(ctx, assets, t, options = {}) {
+      const stage = getStage(ctx.canvas);
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      if (options.background !== 'transparent') {
+        drawPreviewBackground(ctx);
+        drawStageAtmosphere(ctx, stage, t);
+      }
+      drawFighter(ctx, assets.frames, stage, t);
+      drawImpactFlash(ctx, stage, t);
+      drawLogoAura(ctx, stage, t);
+      drawLogoReveal(ctx, assets.logo, stage, t);
+      drawSparks(ctx, stage, t);
+      drawFinalLogo(ctx, assets.logo, stage, t);
+    }
+
+    function blobToBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function recordChoLoaderMp4(options = {}) {
+      const canvas = document.getElementById('exportCanvas');
+      canvas.width = options.width || 1280;
+      canvas.height = options.height || 720;
+      const fps = options.fps || 60;
+      const durationMs = options.durationMs || LOADER_DURATION_MS;
+      const background = options.background || 'dark';
+      const mimeType = options.mimeType || 'video/mp4;codecs=avc1.42E01E';
+
+      if (!window.MediaRecorder || !MediaRecorder.isTypeSupported(mimeType)) {
+        throw new Error(`MediaRecorder does not support ${mimeType}`);
+      }
+
+      const ctx = canvas.getContext('2d', { alpha: true });
+      const assets = await loadAssets();
+      renderFrame(ctx, assets, 0, { background });
+
+      const stream = canvas.captureStream(fps);
+      const chunks = [];
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: options.videoBitsPerSecond || 12000000
+      });
+
+      const stopped = new Promise((resolve) => {
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            chunks.push(event.data);
+          }
+        };
+        recorder.onstop = resolve;
+      });
+
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const start = performance.now();
+      recorder.start();
+
+      await new Promise((resolve) => {
+        function tick(now) {
+          const elapsed = clamp(now - start, 0, durationMs);
+          renderFrame(ctx, assets, elapsed, { background });
+          if (elapsed < durationMs) {
+            requestAnimationFrame(tick);
+          } else {
+            renderFrame(ctx, assets, durationMs, { background });
+            setTimeout(() => {
+              recorder.stop();
+              resolve();
+            }, options.stopDelayMs ?? 65);
+          }
+        }
+        requestAnimationFrame(tick);
+      });
+
+      await stopped;
+      stream.getTracks().forEach((track) => track.stop());
+
+      const blob = new Blob(chunks, { type: mimeType });
+      return {
+        base64: await blobToBase64(blob),
+        byteLength: blob.size,
+        durationMs,
+        fps,
+        width: canvas.width,
+        height: canvas.height,
+        mimeType
+      };
+    }
+
+    window.recordChoLoaderMp4 = recordChoLoaderMp4;
+    window.renderChoLoaderFramePng = async function renderChoLoaderFramePng(options = {}) {
+      const canvas = document.getElementById('exportCanvas');
+      canvas.width = options.width || 1280;
+      canvas.height = options.height || 720;
+      const ctx = canvas.getContext('2d', { alpha: true });
+      const assets = await getAssets();
+      renderFrame(ctx, assets, options.timeMs || 0, {
+        background: options.background || 'dark'
+      });
+      return canvas.toDataURL('image/png').split(',')[1];
+    };
+
+    getAssets().then((assets) => {
+      const canvas = document.getElementById('exportCanvas');
+      const ctx = canvas.getContext('2d', { alpha: true });
+      renderFrame(ctx, assets, 0, { background: 'dark' });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Cho's Martial Arts Roundhouse Loader - Transparent Preview</title>
+  <script>
+    document.documentElement.classList.add('preview-backdrop');
+  </script>
+  <style>
+    :root {
+      --loader-duration: 3000ms;
+      --fighter-duration: 1850ms;
+      --logo-ratio: 1036 / 419;
+      --logo-width: min(86vw, 860px);
+      --stage-bg: transparent;
+      --white: #fff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body {
+      display: grid;
+      min-height: 100vh;
+      overflow: hidden;
+      place-items: center;
+      background: transparent;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .cho-loader {
+      position: relative;
+      display: grid;
+      width: 100vw;
+      min-height: 100vh;
+      isolation: isolate;
+      overflow: hidden;
+      cursor: pointer;
+      place-items: center;
+      background: transparent;
+    }
+
+    html.preview-backdrop body {
+      background:
+        radial-gradient(circle at 50% 46%, rgba(255, 255, 255, 0.08), transparent 17%),
+        radial-gradient(circle at 50% 74%, rgba(255, 255, 255, 0.045), transparent 31%),
+        #030405;
+    }
+
+    html.preview-backdrop .cho-loader {
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 34%),
+        radial-gradient(circle at 48% 48%, rgba(255, 255, 255, 0.055), transparent 18%);
+    }
+
+    .cho-loader::before,
+    .cho-loader::after {
+      position: absolute;
+      display: none;
+      z-index: 0;
+      pointer-events: none;
+      content: "";
+      opacity: 0;
+    }
+
+    html.preview-backdrop .cho-loader::before,
+    html.preview-backdrop .cho-loader::after {
+      display: block;
+    }
+
+    .cho-loader::before {
+      inset: -18%;
+      background:
+        radial-gradient(circle at 14% 58%, rgba(255, 255, 255, 0.12) 0 1px, transparent 2px),
+        radial-gradient(circle at 36% 35%, rgba(255, 255, 255, 0.075) 0 1px, transparent 2px),
+        radial-gradient(circle at 62% 59%, rgba(255, 255, 255, 0.08) 0 1px, transparent 2px),
+        radial-gradient(circle at 83% 37%, rgba(255, 255, 255, 0.1) 0 1px, transparent 2px);
+      filter: blur(0.35px);
+      transform: translate3d(-2%, 2%, 0);
+    }
+
+    .cho-loader::after {
+      inset: auto 0 8vh;
+      height: 32vh;
+      background:
+        radial-gradient(ellipse at 19% 60%, rgba(255, 255, 255, 0.13), transparent 35%),
+        radial-gradient(ellipse at 53% 58%, rgba(255, 255, 255, 0.1), transparent 42%),
+        radial-gradient(ellipse at 81% 56%, rgba(255, 255, 255, 0.08), transparent 34%);
+      filter: blur(20px);
+      transform: translate3d(0, 18px, 0) scaleX(1.08);
+    }
+
+    .cho-loader.is-playing::before {
+      animation: dustDrift var(--loader-duration) linear both;
+    }
+
+    .cho-loader.is-playing::after {
+      animation: smokeLift var(--loader-duration) ease-out both;
+    }
+
+    .logo-stage {
+      position: relative;
+      z-index: 1;
+      width: var(--logo-width);
+      max-width: calc(100vw - 32px);
+      aspect-ratio: var(--logo-ratio);
+      transform: translateZ(0);
+    }
+
+    .stage-haze,
+    .floor-glow,
+    .impact-flash,
+    .logo-aura,
+    .letter-sparks {
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .stage-haze {
+      display: none;
+      z-index: 0;
+      left: -12%;
+      top: -38%;
+      width: 124%;
+      height: 158%;
+      opacity: 0;
+      background:
+        radial-gradient(ellipse at 28% 44%, rgba(255, 255, 255, 0.2), transparent 28%),
+        radial-gradient(ellipse at 58% 42%, rgba(255, 255, 255, 0.13), transparent 37%),
+        radial-gradient(ellipse at 50% 86%, rgba(255, 255, 255, 0.08), transparent 38%);
+      filter: blur(18px);
+    }
+
+    .floor-glow {
+      display: none;
+      z-index: 0;
+      left: -6%;
+      right: -6%;
+      bottom: 0;
+      height: 16%;
+      opacity: 0;
+      background: radial-gradient(ellipse, rgba(255, 255, 255, 0.18), transparent 68%);
+      filter: blur(9px);
+      transform: scaleX(0.72);
+    }
+
+    html.preview-backdrop .stage-haze,
+    html.preview-backdrop .floor-glow {
+      display: block;
+    }
+
+    .fighter-frame {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-drag: none;
+      opacity: 0;
+      filter:
+        brightness(1.12)
+        contrast(1.08)
+        drop-shadow(0 0 14px rgba(255, 255, 255, 0.52))
+        drop-shadow(0 0 28px rgba(255, 255, 255, 0.22));
+      will-change: opacity, filter;
+    }
+
+    .cho-loader.is-playing .fighter-frame {
+      animation: fighterPresence var(--loader-duration) linear both;
+    }
+
+    .impact-flash {
+      z-index: 7;
+      left: 34.5%;
+      top: 7%;
+      width: 21%;
+      aspect-ratio: 1;
+      opacity: 0;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, #fff 0 14%, rgba(255, 255, 255, 0.94) 15% 34%, rgba(255, 255, 255, 0.38) 35% 54%, transparent 74%);
+      filter: blur(1px) drop-shadow(0 0 42px rgba(255, 255, 255, 0.98));
+      transform: translate(-50%, -50%) scale(0.12);
+    }
+
+    .logo,
+    .logo-final {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-drag: none;
+      opacity: 0;
+      transform-origin: 50% 50%;
+    }
+
+    .logo-aura {
+      z-index: 4;
+      inset: -5%;
+      opacity: 0;
+      background:
+        radial-gradient(circle at 35% 12%, rgba(255, 255, 255, 0.46), transparent 18%),
+        radial-gradient(ellipse at 61% 55%, rgba(255, 255, 255, 0.24), transparent 48%);
+      filter: blur(18px);
+      transform: scale(0.74);
+    }
+
+    .logo-glow {
+      z-index: 4;
+      filter: blur(13px) drop-shadow(0 0 24px rgba(255, 255, 255, 0.76));
+      transform: scale(0.986);
+    }
+
+    .logo-reveal {
+      z-index: 5;
+      clip-path: circle(0% at 35% 8%);
+      filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.58));
+    }
+
+    .letter-sparks {
+      z-index: 8;
+      inset: 0;
+      opacity: 0;
+      background:
+        radial-gradient(circle at 39% 23%, #fff 0 0.55%, transparent 0.8%),
+        radial-gradient(circle at 52% 40%, #fff 0 0.42%, transparent 0.7%),
+        radial-gradient(circle at 70% 33%, #fff 0 0.48%, transparent 0.76%),
+        radial-gradient(circle at 88% 24%, #fff 0 0.54%, transparent 0.84%),
+        radial-gradient(circle at 59% 79%, #fff 0 0.48%, transparent 0.8%),
+        radial-gradient(circle at 82% 82%, #fff 0 0.45%, transparent 0.75%);
+      filter: drop-shadow(0 0 9px #fff);
+      transform: translate3d(-1%, 1%, 0) scale(0.95);
+    }
+
+    .logo-final {
+      z-index: 9;
+      filter: none;
+      transform: none;
+    }
+
+    .cho-loader.is-playing .stage-haze {
+      animation: stageHaze var(--loader-duration) ease-out both;
+    }
+
+    .cho-loader.is-playing .floor-glow {
+      animation: floorPulse var(--loader-duration) ease-out both;
+    }
+
+    .cho-loader.is-playing .impact-flash {
+      animation: impactFlash var(--loader-duration) ease-out both;
+    }
+
+    .cho-loader.is-playing .logo-aura {
+      animation: logoAura var(--loader-duration) ease-out both;
+    }
+
+    .cho-loader.is-playing .logo-glow {
+      animation: logoGlow var(--loader-duration) ease-out both;
+    }
+
+    .cho-loader.is-playing .logo-reveal {
+      animation: logoMagicReveal var(--loader-duration) cubic-bezier(0.18, 0.88, 0.18, 1) both;
+    }
+
+    .cho-loader.is-playing .letter-sparks {
+      animation: letterSparkle var(--loader-duration) ease-out both;
+    }
+
+    .cho-loader.is-playing .logo-final {
+      animation: finalLogoHold var(--loader-duration) linear both;
+    }
+
+    /* 0.0s-0.5s: fightingstance.png-derived frame charges on the dark stage. */
+    @keyframes dustDrift {
+      0%, 16.67% {
+        opacity: 0.2;
+        transform: translate3d(-2%, 2%, 0);
+      }
+      45% {
+        opacity: 0.32;
+        transform: translate3d(1%, -1%, 0);
+      }
+      84%, 100% {
+        opacity: 0;
+        transform: translate3d(3%, -4%, 0);
+      }
+    }
+
+    @keyframes smokeLift {
+      0%, 16.67% {
+        opacity: 0.2;
+        transform: translate3d(0, 18px, 0) scaleX(1.08);
+      }
+      50% {
+        opacity: 0.34;
+      }
+      84%, 100% {
+        opacity: 0;
+        transform: translate3d(0, -8px, 0) scaleX(1.18);
+      }
+    }
+
+    @keyframes stageHaze {
+      0%, 15% {
+        opacity: 0.22;
+        transform: scale(0.82);
+      }
+      48% {
+        opacity: 0.38;
+        transform: scale(1);
+      }
+      78% {
+        opacity: 0.14;
+      }
+      84%, 100% {
+        opacity: 0;
+        transform: scale(1.08);
+      }
+    }
+
+    @keyframes floorPulse {
+      0%, 15% {
+        opacity: 0.16;
+        transform: scaleX(0.72);
+      }
+      48% {
+        opacity: 0.32;
+        transform: scaleX(1.08);
+      }
+      84%, 100% {
+        opacity: 0;
+        transform: scaleX(1.14);
+      }
+    }
+
+    /* 0.5s-1.35s: frame sequence spins through the roundhouse path. */
+    @keyframes fighterPresence {
+      0% {
+        opacity: 0;
+        filter: brightness(1.04) contrast(1.06) blur(1px) drop-shadow(0 0 12px rgba(255, 255, 255, 0.38));
+      }
+      6%, 56% {
+        opacity: 1;
+        filter: brightness(1.16) contrast(1.08) blur(0) drop-shadow(0 0 16px rgba(255, 255, 255, 0.56)) drop-shadow(0 0 28px rgba(255, 255, 255, 0.24));
+      }
+      61.67% {
+        opacity: 1;
+        filter: brightness(1.65) contrast(1.08) blur(0) drop-shadow(0 0 24px rgba(255, 255, 255, 0.86));
+      }
+      66% {
+        opacity: 0;
+        filter: brightness(1.9) contrast(1) blur(3px) drop-shadow(0 0 34px rgba(255, 255, 255, 0.9));
+      }
+      100% {
+        opacity: 0;
+      }
+    }
+
+    /* 1.38s: flash begins as soon as the high kick hits; logo reveal follows. */
+    @keyframes impactFlash {
+      0%, 40% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.12);
+      }
+      42% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.16);
+      }
+      52% {
+        opacity: 0.62;
+        transform: translate(-50%, -50%) scale(2.55);
+      }
+      65%, 100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(3.08);
+      }
+    }
+
+    @keyframes logoAura {
+      0%, 41% {
+        opacity: 0;
+        transform: scale(0.72);
+      }
+      56% {
+        opacity: 0.62;
+        transform: scale(0.98);
+      }
+      76% {
+        opacity: 0.18;
+      }
+      84%, 100% {
+        opacity: 0;
+        transform: scale(1.05);
+      }
+    }
+
+    @keyframes logoGlow {
+      0%, 44% {
+        opacity: 0;
+        transform: scale(0.986);
+      }
+      62% {
+        opacity: 0.78;
+        transform: scale(1);
+      }
+      76% {
+        opacity: 0.24;
+      }
+      84%, 100% {
+        opacity: 0;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes logoMagicReveal {
+      0%, 46% {
+        opacity: 0;
+        clip-path: circle(0% at 35% 8%);
+        transform: translate3d(-0.8%, 0.4%, 0) scale(0.992);
+      }
+      55% {
+        opacity: 1;
+        clip-path: circle(24% at 35% 8%);
+      }
+      78.33% {
+        opacity: 1;
+        clip-path: circle(124% at 35% 8%);
+        transform: translate3d(0, 0, 0) scale(1.004);
+      }
+      84%, 100% {
+        opacity: 0;
+        clip-path: circle(140% at 35% 8%);
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+    }
+
+    @keyframes letterSparkle {
+      0%, 54% {
+        opacity: 0;
+        transform: translate3d(-1%, 1%, 0) scale(0.94);
+      }
+      66% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1.02);
+      }
+      81% {
+        opacity: 0.34;
+        transform: translate3d(1%, -1%, 0) scale(1);
+      }
+      84%, 100% {
+        opacity: 0;
+        transform: translate3d(1%, -1%, 0) scale(1);
+      }
+    }
+
+    /* 2.35s-3.0s: exact source logo PNG holds still. */
+    @keyframes finalLogoHold {
+      0%, 77.8% {
+        opacity: 0;
+        transform: none;
+        filter: none;
+      }
+      78.33%, 100% {
+        opacity: 1;
+        transform: none;
+        filter: none;
+      }
+    }
+
+    @media (max-width: 680px) {
+      :root {
+        --logo-width: min(92vw, 860px);
+      }
+
+      .logo-stage {
+        max-width: calc(100vw - 24px);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .cho-loader::before,
+      .cho-loader::after,
+      .cho-loader.is-playing .stage-haze,
+      .cho-loader.is-playing .floor-glow,
+      .cho-loader.is-playing .impact-flash,
+      .cho-loader.is-playing .logo-aura,
+      .cho-loader.is-playing .logo-glow,
+      .cho-loader.is-playing .logo-reveal,
+      .cho-loader.is-playing .letter-sparks,
+      .cho-loader.is-playing .fighter-frame {
+        animation: none;
+        opacity: 0;
+      }
+
+      .cho-loader.is-playing .logo-final {
+        animation: none;
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="cho-loader" id="choLogoLoader" aria-label="Cho's Martial Arts loading animation">
+    <section class="logo-stage" aria-hidden="true">
+      <div class="stage-haze"></div>
+      <div class="floor-glow"></div>
+
+      <img id="fighterFrame" class="fighter-frame" src="roundhouse-frames/frame-00.png?v=clean-no-lines-2" alt="">
+
+      <div class="impact-flash"></div>
+
+      <div class="logo-aura"></div>
+      <img class="logo logo-glow" src="682e95109aa21_chos-logo.png" alt="">
+      <img class="logo logo-reveal" src="682e95109aa21_chos-logo.png" alt="">
+      <div class="letter-sparks"></div>
+      <img class="logo-final" src="682e95109aa21_chos-logo.png" alt="">
+    </section>
+  </main>
+
+  <script>
+    /*
+      Cho's Martial Arts restarted loader timeline:
+      0.0s-0.5s: frame sequence starts from fightingstance.png-derived cutout.
+      0.5s-1.35s: deterministic roundhouse frames spin through the kick path.
+      1.20s-1.35s: flash starts just before the high kick reaches full extension.
+      1.35s-2.35s: kick copy.png-derived impact frame locks as the magic reveal brings in the logo lettering.
+      2.35s-3.0s: exact 682e95109aa21_chos-logo.png holds still.
+
+      Conversion notes:
+      Flutter: load roundhouse-frames/frame-00.png through frame-59.png in an
+      AnimationController-driven Stack, then use the same flash/reveal timings.
+      Rive: rebuild the fighter as vector keyframes if native vector masks are
+      needed. Lottie: use this timing map and import the PNG sequence as an
+      image sequence, keeping the final logo PNG as the last held layer.
+    */
+    const LOADER_DURATION_MS = 3000;
+    const FIGHTER_DURATION_MS = 1850;
+    const FRAME_COUNT = 60;
+    const FRAME_ASSET_VERSION = 'clean-no-lines-2';
+    const ROUNDHOUSE_FRAMES = Array.from(
+      { length: FRAME_COUNT },
+      (_, index) => `roundhouse-frames/frame-${String(index).padStart(2, '0')}.png?v=${FRAME_ASSET_VERSION}`
+    );
+
+    let activeAnimationFrame = 0;
+    let animationStartTime = 0;
+    let roundhousePreloadPromise = null;
+
+    function preloadRoundhouseFrames() {
+      if (roundhousePreloadPromise) {
+        return roundhousePreloadPromise;
+      }
+
+      const imageSources = [
+        ...ROUNDHOUSE_FRAMES,
+        '682e95109aa21_chos-logo.png'
+      ];
+
+      roundhousePreloadPromise = Promise.all(imageSources.map((src) => new Promise((resolve) => {
+        const image = new Image();
+        image.decoding = 'async';
+        image.onload = resolve;
+        image.onerror = resolve;
+        image.src = src;
+      })));
+
+      return roundhousePreloadPromise;
+    }
+
+    function renderRoundhouseFrame(now) {
+      const loader = document.getElementById('choLogoLoader');
+      const fighter = document.getElementById('fighterFrame');
+      if (!loader || !fighter || loader.dataset.state !== 'playing') {
+        return;
+      }
+
+      const elapsed = Math.max(0, now - animationStartTime);
+      const fighterElapsed = Math.min(elapsed, FIGHTER_DURATION_MS);
+      const frameIndex = Math.min(
+        FRAME_COUNT - 1,
+        Math.floor((fighterElapsed / FIGHTER_DURATION_MS) * (FRAME_COUNT - 1))
+      );
+      const nextSrc = ROUNDHOUSE_FRAMES[frameIndex];
+
+      if (fighter.dataset.frameIndex !== String(frameIndex)) {
+        fighter.dataset.frameIndex = String(frameIndex);
+        fighter.src = nextSrc;
+      }
+
+      fighter.style.opacity = elapsed <= FIGHTER_DURATION_MS ? '1' : '0';
+
+      if (elapsed < LOADER_DURATION_MS) {
+        activeAnimationFrame = requestAnimationFrame(renderRoundhouseFrame);
+      } else {
+        loader.dataset.state = 'complete';
+        fighter.style.opacity = '0';
+        window.cancelAnimationFrame(activeAnimationFrame);
+      }
+    }
+
+    function playChoLogoLoader() {
+      const loader = document.getElementById('choLogoLoader');
+      const fighter = document.getElementById('fighterFrame');
+      if (!loader || !fighter) {
+        return;
+      }
+
+      window.cancelAnimationFrame(activeAnimationFrame);
+      loader.classList.remove('is-playing');
+      loader.dataset.state = 'resetting';
+      fighter.dataset.frameIndex = '0';
+      fighter.src = ROUNDHOUSE_FRAMES[0];
+      fighter.style.opacity = '0';
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          animationStartTime = performance.now();
+          loader.dataset.state = 'playing';
+          loader.classList.add('is-playing');
+          activeAnimationFrame = requestAnimationFrame(renderRoundhouseFrame);
+        });
+      });
+    }
+
+    window.playChoLogoLoader = playChoLogoLoader;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const loader = document.getElementById('choLogoLoader');
+      const fighter = document.getElementById('fighterFrame');
+
+      loader.dataset.state = 'preloading';
+      fighter.dataset.frameIndex = '0';
+      fighter.src = ROUNDHOUSE_FRAMES[0];
+
+      loader.addEventListener('click', playChoLogoLoader);
+      document.addEventListener('keydown', (event) => {
+        const key = event.key.toLowerCase();
+        if (key === 'r' || key === ' ' || key === 'enter') {
+          event.preventDefault();
+          playChoLogoLoader();
+        }
+      });
+
+      preloadRoundhouseFrames().then(playChoLogoLoader);
+    });
+  </script>
+</body>
+</html>

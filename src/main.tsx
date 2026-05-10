@@ -1,0 +1,18 @@
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router";
+import App from "./App";
+import { AppStateProvider } from "./state";
+import "./styles.css";
+
+const routerBaseName = import.meta.env.BASE_URL === "/" ? undefined : import.meta.env.BASE_URL.replace(/\/$/, "");
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <BrowserRouter basename={routerBaseName}>
+      <AppStateProvider>
+        <App />
+      </AppStateProvider>
+    </BrowserRouter>
+  </StrictMode>
+);
