@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categories, getProductsForCategory, products } from "./data";
+import { appTopics, categories, getProductsForCategory, moreTopics, parentTopics, products, studentTopics } from "./data";
 
 describe("shop data", () => {
   it("maps every category slug to the requested products", () => {
@@ -32,5 +32,48 @@ describe("shop data", () => {
     ]);
 
     expect(products).toHaveLength(21);
+  });
+});
+
+describe("app topic data", () => {
+  it("groups the post-login launcher topics in the intended order", () => {
+    expect(studentTopics.map((topic) => topic.label)).toEqual([
+      "Today",
+      "Classes",
+      "My Progress",
+      "Practice",
+      "Programs",
+      "Ask for Help"
+    ]);
+
+    expect(studentTopics.map((topic) => topic.path)).toEqual([
+      "/",
+      "/classes",
+      "/my-account?topic=progress",
+      "/programs?section=practice",
+      "/programs",
+      "/contact-us"
+    ]);
+
+    expect(parentTopics.map((topic) => topic.label)).toEqual(["Shop", "Bookings", "Orders", "Profile"]);
+    expect(parentTopics.map((topic) => topic.path)).toEqual([
+      "/shop",
+      "/my-account?topic=bookings",
+      "/my-account?topic=orders",
+      "/my-account?topic=profile"
+    ]);
+
+    expect(moreTopics.map((topic) => topic.label)).toEqual([
+      "Shop",
+      "Bookings",
+      "Orders",
+      "Profile",
+      "Private Lessons",
+      "About Cho's",
+      "Contact",
+      "Terms"
+    ]);
+
+    expect(appTopics).toEqual([...studentTopics, ...parentTopics]);
   });
 });
