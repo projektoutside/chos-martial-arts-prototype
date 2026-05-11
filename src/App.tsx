@@ -449,6 +449,7 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [registerErrors, setRegisterErrors] = useState<Record<string, string>>({});
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [portraitVisible, setPortraitVisible] = useState(true);
   const [registerOpen, setRegisterOpen] = useState(false);
   const loginLandingStyle = { "--login-bg-image": `url("${publicAsset("NewFinalBackground.png")}")` } as CSSProperties;
 
@@ -489,6 +490,21 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
   return (
     <section className={`login-landing ${visible ? "is-visible" : ""} ${handoffActive ? "is-handoff" : ""}`} style={loginLandingStyle} aria-label="Cho's Martial Arts login">
       <div className="login-scrim"></div>
+      <button
+        className="login-portrait-toggle is-above-launch"
+        type="button"
+        aria-pressed={portraitVisible}
+        aria-label={portraitVisible ? "Hide portrait background" : "Show portrait background"}
+        title={portraitVisible ? "Hide portrait background" : "Show portrait background"}
+        onClick={() => setPortraitVisible((visible) => !visible)}
+      >
+        {portraitVisible ? <EyeOff size={20} /> : <Eye size={20} />}
+      </button>
+      {portraitVisible && (
+        <div className="login-portrait-stage" aria-hidden="true">
+          <img src={publicAsset("Perfect1.png")} alt="" draggable={false} />
+        </div>
+      )}
       <div className="login-panel-wrap">
         <form className="login-panel" onSubmit={submitLogin}>
           <label className="login-field">

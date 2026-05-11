@@ -1,9 +1,25 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { AppStateProvider } from "./state";
+
+function stubMatchMedia(matches = false) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  });
+}
 
 function renderLoggedInApp(path = "/") {
   window.localStorage.setItem("chos.session.v1", JSON.stringify({ email: "student@example.com", remembered: true, createdAt: "2026-05-10T00:00:00.000Z" }));
@@ -16,6 +32,61 @@ function renderLoggedInApp(path = "/") {
     </MemoryRouter>
   );
 }
+
+function renderLoggedOutApp(path = "/") {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <AppStateProvider>
+        <App />
+      </AppStateProvider>
+    </MemoryRouter>
+  );
+}
+
+describe("login landing", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.scrollTo = vi.fn();
+    stubMatchMedia();
+  });
+
+  it("renders the centered portrait blend image on the login screen", () => {
+    const { container } = renderLoggedOutApp("/");
+
+    const portrait = container.querySelector(".login-portrait-stage img");
+    expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
+    expect(portrait).toHaveAttribute("src", "/Perfect1.png");
+    expect(portrait?.parentElement).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("keeps the portrait available on the reduced-motion login screen", () => {
+    stubMatchMedia(true);
+    const { container } = renderLoggedOutApp("/");
+
+    expect(container.querySelector(".auth-logo")).toHaveClass("is-settled");
+    expect(container.querySelector(".login-portrait-stage img")).toHaveAttribute("src", "/Perfect1.png");
+  });
+
+  it("toggles the portrait blend image on and off from the login screen", () => {
+    const { container } = renderLoggedOutApp("/");
+
+    expect(container.querySelector(".login-portrait-stage img")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide portrait background" }));
+    expect(container.querySelector(".login-portrait-stage img")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show portrait background" }));
+    expect(container.querySelector(".login-portrait-stage img")).toBeInTheDocument();
+  });
+
+  it("keeps the portrait toggle above the launch handoff overlay", () => {
+    const { container } = renderLoggedOutApp("/");
+
+    expect(screen.getByRole("button", { name: "Hide portrait background" })).toBeInTheDocument();
+    expect(container.querySelector(".launch-loader")).toBeInTheDocument();
+    expect(container.querySelector(".login-portrait-toggle")).toHaveClass("is-above-launch");
+  });
+});
 
 describe("logged-in app dashboard", () => {
   beforeEach(() => {
