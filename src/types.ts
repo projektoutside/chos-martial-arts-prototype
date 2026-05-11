@@ -175,6 +175,18 @@ export interface AccountSession {
   createdAt: string;
 }
 
+export type AccountRole = "guardian" | "student";
+
+export interface ChildAccount {
+  id: string;
+  parentEmail: string;
+  name: string;
+  username: string;
+  age: string;
+  beltSlug: string;
+  createdAt: string;
+}
+
 export interface SearchResult {
   title: string;
   subtitle: string;

@@ -1,0 +1,20 @@
+{
+  "name": "Cho's Martial Arts",
+  "short_name": "Cho's",
+  "description": "Cho's Martial Arts mobile app prototype.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "portrait",
+  "background_color": "#080809",
+  "theme_color": "#080809",
+  "icons": [
+    {
+      "src": "682e95109aa21_chos-logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

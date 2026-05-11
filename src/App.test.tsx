@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -21,8 +21,9 @@ function stubMatchMedia(matches = false) {
   });
 }
 
-function renderLoggedInApp(path = "/") {
+function renderLoggedInApp(path = "/", role: "guardian" | "student" = "guardian") {
   window.localStorage.setItem("chos.session.v1", JSON.stringify({ email: "student@example.com", remembered: true, createdAt: "2026-05-10T00:00:00.000Z" }));
+  window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "student@example.com", role }]));
 
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -67,6 +68,14 @@ describe("login landing", () => {
     expect(container.querySelector(".login-portrait-stage img")).toHaveAttribute("src", "/Perfect1.png");
   });
 
+  it("keeps only the portrait visibility toggle on the login screen", () => {
+    renderLoggedOutApp("/");
+
+    expect(screen.getByRole("button", { name: "Hide portrait background" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Choose portrait background" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use Perfect1.png portrait background" })).not.toBeInTheDocument();
+  });
+
   it("toggles the portrait blend image on and off from the login screen", () => {
     const { container } = renderLoggedOutApp("/");
 
@@ -85,6 +94,77 @@ describe("login landing", () => {
     expect(screen.getByRole("button", { name: "Hide portrait background" })).toBeInTheDocument();
     expect(container.querySelector(".launch-loader")).toBeInTheDocument();
     expect(container.querySelector(".login-portrait-toggle")).toHaveClass("is-above-launch");
+  });
+});
+
+describe("app fullscreen behavior", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.scrollTo = vi.fn();
+    stubMatchMedia();
+  });
+
+  it("requests fullscreen on the first app interaction when supported", async () => {
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document.documentElement, "requestFullscreen", { configurable: true, value: requestFullscreen });
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, value: null });
+
+    renderLoggedOutApp("/");
+    fireEvent.pointerDown(document);
+
+    await waitFor(() => expect(requestFullscreen).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not request fullscreen again while already fullscreen", () => {
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document.documentElement, "requestFullscreen", { configurable: true, value: requestFullscreen });
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, value: document.documentElement });
+
+    renderLoggedOutApp("/");
+    fireEvent.pointerDown(document);
+
+    expect(requestFullscreen).not.toHaveBeenCalled();
+  });
+
+  it("asks new guest users if they are a parent and enables guardian parent mode", async () => {
+    renderLoggedOutApp("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in as Guest" }));
+
+    expect(await screen.findByRole("dialog", { name: "Account type" })).toBeInTheDocument();
+    expect(screen.getByText("If they are a Parent")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Guardian Parent" }));
+
+    expect(await screen.findByText("Guardian Parent Dashboard")).toBeInTheDocument();
+    expect(screen.getByLabelText("Parent and account actions")).toBeInTheDocument();
+  });
+
+  it("asks newly created accounts if they are a parent", async () => {
+    renderLoggedOutApp("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "Create New Account" }));
+    const createDialog = await screen.findByRole("dialog", { name: "Create New Account" });
+    fireEvent.change(within(createDialog).getByLabelText("Email address"), { target: { value: "parent@example.com" } });
+    fireEvent.change(within(createDialog).getByLabelText("Password"), { target: { value: "training123" } });
+    fireEvent.click(within(createDialog).getByRole("button", { name: "Create Account" }));
+
+    expect(await screen.findByRole("dialog", { name: "Account type" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Guardian Parent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Student / Child" })).toBeInTheDocument();
+  });
+
+  it("lets student users continue with fewer account options", async () => {
+    renderLoggedOutApp("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in as Guest" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Student / Child" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Account type" })).not.toBeInTheDocument());
+    expect(screen.queryByLabelText("Parent and account actions")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Student actions")).toBeInTheDocument();
   });
 });
 
@@ -125,7 +205,8 @@ describe("logged-in app dashboard", () => {
     expect(within(studentActions).getByRole("link", { name: /Ask for Help/i })).toHaveAttribute("href", "/contact-us");
 
     const parentActions = screen.getByLabelText("Parent and account actions");
-    expect(within(parentActions).getAllByRole("link")).toHaveLength(4);
+    expect(within(parentActions).getAllByRole("link")).toHaveLength(5);
+    expect(within(parentActions).getByRole("link", { name: /Children/i })).toHaveAttribute("href", "/my-account?topic=children");
     expect(within(parentActions).getByRole("link", { name: /Bookings/i })).toHaveAttribute("href", "/my-account?topic=bookings");
     expect(within(parentActions).getByRole("link", { name: /Profile/i })).toHaveAttribute("href", "/my-account?topic=profile");
     expect(screen.queryByRole("heading", { name: "Train Like a Fighter, Live Like a Champion" })).not.toBeInTheDocument();
@@ -178,6 +259,37 @@ describe("logged-in app dashboard", () => {
     expect(screen.getByRole("heading", { name: "Classes" })).toBeInTheDocument();
     expect(screen.getByRole("contentinfo", { name: "Student help" })).toBeInTheDocument();
     expect(screen.queryByText("Site Links")).not.toBeInTheDocument();
+  });
+});
+
+describe("guardian parent child accounts", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.scrollTo = vi.fn();
+    stubMatchMedia();
+  });
+
+  it("allows guardian parents to create multiple child subaccounts and switch a child into reduced options", async () => {
+    renderLoggedInApp("/my-account?topic=children", "guardian");
+
+    expect(screen.getByRole("heading", { name: "Guardian Parent Dashboard" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Child name"), { target: { value: "Ava Cho" } });
+    fireEvent.change(screen.getByLabelText("Child age"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Child Subaccount" }));
+
+    fireEvent.change(screen.getByLabelText("Child name"), { target: { value: "Mason Cho" } });
+    fireEvent.change(screen.getByLabelText("Child age"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Child Subaccount" }));
+
+    expect(screen.getByText("Ava Cho")).toBeInTheDocument();
+    expect(screen.getByText("Mason Cho")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Log in as Ava Cho" }));
+
+    await waitFor(() => expect(screen.queryByLabelText("Parent and account actions")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Student actions")).toBeInTheDocument();
+    expect(window.localStorage.getItem("chos.session.v1")).toContain("ava-cho.child");
   });
 });
 

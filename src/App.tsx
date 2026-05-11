@@ -54,7 +54,7 @@ import {
   testimonials
 } from "./data";
 import { useAppState } from "./state";
-import type { ClassEvent, Product } from "./types";
+import type { AccountRole, AppTopic, ChildAccount, ClassEvent, Product } from "./types";
 import {
   displayDate,
   downloadTextFile,
@@ -78,6 +78,9 @@ import {
 
 const demoEvents = generateClassEvents();
 const starterTimes = ["12:30 PM", "1:30 PM", "2:30 PM", "3:30 PM"];
+const guardianChildrenTopic: AppTopic = { slug: "children", label: "Children", summary: "Create and monitor child subaccounts.", path: "/my-account?topic=children", tone: "profile", group: "parent" };
+const guardianParentTopics = [guardianChildrenTopic, ...parentTopics];
+
 const appTopicIcons: Record<string, typeof Target> = {
   today: Home,
   programs: Target,
@@ -88,6 +91,7 @@ const appTopicIcons: Record<string, typeof Target> = {
   practice: Target,
   orders: ShoppingCart,
   bookings: CheckCircle2,
+  children: User,
   profile: User,
   help: Mail,
   contact: Mail,
@@ -99,6 +103,61 @@ function publicAsset(path: string) {
   const base = import.meta.env.BASE_URL || "/";
   const normalizedBase = base.endsWith("/") ? base : `${base}/`;
   return `${normalizedBase}${path.replace(/^\/+/, "")}`;
+}
+
+type FullscreenCapableDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  msFullscreenElement?: Element | null;
+  webkitFullscreenEnabled?: boolean;
+  msFullscreenEnabled?: boolean;
+};
+
+type FullscreenCapableElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+  msRequestFullscreen?: () => Promise<void> | void;
+};
+
+function getActiveFullscreenElement(doc: FullscreenCapableDocument) {
+  return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? doc.msFullscreenElement ?? null;
+}
+
+function canRequestFullscreen(doc: FullscreenCapableDocument, element: FullscreenCapableElement) {
+  const fullscreenEnabled = doc.fullscreenEnabled ?? doc.webkitFullscreenEnabled ?? doc.msFullscreenEnabled ?? true;
+  return fullscreenEnabled !== false && Boolean(element.requestFullscreen ?? element.webkitRequestFullscreen ?? element.msRequestFullscreen);
+}
+
+function requestDocumentFullscreen() {
+  const doc = document as FullscreenCapableDocument;
+  const element = document.documentElement as FullscreenCapableElement;
+  if (getActiveFullscreenElement(doc) || !canRequestFullscreen(doc, element)) return Promise.resolve();
+
+  const requestFullscreen = element.requestFullscreen ?? element.webkitRequestFullscreen ?? element.msRequestFullscreen;
+  return Promise.resolve(requestFullscreen.call(element)).catch(() => undefined);
+}
+
+function useAppFullscreen() {
+  useEffect(() => {
+    let requestInFlight = false;
+
+    const requestFullscreenFromGesture = () => {
+      if (requestInFlight) return;
+      requestInFlight = true;
+      requestDocumentFullscreen().finally(() => {
+        requestInFlight = false;
+      });
+    };
+
+    const interactionEvents = ["pointerdown", "touchstart", "click", "keydown"];
+    interactionEvents.forEach((eventName) => {
+      document.addEventListener(eventName, requestFullscreenFromGesture, { capture: true });
+    });
+
+    return () => {
+      interactionEvents.forEach((eventName) => {
+        document.removeEventListener(eventName, requestFullscreenFromGesture, { capture: true });
+      });
+    };
+  }, []);
 }
 
 interface ProfileSettings {
@@ -142,7 +201,8 @@ function loadStudentProgress(): StudentProgressSettings {
 }
 
 function App() {
-  const { session } = useAppState();
+  useAppFullscreen();
+  const { session, accountRole } = useAppState();
   const [launchComplete, setLaunchComplete] = useState(false);
   const [loginReveal, setLoginReveal] = useState(false);
   const revealLogin = useCallback(() => setLoginReveal(true), []);
@@ -185,13 +245,14 @@ function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Shell>
+      {session && !accountRole && <AccountRolePrompt />}
       <ToastViewport />
     </>
   );
 }
 
 function Shell({ children }: { children: ReactNode }) {
-  const { cart, session } = useAppState();
+  const { cart, session, accountRole } = useAppState();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [showTop, setShowTop] = useState(false);
@@ -241,7 +302,7 @@ function Shell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      {drawerOpen && <MobileDrawer onClose={() => setDrawerOpen(false)} />}
+      {drawerOpen && <MobileDrawer accountRole={accountRole} onClose={() => setDrawerOpen(false)} />}
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
       {session && <AppPageNavigation onBack={() => navigate(-1)} onForward={() => navigate(1)} />}
 
@@ -575,7 +636,38 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
   );
 }
 
-function MobileDrawer({ onClose }: { onClose: () => void }) {
+function AccountRolePrompt() {
+  const { setAccountRole, showToast } = useAppState();
+
+  const chooseRole = (role: AccountRole) => {
+    setAccountRole(role);
+    showToast(role === "guardian" ? "Guardian Parent account enabled." : "Student account enabled.");
+  };
+
+  return (
+    <ModalShell label="Account type" onClose={() => chooseRole("student")} panelClass="modal-card account-role-modal">
+      <div className="role-choice-head">
+        <ShieldCheck size={34} />
+        <div>
+          <p className="eyebrow">Account Setup</p>
+          <h2>If they are a Parent</h2>
+          <p>Choose Guardian Parent to manage children, monitor progress, and create child subaccounts. Choose Student / Child for a simpler student-only app.</p>
+        </div>
+      </div>
+      <div className="role-choice-actions">
+        <button className="btn btn-red" type="button" onClick={() => chooseRole("guardian")}>
+          Guardian Parent
+        </button>
+        <button className="btn btn-dark" type="button" onClick={() => chooseRole("student")}>
+          Student / Child
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function MobileDrawer({ accountRole, onClose }: { accountRole?: AccountRole; onClose: () => void }) {
+  const parentLinks = accountRole === "guardian" ? guardianParentTopics : [];
   return (
     <ModalShell label="Mobile navigation" onClose={onClose} panelClass="drawer-panel">
       <div className="drawer-head">
@@ -591,29 +683,33 @@ function MobileDrawer({ onClose }: { onClose: () => void }) {
             {topic.label}
           </Link>
         ))}
-        <span className="drawer-section-label">Grown-ups</span>
-        {parentTopics.map((topic) => (
+        {parentLinks.length > 0 && <span className="drawer-section-label">Grown-ups</span>}
+        {parentLinks.map((topic) => (
           <Link key={topic.slug} to={topic.path} onClick={onClose}>
             {topic.label}
           </Link>
         ))}
       </nav>
-      <h3>Quick Links</h3>
-      <div className="chip-list">
-        {["/private-lessons", "/about-us", "/cart", "/terms-and-conditions"].map((path) => (
-          <Link key={path} to={path} onClick={onClose} className="chip">
-            {path.replace("/", "").replace("?topic=", " ").replaceAll("-", " ") || "home"}
-          </Link>
-        ))}
-      </div>
-      <h3>Product Categories</h3>
-      <div className="drawer-category-list">
-        {categories.map((category) => (
-          <Link key={category.slug} to={`/shop/category/${category.slug}`} onClick={onClose}>
-            {category.name}
-          </Link>
-        ))}
-      </div>
+      {accountRole === "guardian" && (
+        <>
+          <h3>Quick Links</h3>
+          <div className="chip-list">
+            {["/private-lessons", "/about-us", "/cart", "/terms-and-conditions"].map((path) => (
+              <Link key={path} to={path} onClick={onClose} className="chip">
+                {path.replace("/", "").replace("?topic=", " ").replaceAll("-", " ") || "home"}
+              </Link>
+            ))}
+          </div>
+          <h3>Product Categories</h3>
+          <div className="drawer-category-list">
+            {categories.map((category) => (
+              <Link key={category.slug} to={`/shop/category/${category.slug}`} onClick={onClose}>
+                {category.name}
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
     </ModalShell>
   );
 }
@@ -762,9 +858,10 @@ function MobileTabBar({ cartCount }: { cartCount: number }) {
 }
 
 function AppLauncherPage() {
-  const { session, orders, bookings } = useAppState();
+  const { session, accountRole, orders, bookings, guardianChildren } = useAppState();
   const nextClass = demoEvents.find((event) => event.date >= todayIso()) ?? demoEvents[0];
   const displayName = session?.email.split("@")[0] || "student";
+  const isGuardian = accountRole === "guardian";
   const progress = loadStudentProgress();
   const currentBeltIndex = Math.max(0, beltRanks.findIndex((rank) => rank.slug === progress.currentBeltSlug));
   const currentBelt = beltRanks[currentBeltIndex] ?? beltRanks[0];
@@ -824,31 +921,37 @@ function AppLauncherPage() {
           })}
         </nav>
 
-        <section className="parent-topic-section">
-          <div>
-            <p className="eyebrow">Grown-ups</p>
-            <h2>Parent and Account</h2>
-          </div>
-          <nav className="parent-topic-row" aria-label="Parent and account actions">
-            {parentTopics.map((topic) => {
-              const TopicIcon = appTopicIcons[topic.slug] ?? Target;
-              const badge = topic.slug === "orders" ? orders.length : topic.slug === "bookings" ? bookings.length : undefined;
-              return (
-                <Link className={`parent-topic-pill tone-${topic.tone}`} key={topic.slug} to={topic.path} aria-label={topic.label}>
-                  <TopicIcon size={18} />
-                  <span>{topic.label}</span>
-                  {typeof badge === "number" && <small>{badge}</small>}
-                </Link>
-              );
-            })}
-          </nav>
-        </section>
+        {isGuardian && (
+          <section className="parent-topic-section">
+            <div>
+              <p className="eyebrow">Guardian Parent</p>
+              <h2>Guardian Parent Dashboard</h2>
+              <p>Monitor child accounts and keep family tasks in one place.</p>
+            </div>
+            <nav className="parent-topic-row" aria-label="Parent and account actions">
+              {guardianParentTopics.map((topic) => {
+                const TopicIcon = appTopicIcons[topic.slug] ?? Target;
+                const badge = topic.slug === "orders" ? orders.length : topic.slug === "bookings" ? bookings.length : topic.slug === "children" ? guardianChildren.length : undefined;
+                return (
+                  <Link className={`parent-topic-pill tone-${topic.tone}`} key={topic.slug} to={topic.path} aria-label={topic.label}>
+                    <TopicIcon size={18} />
+                    <span>{topic.label}</span>
+                    {typeof badge === "number" && <small>{badge}</small>}
+                  </Link>
+                );
+              })}
+            </nav>
+          </section>
+        )}
       </div>
     </section>
   );
 }
 
 function MoreMenuPage() {
+  const { accountRole } = useAppState();
+  const visibleTopics = accountRole === "guardian" ? [guardianChildrenTopic, ...moreTopics] : studentTopics;
+
   return (
     <StudentAppPage
       title="Cho's Menu"
@@ -857,7 +960,7 @@ function MoreMenuPage() {
       className="more-menu-page"
     >
       <nav className="more-menu-grid" aria-label="Cho's non-student links">
-        {moreTopics.map((topic) => {
+        {visibleTopics.map((topic) => {
           const TopicIcon = appTopicIcons[topic.slug] ?? Target;
           return (
             <Link className={`more-menu-card tone-${topic.tone}`} key={topic.slug} to={topic.path} aria-label={topic.label}>
@@ -1760,7 +1863,7 @@ function CheckoutPage() {
 }
 
 function AccountPage() {
-  const { session, login, logout, register, orders, bookings, contacts, showToast } = useAppState();
+  const { session, login, logout, register, orders, bookings, contacts, showToast, accountRole, guardianChildren, addChildAccount, loginChildAccount } = useAppState();
   const navigate = useNavigate();
   const [accountParams] = useSearchParams();
   const [loginForm, setLoginForm] = useState({ email: "", password: "", remembered: true });
@@ -1768,6 +1871,7 @@ function AccountPage() {
   const [track, setTrack] = useState({ orderId: "", email: "" });
   const [trackedOrder, setTrackedOrder] = useState<string>("");
   const [studentProgress, setStudentProgress] = useState<StudentProgressSettings>(() => loadStudentProgress());
+  const [childForm, setChildForm] = useState({ name: "", age: "", beltSlug: "white" });
   const [profileSettings, setProfileSettings] = useState<ProfileSettings>(() => {
     const fallback: ProfileSettings = { name: "", email: session?.email ?? "", phone: "", updates: true };
     if (typeof window === "undefined") return fallback;
@@ -1795,11 +1899,15 @@ function AccountPage() {
   const readinessProgress = Math.round((studentProgress.completedRequirementIds.length / beltReadinessItems.length) * 100);
   const overallProgress = nextBelt ? Math.round((classProgress + readinessProgress) / 2) : 100;
   const classesRemaining = Math.max(0, targetClasses - studentProgress.classesAttended);
+  const isGuardian = accountRole === "guardian";
   const requestedTopic = accountParams.get("topic");
-  const activeAccountTopic = requestedTopic === "progress" || requestedTopic === "orders" || requestedTopic === "bookings" || requestedTopic === "profile" ? requestedTopic : "overview";
+  const allowedAccountTopics = isGuardian ? ["overview", "children", "progress", "orders", "bookings", "profile"] : ["overview", "progress", "profile"];
+  const activeAccountTopic = requestedTopic && allowedAccountTopics.includes(requestedTopic) ? requestedTopic : "overview";
   const accountTitle =
     activeAccountTopic === "progress"
       ? "My Progress"
+      : activeAccountTopic === "children"
+        ? "Children"
       : activeAccountTopic === "orders"
         ? "Orders"
         : activeAccountTopic === "bookings"
@@ -1859,9 +1967,28 @@ function AccountPage() {
     showToast("Progress summary downloaded.");
   };
 
+  const createChildAccount = (event: FormEvent) => {
+    event.preventDefault();
+    const child = addChildAccount(childForm);
+    if (!child) {
+      showToast("Enter a child name.");
+      return;
+    }
+    setChildForm({ name: "", age: "", beltSlug: childForm.beltSlug });
+    showToast(`${child.name} child subaccount created.`);
+  };
+
+  const startChildLogin = (childId: string) => {
+    loginChildAccount(childId);
+    showToast("Child account signed in.");
+    navigate("/");
+  };
+
   const accountPageAction: StudentPageAction =
     activeAccountTopic === "progress"
       ? { label: "Record Class", onClick: recordClass, icon: <Plus size={18} /> }
+      : activeAccountTopic === "children"
+        ? { label: "Student Home", to: "/", icon: <Home size={18} /> }
       : activeAccountTopic === "orders"
         ? { label: "Go to Shop", to: "/shop", icon: <Package size={18} /> }
         : activeAccountTopic === "bookings"
@@ -1872,11 +1999,20 @@ function AccountPage() {
     return (
       <StudentAppPage
         title={accountTitle}
-        text={`Welcome back, ${session.email}. Choose one account task at a time.`}
+        text={isGuardian ? `Welcome back, ${session.email}. Guardian Parent tools help you manage child accounts and family tasks.` : `Welcome back, ${session.email}. Student mode keeps the app focused on progress, classes, and profile details.`}
         action={accountPageAction}
         className="account-page"
       >
-        <AccountTopicNav activeTopic={activeAccountTopic} />
+        <AccountTopicNav activeTopic={activeAccountTopic} accountRole={accountRole} />
+        {isGuardian && (activeAccountTopic === "overview" || activeAccountTopic === "children") && (
+          <GuardianFamilyPanel
+            childForm={childForm}
+            guardianChildren={guardianChildren}
+            onChildFormChange={setChildForm}
+            onCreateChild={createChildAccount}
+            onLoginChild={startChildLogin}
+          />
+        )}
         {(activeAccountTopic === "overview" || activeAccountTopic === "progress") && (
         <div className="student-progress-shell">
           <article className="content-card belt-collection-card" aria-label="Student belt progression">
@@ -1992,11 +2128,11 @@ function AccountPage() {
           </article>
         </div>
         )}
-        {activeAccountTopic !== "progress" && (
+        {activeAccountTopic !== "progress" && activeAccountTopic !== "children" && (
         <div className={`dashboard-grid ${activeAccountTopic !== "overview" ? "account-topic-single" : ""}`}>
-          {(activeAccountTopic === "overview" || activeAccountTopic === "orders") && <DashboardPanel title="Saved Orders" items={orders.map((order) => `${order.orderNumber} - ${formatMoney(order.total)} - ${order.status}`)} empty="No saved orders yet." />}
-          {(activeAccountTopic === "overview" || activeAccountTopic === "bookings") && <DashboardPanel title="Saved Bookings" items={bookings.map((booking) => `${booking.date} ${booking.time} for ${booking.persons} person(s)`)} empty="No saved bookings yet." />}
-          {activeAccountTopic === "overview" && <DashboardPanel title="Saved Contact Requests" items={contacts.map((contact) => `${contact.name}: ${contact.message}`)} empty="No saved contact requests yet." />}
+          {isGuardian && (activeAccountTopic === "overview" || activeAccountTopic === "orders") && <DashboardPanel title="Saved Orders" items={orders.map((order) => `${order.orderNumber} - ${formatMoney(order.total)} - ${order.status}`)} empty="No saved orders yet." />}
+          {isGuardian && (activeAccountTopic === "overview" || activeAccountTopic === "bookings") && <DashboardPanel title="Saved Bookings" items={bookings.map((booking) => `${booking.date} ${booking.time} for ${booking.persons} person(s)`)} empty="No saved bookings yet." />}
+          {isGuardian && activeAccountTopic === "overview" && <DashboardPanel title="Saved Contact Requests" items={contacts.map((contact) => `${contact.name}: ${contact.message}`)} empty="No saved contact requests yet." />}
           {(activeAccountTopic === "overview" || activeAccountTopic === "profile") && (
             <form
             className="content-card profile-settings-card"
@@ -2431,12 +2567,89 @@ function DashboardPanel({ title, items, empty }: { title: string; items: string[
   );
 }
 
-function AccountTopicNav({ activeTopic }: { activeTopic: string }) {
+function GuardianFamilyPanel({
+  childForm,
+  guardianChildren,
+  onChildFormChange,
+  onCreateChild,
+  onLoginChild
+}: {
+  childForm: { name: string; age: string; beltSlug: string };
+  guardianChildren: ChildAccount[];
+  onChildFormChange: (form: { name: string; age: string; beltSlug: string }) => void;
+  onCreateChild: (event: FormEvent) => void;
+  onLoginChild: (childId: string) => void;
+}) {
+  return (
+    <section className="content-card guardian-family-card" aria-label="Guardian Parent child accounts">
+      <div className="profile-card-head">
+        <User />
+        <div>
+          <p className="eyebrow">Family accounts</p>
+          <h2>Guardian Parent Dashboard</h2>
+          <p>Create one child login for each student, then switch into their reduced student app when needed.</p>
+        </div>
+      </div>
+      <form className="guardian-child-form" onSubmit={onCreateChild}>
+        <label className="field-label">
+          Child name
+          <input className="input" value={childForm.name} onChange={(event) => onChildFormChange({ ...childForm, name: event.target.value })} placeholder="Ava Cho" />
+        </label>
+        <label className="field-label">
+          Child age
+          <input className="input" value={childForm.age} onChange={(event) => onChildFormChange({ ...childForm, age: event.target.value })} inputMode="numeric" placeholder="8" />
+        </label>
+        <label className="field-label">
+          Current belt
+          <select className="input" value={childForm.beltSlug} onChange={(event) => onChildFormChange({ ...childForm, beltSlug: event.target.value })}>
+            {beltRanks.map((belt) => (
+              <option key={belt.slug} value={belt.slug}>
+                {belt.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button className="btn btn-red" type="submit">
+          Create Child Subaccount
+        </button>
+      </form>
+      <div className="child-account-list">
+        {guardianChildren.length ? (
+          guardianChildren.map((child) => {
+            const belt = beltRanks.find((rank) => rank.slug === child.beltSlug) ?? beltRanks[0];
+            return (
+              <article className="child-account-card" key={child.id}>
+                <div>
+                  <strong>{child.name}</strong>
+                  <small>{child.username}</small>
+                </div>
+                <span>{child.age ? `Age ${child.age}` : "Age not set"}</span>
+                <span>{belt.name} Belt</span>
+                <button className="btn btn-dark" type="button" onClick={() => onLoginChild(child.id)}>
+                  Log in as {child.name}
+                </button>
+              </article>
+            );
+          })
+        ) : (
+          <p className="muted">No child subaccounts yet.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AccountTopicNav({ activeTopic, accountRole }: { activeTopic: string; accountRole?: AccountRole }) {
   const topics = [
     { topic: "overview", label: "Overview", path: "/my-account" },
+    ...(accountRole === "guardian" ? [{ topic: "children", label: "Children", path: "/my-account?topic=children" }] : []),
     { topic: "progress", label: "Progress", path: "/my-account?topic=progress" },
-    { topic: "orders", label: "Orders", path: "/my-account?topic=orders" },
-    { topic: "bookings", label: "Bookings", path: "/my-account?topic=bookings" },
+    ...(accountRole === "guardian"
+      ? [
+          { topic: "orders", label: "Orders", path: "/my-account?topic=orders" },
+          { topic: "bookings", label: "Bookings", path: "/my-account?topic=bookings" }
+        ]
+      : []),
     { topic: "profile", label: "Profile", path: "/my-account?topic=profile" }
   ];
 
