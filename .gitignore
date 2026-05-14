@@ -7,6 +7,7 @@ coverage/
 /motion-frames/
 /qa-screens/
 /reference-frames/
+/ImageSegmentationProfilePage/
 /roundhouse-frames/
 /3dmodel/
 *.local

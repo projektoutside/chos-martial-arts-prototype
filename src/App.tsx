@@ -32,7 +32,10 @@ import {
   X
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, NavLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { DojoInteractiveScene } from "./DojoInteractiveScene";
+import { OperationsApp } from "./OperationsApp";
+import { buildDojoScenePanels } from "./dojoSceneData";
 import {
   apartCards,
   beltRanks,
@@ -204,10 +207,8 @@ function App() {
   useAppFullscreen();
   const { session, accountRole } = useAppState();
   const [launchComplete, setLaunchComplete] = useState(false);
-  const [loginReveal, setLoginReveal] = useState(false);
-  const revealLogin = useCallback(() => setLoginReveal(true), []);
+  const revealLogin = useCallback(() => undefined, []);
   const completeLaunch = useCallback(() => {
-    setLoginReveal(true);
     setLaunchComplete(true);
   }, []);
 
@@ -226,25 +227,7 @@ function App() {
 
   return (
     <>
-      <Shell>
-        <Routes>
-          <Route path="/" element={<AppLauncherPage />} />
-          <Route path="/more" element={<MoreMenuPage />} />
-          <Route path="/about-us" element={<AboutPage />} />
-          <Route path="/programs" element={<ProgramsPage />} />
-          <Route path="/private-lessons" element={<PrivateLessonsPage />} />
-          <Route path="/classes" element={<ClassesPage />} />
-          <Route path="/shop" element={<ShopPage />} />
-          <Route path="/shop/category/:categorySlug" element={<ShopPage />} />
-          <Route path="/product/:productSlug" element={<ProductDetailPage />} />
-          <Route path="/cart" element={<CartPage />} />
-          <Route path="/checkout" element={<CheckoutPage />} />
-          <Route path="/my-account" element={<AccountPage />} />
-          <Route path="/contact-us" element={<ContactPage />} />
-          <Route path="/terms-and-conditions" element={<TermsPage />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </Shell>
+      <OperationsApp />
       {session && !accountRole && <AccountRolePrompt />}
       <ToastViewport />
     </>
@@ -641,7 +624,7 @@ function AccountRolePrompt() {
 
   const chooseRole = (role: AccountRole) => {
     setAccountRole(role);
-    showToast(role === "guardian" ? "Guardian Parent account enabled." : "Student account enabled.");
+    showToast(role === "staff" ? "Cho's staff mode enabled." : "Student mode enabled.");
   };
 
   return (
@@ -650,16 +633,16 @@ function AccountRolePrompt() {
         <ShieldCheck size={34} />
         <div>
           <p className="eyebrow">Account Setup</p>
-          <h2>If they are a Parent</h2>
-          <p>Choose Guardian Parent to manage children, monitor progress, and create child subaccounts. Choose Student / Child for a simpler student-only app.</p>
+          <h2>Choose how you will use Cho&apos;s</h2>
+          <p>Choose Cho&apos;s Staff to manage students, scheduling, messages, events, and merchandise. Choose Student / Family for check-ins, rank progress, events, and gear.</p>
         </div>
       </div>
       <div className="role-choice-actions">
-        <button className="btn btn-red" type="button" onClick={() => chooseRole("guardian")}>
-          Guardian Parent
+        <button className="btn btn-red" type="button" onClick={() => chooseRole("staff")}>
+          Cho&apos;s Staff
         </button>
         <button className="btn btn-dark" type="button" onClick={() => chooseRole("student")}>
-          Student / Child
+          Student / Family
         </button>
       </div>
     </ModalShell>
@@ -866,84 +849,27 @@ function AppLauncherPage() {
   const currentBeltIndex = Math.max(0, beltRanks.findIndex((rank) => rank.slug === progress.currentBeltSlug));
   const currentBelt = beltRanks[currentBeltIndex] ?? beltRanks[0];
   const nextBelt = beltRanks[currentBeltIndex + 1];
-  const nextGoal = nextBelt ? `${nextBelt.name} Belt` : "Black Belt training";
+  const dojoPanels = buildDojoScenePanels({
+    studentTopics,
+    guardianTopics: isGuardian ? guardianParentTopics : [],
+    displayName,
+    currentBelt,
+    nextBelt,
+    nextClass,
+    ordersCount: orders.length,
+    bookingsCount: bookings.length,
+    guardianChildrenCount: guardianChildren.length
+  });
 
   return (
-    <section className="section app-launcher-page student-home-page">
-      <div className="launcher-shell">
-        <div className="student-home-head">
-          <div>
-            <p className="eyebrow">Cho&apos;s Martial Arts</p>
-            <h1>Student Home</h1>
-            <p>Hi, {displayName}. Pick one big button and keep moving.</p>
-          </div>
-          <img src={publicAsset("682e95109aa21_chos-logo.png")} alt="Cho's Martial Arts" />
-        </div>
-
-        <section className="student-today-panel" aria-label="Today at Cho's">
-          <div>
-            <span className="student-today-icon" aria-hidden="true">
-              <CalendarDays size={30} />
-            </span>
-            <div>
-              <p className="eyebrow">Today</p>
-              <h2>{nextClass ? nextClass.title : "Check your class plan"}</h2>
-              <p>{nextClass ? `${displayDate(nextClass.date)} at ${nextClass.startTime}` : "Open classes to see what is next."}</p>
-            </div>
-          </div>
-          <div className="student-today-stats">
-            <div>
-              <span>Current belt</span>
-              <strong>{currentBelt.name}</strong>
-            </div>
-            <div>
-              <span>Next goal</span>
-              <strong>{nextGoal}</strong>
-            </div>
-          </div>
-          <Link className="btn btn-red" to="/classes">
-            View Classes
-          </Link>
-        </section>
-
-        <nav className="app-topic-grid student-topic-grid" aria-label="Student actions">
-          {studentTopics.map((topic) => {
-            const TopicIcon = appTopicIcons[topic.slug] ?? Target;
-            return (
-              <Link className={`app-topic-tile tone-${topic.tone}`} key={topic.slug} to={topic.path} aria-label={topic.label}>
-                <span className="app-topic-icon" aria-hidden="true">
-                  <TopicIcon size={28} />
-                </span>
-                <strong>{topic.label}</strong>
-                <small>{topic.summary}</small>
-              </Link>
-            );
-          })}
-        </nav>
-
-        {isGuardian && (
-          <section className="parent-topic-section">
-            <div>
-              <p className="eyebrow">Guardian Parent</p>
-              <h2>Guardian Parent Dashboard</h2>
-              <p>Monitor child accounts and keep family tasks in one place.</p>
-            </div>
-            <nav className="parent-topic-row" aria-label="Parent and account actions">
-              {guardianParentTopics.map((topic) => {
-                const TopicIcon = appTopicIcons[topic.slug] ?? Target;
-                const badge = topic.slug === "orders" ? orders.length : topic.slug === "bookings" ? bookings.length : topic.slug === "children" ? guardianChildren.length : undefined;
-                return (
-                  <Link className={`parent-topic-pill tone-${topic.tone}`} key={topic.slug} to={topic.path} aria-label={topic.label}>
-                    <TopicIcon size={18} />
-                    <span>{topic.label}</span>
-                    {typeof badge === "number" && <small>{badge}</small>}
-                  </Link>
-                );
-              })}
-            </nav>
-          </section>
-        )}
-      </div>
+    <section className="section app-launcher-page student-home-page dojo-launcher-page">
+      <DojoInteractiveScene
+        panels={dojoPanels}
+        renderControlIcon={(panel) => {
+          const TopicIcon = appTopicIcons[panel.id] ?? Target;
+          return <TopicIcon size={18} />;
+        }}
+      />
     </section>
   );
 }

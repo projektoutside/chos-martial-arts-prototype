@@ -34,8 +34,10 @@ The Pages workflow in `.github/workflows/deploy-pages.yml` runs tests, builds th
 
 ## Prototype Notes
 
-- No backend, payment processor, email, CAPTCHA, or calendar account integration is used.
-- Cart, coupon, orders, starter bookings, private lesson requests, account session, mock accounts, and contact submissions persist in `localStorage`.
+- No backend, payment processor, SMS provider, email, CAPTCHA, or calendar account integration is used.
+- The login intro animation and login page are preserved, then authenticated users enter the Cho's operations workspace.
+- Staff tools cover students, classes, scheduling, messages, check-ins, events, merchandise, and dashboard calendar views.
+- Prototype operational data persists in `localStorage`, including students, class schedules, text logs, direct messages, merchandise, check-ins, account session, mock accounts, and contact submissions.
 - `.ics` actions generate local calendar files.
-- Existing loader work was preserved as `legacy-loader.html`; the Vite app owns the new root `index.html`.
-- Runtime login assets live in `public/` so the animated launch scene works on GitHub Pages.
+- Existing loader work was preserved as `legacy-loader.html`; the Vite app owns the root `index.html`.
+- Runtime login and operations assets live in `public/` and `src/assets/` so the app works on GitHub Pages.

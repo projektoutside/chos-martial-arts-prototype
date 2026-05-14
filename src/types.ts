@@ -175,7 +175,7 @@ export interface AccountSession {
   createdAt: string;
 }
 
-export type AccountRole = "guardian" | "student";
+export type AccountRole = "guardian" | "student" | "staff";
 
 export interface ChildAccount {
   id: string;
@@ -192,4 +192,115 @@ export interface SearchResult {
   subtitle: string;
   path: string;
   type: string;
+}
+
+export interface StudentRecord {
+  id: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth?: string;
+  gender?: string;
+  phone: string;
+  email: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  guardianEmail?: string;
+  emergencyContactName?: string;
+  emergencyContactRelationship?: string;
+  emergencyContactPhone?: string;
+  emergencyContactEmail?: string;
+  enrollmentDate?: string;
+  program?: string;
+  status?: string;
+  beltRank: string;
+  classesAttended: number;
+  missedClassCount: number;
+  lastCheckIn?: string;
+  lastContactedAt?: string;
+  joinedAt: string;
+  notes?: string;
+}
+
+export interface ScheduledClass {
+  id: string;
+  title: string;
+  date: string;
+  time: string;
+  type: string;
+  recurring?: boolean;
+  titleColor?: string;
+  studentId?: string;
+  notes?: string;
+}
+
+export type ClassWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface StudioClass {
+  id: string;
+  name: string;
+  daysOfWeek: ClassWeekday[];
+  startTime: string;
+  endTime: string;
+  recurring?: boolean;
+  titleColor?: string;
+  notes?: string;
+}
+
+export interface MessageCampaign {
+  id: string;
+  title: string;
+  body: string;
+  audience: "all-students" | "missed-classes" | "new-students";
+  createdAt: string;
+}
+
+export interface MessageLog {
+  id: string;
+  kind: "welcome" | "reminder" | "follow-up" | "marketing";
+  recipientName: string;
+  recipientPhone: string;
+  body: string;
+  status: "queued" | "sent";
+  createdAt: string;
+  campaignId?: string;
+}
+
+export interface DirectMessage {
+  id: string;
+  threadId: string;
+  senderId: string;
+  senderName: string;
+  recipientId: string;
+  recipientName: string;
+  body: string;
+  createdAt: string;
+  status: "sent";
+}
+
+export interface StudioEvent {
+  id: string;
+  title: string;
+  date: string;
+  time: string;
+  details: string;
+  audience: "students" | "families" | "public";
+}
+
+export interface MerchandiseItem {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  stock: number;
+  description: string;
+  imageLabel: string;
+  imageDataUrl?: string;
+}
+
+export interface StudentCheckIn {
+  id: string;
+  studentId: string;
+  studentName: string;
+  date: string;
+  beltRank: string;
 }

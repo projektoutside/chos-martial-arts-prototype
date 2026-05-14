@@ -476,85 +476,12 @@ function rotateBone(bones: Map<string, BoneState>, name: string, x: number, y: n
   state.bone.quaternion.copy(state.restQuaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z)));
 }
 
-function addBoneRotation(bones: Map<string, BoneState>, name: string, x: number, y: number, z: number) {
-  const state = bones.get(name);
-  if (!state) return;
-  state.bone.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z)));
-}
-
 function wave(progress: number) {
   return Math.sin(Math.min(1, Math.max(0, progress)) * Math.PI);
 }
 
 function smooth(progress: number, start = 0, end = 1) {
   return THREE.MathUtils.smoothstep(progress, start, end);
-}
-
-function applyGuardPose(bones: Map<string, BoneState>, elapsedSeconds: number) {
-  const breath = Math.sin(elapsedSeconds * Math.PI * 2) * 0.035;
-  rotateBone(bones, "Spine", 0.03 + breath, 0, 0);
-  rotateBone(bones, "Spine1", 0.05, 0, 0);
-  rotateBone(bones, "LeftArm", 0.55, -0.15, -0.45);
-  rotateBone(bones, "LeftForeArm", -0.45, 0.2, 0.45);
-  rotateBone(bones, "RightArm", 0.55, 0.15, 0.45);
-  rotateBone(bones, "RightForeArm", -0.45, -0.2, -0.45);
-  rotateBone(bones, "LeftUpLeg", 0.08, 0, -0.06);
-  rotateBone(bones, "RightUpLeg", 0.08, 0, 0.06);
-}
-
-function applyRoundhousePose(group: THREE.Group, bones: Map<string, BoneState>, progress: number) {
-  const chamber = smooth(progress, 0.04, 0.28);
-  const extension = smooth(progress, 0.24, 0.5) * (1 - smooth(progress, 0.68, 0.96));
-  const recover = 1 - smooth(progress, 0.72, 1);
-  const power = Math.max(chamber * recover, extension);
-  group.rotation.y -= 0.42 * power;
-  group.position.x += 0.08 * wave(progress);
-  addBoneRotation(bones, "Hips", 0, -0.42 * power, -0.1 * power);
-  rotateBone(bones, "RightUpLeg", -0.7 * chamber, 0.28 * extension, 1.2 * extension);
-  rotateBone(bones, "RightLeg", 1.35 * extension, 0.08, -0.28 * chamber);
-  rotateBone(bones, "RightFoot", 0.3 * extension, 0, 0.35 * extension);
-  rotateBone(bones, "LeftUpLeg", 0.18 * power, 0, -0.16 * power);
-  rotateBone(bones, "Spine2", 0.06, 0.22 * power, -0.24 * power);
-  rotateBone(bones, "LeftArm", 0.55, -0.6 * power, -0.8 * power);
-  rotateBone(bones, "RightArm", 0.5, 0.42 * power, 0.72 * power);
-}
-
-function applyFrontPunchPose(bones: Map<string, BoneState>, progress: number) {
-  const strike = wave(progress);
-  addBoneRotation(bones, "Hips", 0, 0.22 * strike, 0);
-  rotateBone(bones, "RightArm", 0.15, 0.05, 0.95 * strike);
-  rotateBone(bones, "RightForeArm", 0.04, -0.1, -1.05 * strike);
-  rotateBone(bones, "LeftArm", 0.5, -0.25, -0.55);
-  rotateBone(bones, "Spine2", 0.05, 0.2 * strike, 0);
-}
-
-function applyHighBlockPose(bones: Map<string, BoneState>, progress: number) {
-  const lift = wave(progress);
-  rotateBone(bones, "LeftArm", -1.05 * lift, -0.22, -0.52);
-  rotateBone(bones, "LeftForeArm", -0.75 * lift, 0.1, 0.35);
-  rotateBone(bones, "RightArm", 0.6, 0.22, 0.35);
-  rotateBone(bones, "Spine2", 0.05, -0.12 * lift, 0.08 * lift);
-}
-
-function applySideKickPose(group: THREE.Group, bones: Map<string, BoneState>, progress: number) {
-  const kick = wave(progress);
-  group.rotation.y += 0.26 * kick;
-  group.position.x -= 0.05 * kick;
-  rotateBone(bones, "LeftUpLeg", -0.55 * kick, -0.18 * kick, -1.05 * kick);
-  rotateBone(bones, "LeftLeg", 1.15 * kick, -0.04, 0.18 * kick);
-  rotateBone(bones, "LeftFoot", 0.28 * kick, 0, -0.2 * kick);
-  rotateBone(bones, "RightUpLeg", 0.12 * kick, 0, 0.1 * kick);
-  rotateBone(bones, "Spine2", 0.04, -0.26 * kick, 0.18 * kick);
-}
-
-function applyBowPose(bones: Map<string, BoneState>, progress: number) {
-  const bend = wave(progress);
-  rotateBone(bones, "Hips", 0.18 * bend, 0, 0);
-  rotateBone(bones, "Spine", 0.45 * bend, 0, 0);
-  rotateBone(bones, "Spine1", 0.34 * bend, 0, 0);
-  rotateBone(bones, "Head", -0.18 * bend, 0, 0);
-  rotateBone(bones, "LeftArm", 0.1, -0.15, -0.18);
-  rotateBone(bones, "RightArm", 0.1, 0.15, 0.18);
 }
 
 function disposeObject(object: THREE.Object3D) {
