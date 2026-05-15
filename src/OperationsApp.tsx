@@ -1,40 +1,53 @@
 import {
+  Archive,
   Award,
   BarChart3,
+  BatteryFull,
   Bell,
-  CalendarCheck,
+  Camera,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Edit3,
-  Globe,
-  Grid2X2,
-  LifeBuoy,
   Mail,
+  MapPin,
   MessageCircle,
   MessagesSquare,
+  Moon,
+  MoreHorizontal,
   Package,
-  Phone,
   Plus,
-  Settings,
-  Shirt,
   ShoppingCart,
   Search,
+  Send,
+  Signal,
+  Sun,
   Target,
   Trash2,
-  User,
-  UserCircle,
-  UserPlus,
   Users,
+  Wifi,
   X
 } from "lucide-react";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent as ReactChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
+import classesLauncherIcon from "./assets/manager-icons/Classes.webp";
+import dashboardLauncherIcon from "./assets/manager-icons/Dashboard.webp";
+import eventsLauncherIcon from "./assets/manager-icons/Events.webp";
+import managerHomeIcon from "./assets/manager-icons/ManagerHome.webp";
+import managerLogoutIcon from "./assets/manager-icons/ManagerLogoutProfessional.png";
+import managerPageIcon from "./assets/manager-icons/ManagerPage.webp";
+import managerProfileSettingsIcon from "./assets/manager-icons/ManagerProfileSettings.png";
+import managerWolfProfileImage from "./assets/manager-icons/ManagerWolfProfile.jpg";
+import merchandiseLauncherIcon from "./assets/manager-icons/Merchandise.webp";
+import messagesLauncherIcon from "./assets/manager-icons/Messages.webp";
+import reportsLauncherIcon from "./assets/manager-icons/Reports.webp";
+import schedulingLauncherIcon from "./assets/manager-icons/Scheduling.webp";
+import studentsLauncherIcon from "./assets/manager-icons/Students.webp";
 import { useAppState } from "./state";
+import { applyAppTheme, readStoredAppTheme, writeStoredAppTheme, type AppThemeMode } from "./theme";
 import type { ClassWeekday, DirectMessage, MerchandiseItem, MessageLog, ScheduledClass, StudioClass, StudentRecord, StudioEvent } from "./types";
-import { formatMoney } from "./utils";
+import { formatMoney, validateEmail } from "./utils";
 
 const beltOptions = ["White", "Yellow", "Orange", "Green", "Blue", "Purple", "Brown", "Red", "Black"];
 const weekdayOptions: { value: ClassWeekday; label: string; short: string }[] = [
@@ -52,126 +65,92 @@ const defaultScheduleTypeOptions = [
   { value: "testing-prep", label: "Testing prep" }
 ];
 
-const managerNavItems = [
-  { path: "/", label: "Dashboard", icon: Grid2X2 },
-  { path: "/messages", label: "Messages", icon: MessageCircle },
-  { path: "/students", label: "Students", icon: User },
-  { path: "/classes", label: "Classes", icon: Award },
-  { path: "/schedule", label: "Scheduling", icon: CalendarDays },
-  { path: "/events", label: "Events", icon: CalendarCheck },
-  { path: "/merchandise", label: "Merchandise", icon: Shirt },
-  { path: "/", label: "Reports", icon: BarChart3 },
-  { path: "/", label: "Settings", icon: Settings }
+type ManagerLauncherIconKind = "dashboard" | "messages" | "students" | "classes" | "events" | "scheduling" | "merchandise" | "reports";
+
+const managerLauncherItems: { path: string; label: string; icon: ManagerLauncherIconKind; future?: boolean }[] = [
+  { path: "/dashboard", label: "Dashboard", icon: "dashboard" },
+  { path: "/messages", label: "Messages", icon: "messages" },
+  { path: "/students", label: "Students", icon: "students" },
+  { path: "/classes", label: "Classes", icon: "classes" },
+  { path: "/events", label: "Events", icon: "events" },
+  { path: "/schedule", label: "Scheduling", icon: "scheduling" },
+  { path: "/merchandise", label: "Merchandise", icon: "merchandise" },
+  { path: "/reports", label: "Reports", icon: "reports", future: true }
 ];
 
-const managerQuickActions = [
-  {
-    title: "Create New Student",
-    text: "Add a new student to the database.",
-    button: "Create",
-    path: "/students",
-    icon: UserPlus
-  },
-  {
-    title: "Edit Student",
-    text: "Update student information.",
-    button: "Edit",
-    path: "/students",
-    icon: Edit3
-  },
-  {
-    title: "Delete Student",
-    text: "Remove a student from the database.",
-    button: "Delete",
-    path: "/students",
-    icon: Trash2
-  },
-  {
-    title: "Edit Scheduling",
-    text: "Manage class schedules, holidays, and events.",
-    button: "Manage",
-    path: "/schedule",
-    icon: CalendarDays
-  }
-];
+const managerLauncherIconImages: Record<ManagerLauncherIconKind, string> = {
+  dashboard: dashboardLauncherIcon,
+  messages: messagesLauncherIcon,
+  students: studentsLauncherIcon,
+  classes: classesLauncherIcon,
+  events: eventsLauncherIcon,
+  scheduling: schedulingLauncherIcon,
+  merchandise: merchandiseLauncherIcon,
+  reports: reportsLauncherIcon
+};
 
-const managerEvents = [
-  { title: "Testing Day", date: "Saturday, June 15, 2024", time: "9:00 AM - 12:00 PM", tone: "uniform" },
-  { title: "Movie Night", date: "Friday, June 28, 2024", time: "6:00 PM - 9:00 PM", tone: "movie" },
-  { title: "Summer Camp", date: "July 8 - July 12, 2024", time: "9:00 AM - 3:00 PM", tone: "camp" },
-  { title: "Independence Day", date: "Thursday, July 4, 2024", time: "All Day (School Closed)", tone: "flag" }
-];
+type ManagerProfileSettings = {
+  name: string;
+  username: string;
+  email: string;
+  phone: string;
+  updates: boolean;
+  theme: AppThemeMode;
+  photoDataUrl?: string;
+  passwordUpdatedAt?: string;
+};
 
-const managerMerchandise = [
-  { name: "Karate Uniform", price: "$49.99", tone: "uniform" },
-  { name: "Sparring Gloves", price: "$29.99", tone: "gloves" },
-  { name: "Shin Guards", price: "$24.99", tone: "guards" },
-  { name: "Head Gear", price: "$39.99", tone: "headgear" },
-  { name: "Martial Arts Bag", price: "$34.99", tone: "bag" },
-  { name: "Mouth Guard", price: "$9.99", tone: "mouthguard" }
-];
+const managerProfileStorageKey = "chos.profile.v1";
 
-type ManagerSidebarMode = "expanded" | "compact" | "hidden";
-
-const managerSidebarStorageKey = "chos.managerSidebar.mode.v1";
-const legacyManagerSidebarStorageKey = "chos.managerSidebar.v1";
-const managerSidebarModeOrder: ManagerSidebarMode[] = ["expanded", "compact", "hidden"];
-
-interface ManagerSidebarContextValue {
-  mode: ManagerSidebarMode;
-  compact: boolean;
-  hidden: boolean;
-  toggleSidebarMode: () => void;
+function fallbackManagerProfile(sessionEmail?: string): ManagerProfileSettings {
+  const email = sessionEmail ?? "team@chos.prototype";
+  const username = email.split("@")[0]?.replace(/[^a-z0-9._-]/gi, "") || "chos-manager";
+  return {
+    name: "Cho's Manager",
+    username,
+    email,
+    phone: "(262) 555-0100",
+    updates: true,
+    theme: readStoredAppTheme()
+  };
 }
 
-const ManagerSidebarContext = createContext<ManagerSidebarContextValue | null>(null);
+function readManagerProfile(sessionEmail?: string): ManagerProfileSettings {
+  const fallback = fallbackManagerProfile(sessionEmail);
+  if (typeof window === "undefined") return fallback;
+  try {
+    const saved = window.localStorage.getItem(managerProfileStorageKey);
+    if (!saved) return fallback;
+    const parsed = JSON.parse(saved) as Partial<ManagerProfileSettings>;
+    const photoDataUrl = typeof parsed.photoDataUrl === "string" && parsed.photoDataUrl.startsWith("data:image/") ? parsed.photoDataUrl : undefined;
+    return {
+      name: parsed.name?.trim() || fallback.name,
+      username: parsed.username?.trim() || fallback.username,
+      email: parsed.email?.trim() || fallback.email,
+      phone: parsed.phone?.trim() || fallback.phone,
+      updates: parsed.updates ?? fallback.updates,
+      theme: parsed.theme === "light" || parsed.theme === "dark" ? parsed.theme : fallback.theme,
+      photoDataUrl,
+      passwordUpdatedAt: parsed.passwordUpdatedAt
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeManagerProfile(profile: ManagerProfileSettings) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(managerProfileStorageKey, JSON.stringify(profile));
+  } catch {
+    // Profile changes still update local React state when storage is blocked.
+  }
+}
 
 function publicAsset(path: string) {
   const base = import.meta.env.BASE_URL || "/";
   const normalizedBase = base.endsWith("/") ? base : `${base}/`;
   return `${normalizedBase}${path.replace(/^\/+/, "")}`;
-}
-
-function readManagerSidebarPreference() {
-  if (typeof window === "undefined") return "expanded";
-  try {
-    const storedMode = window.localStorage.getItem(managerSidebarStorageKey);
-    if (storedMode === "expanded" || storedMode === "compact" || storedMode === "hidden") return storedMode;
-    return window.localStorage.getItem(legacyManagerSidebarStorageKey) === "compact" ? "compact" : "expanded";
-  } catch {
-    return "expanded";
-  }
-}
-
-function ManagerSidebarProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<ManagerSidebarMode>(readManagerSidebarPreference);
-  const toggleSidebarMode = useCallback(() => {
-    setMode((current) => {
-      const currentIndex = managerSidebarModeOrder.indexOf(current);
-      const next = managerSidebarModeOrder[(currentIndex + 1) % managerSidebarModeOrder.length];
-      try {
-        window.localStorage.setItem(managerSidebarStorageKey, next);
-      } catch {
-        // Local storage can be unavailable in private browser contexts.
-      }
-      return next;
-    });
-  }, []);
-  const value = useMemo(
-    () => ({
-      mode,
-      compact: mode === "compact",
-      hidden: mode === "hidden",
-      toggleSidebarMode
-    }),
-    [mode, toggleSidebarMode]
-  );
-
-  return <ManagerSidebarContext.Provider value={value}>{children}</ManagerSidebarContext.Provider>;
-}
-
-function useManagerSidebar() {
-  return useContext(ManagerSidebarContext) ?? { mode: "expanded", compact: false, hidden: false, toggleSidebarMode: () => undefined };
 }
 
 function fullName(student: StudentRecord) {
@@ -206,74 +185,14 @@ function messageKindLabel(kind: MessageLog["kind"]) {
   return "Class reminder";
 }
 
-function ManagerSidebar() {
-  const { mode, compact, hidden, toggleSidebarMode } = useManagerSidebar();
-
-  return (
-    <aside className={`manager-sidebar ${compact ? "is-compact" : ""}${hidden ? " is-hidden" : ""}`}>
-      <Link className="manager-logo" to="/" aria-label="Cho's manager dashboard home">
-        <img src={publicAsset("682e95109aa21_chos-logo.png")} alt="Cho's Martial Arts" />
-      </Link>
-
-      <button
-        className="manager-sidebar-edge-toggle"
-        type="button"
-        aria-label="Toggle manager sidebar"
-        aria-pressed={mode === "hidden" ? "true" : mode === "compact" ? "mixed" : "false"}
-        title={`Sidebar is ${mode}. Click to switch view.`}
-        onClick={toggleSidebarMode}
-      ></button>
-
-      <nav className="manager-nav" aria-label="Manager navigation">
-        {managerNavItems.map((item) => {
-          const Icon = item.icon;
-          if (item.path === "/" && item.label !== "Dashboard") {
-            return (
-              <Link className="manager-nav-link" key={`${item.label}-${item.path}`} to={item.path} title={item.label}>
-                <Icon size={23} />
-                <span>{item.label}</span>
-              </Link>
-            );
-          }
-
-          return (
-            <NavLink key={`${item.label}-${item.path}`} to={item.path} end={item.path === "/"} title={item.label}>
-              <Icon size={23} />
-              <span>{item.label}</span>
-            </NavLink>
-          );
-        })}
-      </nav>
-
-      <div className="manager-sidebar-lower">
-        <p className="manager-motto">
-          <span>Building <strong>confidence.</strong></span>
-          <span>Strengthening <strong>minds.</strong></span>
-          <span>Transforming <strong>lives.</strong></span>
-        </p>
-        <img className="manager-fighter" src={publicAsset("Perfect1.png")} alt="" aria-hidden="true" />
-        <Link className="manager-help" to="/messages">
-          <LifeBuoy size={34} />
-          <span>
-            <strong>Need Help?</strong>
-            <small>Contact Support</small>
-          </span>
-        </Link>
-      </div>
-    </aside>
-  );
-}
-
 function OperationsShell({ children }: { children: ReactNode }) {
   const { session, logout } = useAppState();
   const location = useLocation();
 
   return (
-    <ManagerSidebarProvider>
-      <StaffOperationsShell sessionEmail={session?.email} logout={logout} path={location.pathname}>
-        {children}
-      </StaffOperationsShell>
-    </ManagerSidebarProvider>
+    <StaffOperationsShell sessionEmail={session?.email} logout={logout} path={location.pathname}>
+      {children}
+    </StaffOperationsShell>
   );
 }
 
@@ -288,22 +207,27 @@ function StaffOperationsShell({
   logout: () => void;
   path: string;
 }) {
-  const { compact, hidden } = useManagerSidebar();
-  const dashboardClassName = `manager-dashboard${compact ? " manager-dashboard--compact" : ""}${hidden ? " manager-dashboard--hidden" : ""}`;
-
-  if (path === "/") {
+  if (path === "/" || path === "/manager") {
     return <div className="manager-shell">{children}</div>;
   }
 
   return (
     <div className="manager-shell">
-      <section className={`${dashboardClassName} manager-subpage-shell`} aria-label="Manager workspace">
-        <ManagerSidebar />
+      <section className="manager-full-page-shell" aria-label="Manager workspace">
+        <header className="manager-full-topbar" aria-label="Manager page controls">
+          <Link className="manager-back-link" to="/manager" aria-label="Back to Manager Page">
+            <ChevronLeft size={24} />
+            <span>Back to Manager Page</span>
+          </Link>
+          <Link className="manager-full-logo" to="/" aria-label="Cho's Martial Arts manager home">
+            <img src={publicAsset("682e95109aa21_chos-logo.png")} alt="Cho's Martial Arts" />
+          </Link>
+          <button className="manager-logout-button" type="button" aria-label="Log Out" onClick={logout}>
+            <img className="manager-logout-icon" src={managerLogoutIcon} alt="" draggable="false" />
+          </button>
+        </header>
         <main className="manager-main manager-subpage-main">
-          <header className="manager-subpage-topbar">
-            <span>{sessionEmail ?? "team@chos.prototype"}</span>
-            <button type="button" onClick={logout}>Log out</button>
-          </header>
+          <span className="manager-session-email">{sessionEmail ?? "team@chos.prototype"}</span>
           {children}
         </main>
       </section>
@@ -396,9 +320,14 @@ function formatWeekRange(weekDays: Date[]) {
   const [firstDay] = weekDays;
   const lastDay = weekDays[weekDays.length - 1];
   const sameMonth = firstDay.getMonth() === lastDay.getMonth() && firstDay.getFullYear() === lastDay.getFullYear();
-  const firstLabel = firstDay.toLocaleDateString("en-US", { month: "long", day: "numeric" });
-  const lastLabel = lastDay.toLocaleDateString("en-US", sameMonth ? { day: "numeric", year: "numeric" } : { month: "long", day: "numeric", year: "numeric" });
-  return `${firstLabel} - ${lastLabel}`;
+  const sameYear = firstDay.getFullYear() === lastDay.getFullYear();
+  if (sameMonth) {
+    return `${firstDay.toLocaleDateString("en-US", { month: "long" })} ${firstDay.getDate()} - ${lastDay.getDate()}, ${lastDay.getFullYear()}`;
+  }
+  if (sameYear) {
+    return `${firstDay.toLocaleDateString("en-US", { month: "long", day: "numeric" })} - ${lastDay.toLocaleDateString("en-US", { month: "long", day: "numeric" })}, ${lastDay.getFullYear()}`;
+  }
+  return `${firstDay.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} - ${lastDay.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`;
 }
 
 function compareCalendarEntries(a: ManagerCalendarEntry, b: ManagerCalendarEntry) {
@@ -628,219 +557,1076 @@ function ManagerLiveCalendar({ scheduledClasses, studioClasses, studioEvents }: 
   );
 }
 
-function DashboardPage() {
-  const {
-    students,
-    studioClasses,
-    scheduledClasses,
-    messageLogs,
-    studioEvents,
-    merchandiseItems,
-    sendMissedClassFollowUps,
-    showToast
-  } = useAppState();
-  const navigate = useNavigate();
-  const { compact, hidden } = useManagerSidebar();
-  const queueReminderText = () => {
-    showToast("Reminder text workflow is ready in Messages.");
-    navigate("/messages");
-  };
-
-  const queueFollowUps = () => {
-    const count = sendMissedClassFollowUps();
-    showToast(count ? `${count} missed-class follow-up text${count === 1 ? "" : "s"} queued.` : "No students currently need missed-class follow-up texts.");
-  };
-
-  const quickStats = [
-    { label: "Active Students", value: Math.max(142, students.length), link: "View All", path: "/students", icon: Users },
-    { label: "Classes This Week", value: Math.max(18, scheduledClasses.length + studioClasses.length), link: "View Classes", path: "/classes", icon: CalendarDays },
-    { label: "Messages Sent", value: Math.max(27, messageLogs.length), link: "View Messages", path: "/messages", icon: MessagesSquare },
-    { label: "Products Listed", value: Math.max(36, merchandiseItems.length), link: "View Products", path: "/merchandise", icon: ShoppingCart }
-  ];
+function ManagerLauncherIcon({ icon }: { icon: ManagerLauncherIconKind }) {
+  const frameClassName = `manager-launcher-graphic manager-launcher-graphic--${icon}`;
+  const imageClassName = `manager-launcher-image manager-launcher-image--${icon}${icon === "students" ? " manager-students-emblem" : ""}`;
+  const launcherIconImage = managerLauncherIconImages[icon];
 
   return (
-    <section className={`manager-dashboard${compact ? " manager-dashboard--compact" : ""}${hidden ? " manager-dashboard--hidden" : ""}`} aria-label="Manager dashboard">
-      <ManagerSidebar />
+    <span className={frameClassName} aria-hidden="true">
+      <img
+        className={imageClassName}
+        src={launcherIconImage}
+        alt=""
+        draggable="false"
+      />
+    </span>
+  );
+}
 
-      <main className="manager-main">
-        <header className="manager-topbar">
-          <div>
-            <h1>Welcome back, Manager!</h1>
-            <p>Here&apos;s an overview of Cho&apos;s Martial Arts.</p>
-          </div>
-          <div className="manager-top-actions" aria-label="Manager alerts and account">
-            <button type="button" aria-label="Message notifications">
-              <MessageCircle size={27} />
-              <span>3</span>
-            </button>
-            <button type="button" aria-label="Reminder notifications">
-              <Bell size={27} />
-              <span>5</span>
-            </button>
-            <button className="manager-profile" type="button" aria-label="Manager profile">
-              <UserCircle size={50} />
-              <strong>Manager</strong>
-              <ChevronDown size={16} />
-            </button>
-          </div>
-        </header>
+type ManagerHomeThread = {
+  id: string;
+  kind: "message" | "event";
+  sender: string;
+  title: string;
+  preview: string;
+  sentDate: string;
+  sentTime: string;
+  sentDateTime: string;
+  avatar: string;
+  accent: string;
+  unread?: boolean;
+};
 
-        <ManagerLiveCalendar scheduledClasses={scheduledClasses} studioClasses={studioClasses} studioEvents={studioEvents} />
+type ManagerHomeAgendaItem = {
+  id: string;
+  title: string;
+  date: string;
+  time: string;
+  kind: "scheduled" | "class" | "event";
+  meta: string;
+  priority: number;
+};
 
-        <section className="manager-action-grid" aria-label="Manager quick actions">
-          {managerQuickActions.map((action) => {
-            const Icon = action.icon;
-            return (
-              <article className="manager-action-card" key={action.title}>
-                <span>
-                  <Icon size={44} />
+const managerHomeThreads: ManagerHomeThread[] = [
+  {
+    id: "summer-championship",
+    kind: "event",
+    sender: "System Admin",
+    title: "Event Update: Summer Championship",
+    preview: "The schedule for the Summer Championship...",
+    sentDate: "May 15, 2026",
+    sentTime: "10:30 AM",
+    sentDateTime: "2026-05-15T10:30:00-05:00",
+    avatar: studentsLauncherIcon,
+    accent: "#67d8ff",
+    unread: true
+  },
+  {
+    id: "practice-reminder",
+    kind: "message",
+    sender: "Head Coach",
+    title: "Practice Session Reminder",
+    preview: "Don't forget about tomorrow's training...",
+    sentDate: "May 15, 2026",
+    sentTime: "9:15 AM",
+    sentDateTime: "2026-05-15T09:15:00-05:00",
+    avatar: classesLauncherIcon,
+    accent: "#7be4ff",
+    unread: true
+  },
+  {
+    id: "attendance",
+    kind: "message",
+    sender: "John Doe",
+    title: "Attendance Confirmation",
+    preview: "Please confirm your attendance for the...",
+    sentDate: "May 15, 2026",
+    sentTime: "8:45 AM",
+    sentDateTime: "2026-05-15T08:45:00-05:00",
+    avatar: studentsLauncherIcon,
+    accent: "#8a78ff"
+  },
+  {
+    id: "merch",
+    kind: "message",
+    sender: "Merch Store",
+    title: "New Arrivals Just Dropped!",
+    preview: "Check out the latest merchandise available...",
+    sentDate: "May 14, 2026",
+    sentTime: "4:20 PM",
+    sentDateTime: "2026-05-14T16:20:00-05:00",
+    avatar: merchandiseLauncherIcon,
+    accent: "#7bdcff"
+  },
+  {
+    id: "security",
+    kind: "message",
+    sender: "System Admin",
+    title: "Account Security Update",
+    preview: "We've updated our security policy to...",
+    sentDate: "May 14, 2026",
+    sentTime: "11:05 AM",
+    sentDateTime: "2026-05-14T11:05:00-05:00",
+    avatar: studentsLauncherIcon,
+    accent: "#67d8ff"
+  },
+  {
+    id: "event-team",
+    kind: "event",
+    sender: "Event Team",
+    title: "Upcoming Event: Parent Meeting",
+    preview: "We will be hosting a parent meeting next...",
+    sentDate: "May 13, 2026",
+    sentTime: "2:45 PM",
+    sentDateTime: "2026-05-13T14:45:00-05:00",
+    avatar: schedulingLauncherIcon,
+    accent: "#8d70ff"
+  }
+];
+
+const HOME_OVERVIEW_DRAG_THRESHOLD = 6;
+const HOME_OVERVIEW_KEYBOARD_STEP = 0.12;
+
+function clampHomeOverviewProgress(value: number) {
+  return Math.min(1, Math.max(0, value));
+}
+
+function formatMonthYear(value?: string) {
+  if (!value) return "May 2026";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "May 2026";
+  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function formatHomeScheduleDay(date: Date) {
+  return date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+}
+
+function scheduleItemOccursOnDate(item: ScheduledClass, day: Date) {
+  const dateKey = toDateKey(day);
+  if (!item.recurring) return item.date === dateKey;
+  const startDate = parseCalendarDate(item.date);
+  return toDateKey(startDate) <= dateKey && startDate.getDay() === day.getDay();
+}
+
+function hasRecurringStudioClass(day: Date, studioClasses: StudioClass[]) {
+  return studioClasses.some((studioClass) => studioClass.recurring !== false && studioClass.daysOfWeek.includes(day.getDay() as ClassWeekday));
+}
+
+function hasExplicitHomeAgendaItem(day: Date, scheduledClasses: ScheduledClass[], studioEvents: StudioEvent[]) {
+  const dateKey = toDateKey(day);
+  return scheduledClasses.some((item) => scheduleItemOccursOnDate(item, day)) || studioEvents.some((event) => event.date === dateKey);
+}
+
+function findBestHomeAgendaDateInWeek(weekDays: Date[], scheduledClasses: ScheduledClass[], studioClasses: StudioClass[], studioEvents: StudioEvent[]) {
+  const explicitDay = weekDays.find((day) => hasExplicitHomeAgendaItem(day, scheduledClasses, studioEvents));
+  if (explicitDay) return toDateKey(explicitDay);
+  const recurringDay = weekDays.find((day) => hasRecurringStudioClass(day, studioClasses));
+  return toDateKey(recurringDay ?? weekDays[0]);
+}
+
+function findInitialHomeAgendaDate(today: Date, scheduledClasses: ScheduledClass[], studioClasses: StudioClass[], studioEvents: StudioEvent[]) {
+  for (let offset = 0; offset < 70; offset += 1) {
+    const day = new Date(today);
+    day.setDate(today.getDate() + offset);
+    if (hasExplicitHomeAgendaItem(day, scheduledClasses, studioEvents)) return toDateKey(day);
+  }
+
+  for (let offset = 0; offset < 70; offset += 1) {
+    const day = new Date(today);
+    day.setDate(today.getDate() + offset);
+    if (hasRecurringStudioClass(day, studioClasses)) return toDateKey(day);
+  }
+
+  return toDateKey(today);
+}
+
+function agendaSortMinutes(time: string) {
+  const match = time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!match) return 9999;
+  const hour = Number(match[1]);
+  const minutes = Number(match[2]);
+  const meridian = match[3]?.toUpperCase();
+  const normalizedHour = meridian === "PM" && hour < 12 ? hour + 12 : meridian === "AM" && hour === 12 ? 0 : hour;
+  return normalizedHour * 60 + minutes;
+}
+
+function compareHomeAgendaItems(a: ManagerHomeAgendaItem, b: ManagerHomeAgendaItem) {
+  return a.date.localeCompare(b.date) || a.priority - b.priority || agendaSortMinutes(a.time) - agendaSortMinutes(b.time);
+}
+
+function buildHomeAgendaItems(weekDays: Date[], scheduledClasses: ScheduledClass[], studioClasses: StudioClass[], studioEvents: StudioEvent[]) {
+  return weekDays
+    .flatMap<ManagerHomeAgendaItem>((day) => {
+      const dateKey = toDateKey(day);
+      const scheduledItems = scheduledClasses
+        .filter((item) => scheduleItemOccursOnDate(item, day))
+        .map((item) => ({
+          id: `scheduled-${item.id}-${dateKey}`,
+          title: item.title,
+          date: dateKey,
+          time: item.time,
+          kind: "scheduled" as const,
+          meta: scheduleTypeLabel(item.type),
+          priority: 1
+        }));
+      const eventItems = studioEvents
+        .filter((event) => event.date === dateKey)
+        .map((event) => ({
+          id: `event-${event.id}-${dateKey}`,
+          title: event.title,
+          date: dateKey,
+          time: event.time,
+          kind: "event" as const,
+          meta: event.audience,
+          priority: 2
+        }));
+      const recurringClassItems = studioClasses
+        .filter((studioClass) => studioClass.recurring !== false && studioClass.daysOfWeek.includes(day.getDay() as ClassWeekday))
+        .map((studioClass) => ({
+          id: `class-${studioClass.id}-${dateKey}`,
+          title: studioClass.name,
+          date: dateKey,
+          time: formatClockTime(studioClass.startTime),
+          kind: "class" as const,
+          meta: "Recurring class",
+          priority: 3
+        }));
+
+      return [...scheduledItems, ...eventItems, ...recurringClassItems];
+    })
+    .sort(compareHomeAgendaItems);
+}
+
+function ManagerHomePage() {
+  const { logout, scheduledClasses, session, showToast, studioClasses, studioEvents, students } = useAppState();
+  const navigate = useNavigate();
+  const today = useLiveCalendarDate();
+  const [managerProfile, setManagerProfile] = useState(() => readManagerProfile(session?.email));
+  const activeStudentCount = students.filter((student) => (student.status ?? "Active").toLowerCase() === "active").length;
+  const memberSinceLabel = formatMonthYear(session?.createdAt);
+  const defaultHomeScheduleDateKey = useMemo(
+    () => findInitialHomeAgendaDate(today, scheduledClasses, studioClasses, studioEvents),
+    [today, scheduledClasses, studioClasses, studioEvents]
+  );
+  const [homeScheduleWeekStartKey, setHomeScheduleWeekStartKey] = useState(() => toDateKey(weekDaysForDate(parseCalendarDate(defaultHomeScheduleDateKey))[0]));
+  const [selectedHomeScheduleDateKey, setSelectedHomeScheduleDateKey] = useState(defaultHomeScheduleDateKey);
+  const [feedThreads, setFeedThreads] = useState(() => managerHomeThreads);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [selectedFeedThreadIds, setSelectedFeedThreadIds] = useState<Set<string>>(() => new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isFeedSearchOpen, setIsFeedSearchOpen] = useState(false);
+  const [replyText, setReplyText] = useState("");
+  const [overviewProgress, setOverviewProgress] = useState(1);
+  const [overviewHeight, setOverviewHeight] = useState(0);
+  const [isOverviewDragging, setIsOverviewDragging] = useState(false);
+  const feedSearchInputRef = useRef<HTMLInputElement>(null);
+  const overviewContentRef = useRef<HTMLElement>(null);
+  const overviewHandleRef = useRef<HTMLButtonElement>(null);
+  const overviewDragRef = useRef({
+    hasMoved: false,
+    ignoreClick: false,
+    pointerId: null as number | null,
+    startProgress: 1,
+    startY: 0
+  });
+  const messageCount = feedThreads.filter((thread) => thread.kind === "message").length;
+  const eventCount = feedThreads.filter((thread) => thread.kind === "event").length;
+  const selectedFeedCount = selectedFeedThreadIds.size;
+  const visibleThreads = feedThreads.filter((thread) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return `${thread.kind} ${thread.sender} ${thread.title} ${thread.preview}`.toLowerCase().includes(query);
+  });
+  const visibleFeedSections = visibleThreads.reduce<{ date: string; threads: ManagerHomeThread[] }[]>((sections, thread) => {
+    const currentSection = sections[sections.length - 1];
+    if (currentSection?.date === thread.sentDate) {
+      currentSection.threads.push(thread);
+      return sections;
+    }
+    sections.push({ date: thread.sentDate, threads: [thread] });
+    return sections;
+  }, []);
+  const homeScheduleWeekDays = useMemo(() => weekDaysForDate(parseCalendarDate(homeScheduleWeekStartKey)), [homeScheduleWeekStartKey]);
+  const homeAgendaItems = useMemo(
+    () => buildHomeAgendaItems(homeScheduleWeekDays, scheduledClasses, studioClasses, studioEvents),
+    [homeScheduleWeekDays, scheduledClasses, studioClasses, studioEvents]
+  );
+  const homeAgendaItemsByDate = useMemo(
+    () => homeAgendaItems.reduce<Record<string, ManagerHomeAgendaItem[]>>((groups, item) => {
+      groups[item.date] = [...(groups[item.date] ?? []), item];
+      return groups;
+    }, {}),
+    [homeAgendaItems]
+  );
+  const selectedHomeScheduleDate = parseCalendarDate(selectedHomeScheduleDateKey);
+  const selectedHomeAgendaItems = homeAgendaItemsByDate[selectedHomeScheduleDateKey] ?? [];
+  const isOverviewCollapsed = overviewProgress <= 0.01;
+  const overviewStageState = isOverviewCollapsed ? "collapsed" : overviewProgress >= 0.99 ? "expanded" : "partial";
+  const overviewStageStyle = {
+    "--manager-home-overview-height": overviewHeight > 0 ? `${Math.round(overviewHeight * overviewProgress)}px` : "auto",
+    "--manager-home-overview-progress": overviewProgress.toFixed(3)
+  } as CSSProperties;
+
+  useEffect(() => {
+    const defaultWeekStart = weekDaysForDate(parseCalendarDate(defaultHomeScheduleDateKey))[0];
+    setHomeScheduleWeekStartKey(toDateKey(defaultWeekStart));
+    setSelectedHomeScheduleDateKey(defaultHomeScheduleDateKey);
+  }, [defaultHomeScheduleDateKey]);
+
+  useEffect(() => {
+    const node = overviewContentRef.current;
+    if (!node) return;
+
+    const updateOverviewHeight = () => {
+      const measuredHeight = node.getBoundingClientRect().height || node.scrollHeight || node.offsetHeight;
+      setOverviewHeight(measuredHeight);
+    };
+
+    updateOverviewHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateOverviewHeight);
+      return () => window.removeEventListener("resize", updateOverviewHeight);
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const measuredHeight = entries[0]?.contentRect.height || node.getBoundingClientRect().height || node.scrollHeight || node.offsetHeight;
+      setOverviewHeight(measuredHeight);
+    });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    setManagerProfile(readManagerProfile(session?.email));
+  }, [session?.email]);
+
+  useEffect(() => {
+    if (isFeedSearchOpen) feedSearchInputRef.current?.focus();
+  }, [isFeedSearchOpen]);
+
+  useEffect(() => {
+    if (!isOverviewCollapsed) return;
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && overviewContentRef.current?.contains(activeElement)) {
+      overviewHandleRef.current?.focus();
+    }
+  }, [isOverviewCollapsed]);
+
+  const updateOverviewProgress = (nextProgress: number) => {
+    setOverviewProgress(clampHomeOverviewProgress(nextProgress));
+  };
+
+  const toggleHomeOverview = () => {
+    updateOverviewProgress(overviewProgress > 0.5 ? 0 : 1);
+  };
+
+  const handleOverviewHandleClick = () => {
+    if (overviewDragRef.current.ignoreClick) {
+      overviewDragRef.current.ignoreClick = false;
+      return;
+    }
+
+    toggleHomeOverview();
+  };
+
+  const handleOverviewHandleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      updateOverviewProgress(overviewProgress - HOME_OVERVIEW_KEYBOARD_STEP);
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      updateOverviewProgress(overviewProgress + HOME_OVERVIEW_KEYBOARD_STEP);
+    }
+  };
+
+  const handleOverviewHandlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    overviewDragRef.current.hasMoved = false;
+    overviewDragRef.current.ignoreClick = false;
+    overviewDragRef.current.pointerId = event.pointerId;
+    overviewDragRef.current.startProgress = overviewProgress;
+    overviewDragRef.current.startY = event.clientY;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleOverviewHandlePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const dragState = overviewDragRef.current;
+    if (dragState.pointerId !== event.pointerId || overviewHeight <= 0) return;
+
+    const deltaY = event.clientY - dragState.startY;
+    if (Math.abs(deltaY) >= HOME_OVERVIEW_DRAG_THRESHOLD) {
+      dragState.hasMoved = true;
+    }
+
+    if (!dragState.hasMoved) return;
+
+    setIsOverviewDragging(true);
+    updateOverviewProgress(dragState.startProgress + deltaY / overviewHeight);
+  };
+
+  const finishOverviewHandlePointer = (event: ReactPointerEvent<HTMLButtonElement>, shouldToggleOnTap: boolean) => {
+    const dragState = overviewDragRef.current;
+    if (dragState.pointerId !== event.pointerId) return;
+
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    dragState.pointerId = null;
+    dragState.ignoreClick = true;
+    setIsOverviewDragging(false);
+
+    if (shouldToggleOnTap && !dragState.hasMoved) {
+      toggleHomeOverview();
+    }
+  };
+
+  const changeManagerProfilePhoto = (event: ReactChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      showToast("Choose an image file for the manager profile picture.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      if (!result.startsWith("data:image/")) {
+        showToast("Could not read that profile image.");
+        return;
+      }
+
+      setManagerProfile((currentProfile) => {
+        const nextProfile = { ...currentProfile, photoDataUrl: result };
+        writeManagerProfile(nextProfile);
+        return nextProfile;
+      });
+      showToast("Manager profile picture updated.");
+    };
+    reader.onerror = () => showToast("Could not read that profile image.");
+    reader.readAsDataURL(file);
+  };
+
+  const shiftHomeScheduleWeek = (direction: number) => {
+    const nextWeekStart = parseCalendarDate(homeScheduleWeekStartKey);
+    nextWeekStart.setDate(nextWeekStart.getDate() + direction * 7);
+    const nextWeekDays = weekDaysForDate(nextWeekStart);
+    setHomeScheduleWeekStartKey(toDateKey(nextWeekDays[0]));
+    setSelectedHomeScheduleDateKey(findBestHomeAgendaDateInWeek(nextWeekDays, scheduledClasses, studioClasses, studioEvents));
+  };
+
+  const toggleFeedThreadSelection = (threadId: string) => {
+    setSelectedFeedThreadIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      if (nextIds.has(threadId)) {
+        nextIds.delete(threadId);
+      } else {
+        nextIds.add(threadId);
+      }
+      return nextIds;
+    });
+  };
+
+  const deleteSelectedFeedThreads = () => {
+    if (!selectedFeedCount) return;
+    const idsToDelete = selectedFeedThreadIds;
+    setFeedThreads((currentThreads) => currentThreads.filter((thread) => !idsToDelete.has(thread.id)));
+    setSelectedThreadId((currentThreadId) => currentThreadId && idsToDelete.has(currentThreadId) ? null : currentThreadId);
+    setSelectedFeedThreadIds(new Set());
+    showToast(`${selectedFeedCount} ${selectedFeedCount === 1 ? "item" : "items"} deleted from the Home Page feed.`);
+  };
+
+  const closeFeedSearch = () => {
+    setSearchQuery("");
+    setIsFeedSearchOpen(false);
+  };
+
+  const handleFeedSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      closeFeedSearch();
+    }
+  };
+
+  const toggleManagerHomeTheme = () => {
+    const nextTheme: AppThemeMode = managerProfile.theme === "dark" ? "light" : "dark";
+    setManagerProfile((currentProfile) => {
+      const nextProfile = { ...currentProfile, theme: nextTheme };
+      writeManagerProfile(nextProfile);
+      return nextProfile;
+    });
+    writeStoredAppTheme(nextTheme);
+    showToast(`${nextTheme === "dark" ? "Dark" : "Light"} mode enabled.`);
+  };
+
+  const sendReply = () => {
+    if (!replyText.trim()) {
+      showToast("Write a reply before sending.");
+      return;
+    }
+    showToast("Reply queued for the selected message.");
+    setReplyText("");
+  };
+
+  return (
+    <section className="manager-home-page" aria-label="Manager home page">
+      <div className="manager-home-status" aria-hidden="true">
+        <span>12:45</span>
+        <span>
+          <Signal size={18} />
+          <Wifi size={18} />
+          100%
+          <BatteryFull size={18} />
+        </span>
+      </div>
+      <header className="manager-home-topbar" aria-label="Manager home controls">
+        <Link className="manager-home-back" to="/manager" aria-label="Manager's Page">
+          <ChevronLeft size={22} />
+          <img className="manager-page-entry-icon" src={managerPageIcon} alt="" draggable="false" />
+          <span>Manager&apos;s Page</span>
+        </Link>
+        <h1>Home Page</h1>
+        <div className="manager-home-actions">
+          <button className="manager-home-bell" type="button" aria-label="Notifications" onClick={() => showToast("Notifications center coming soon.")}>
+            <Bell size={22} />
+            <span />
+          </button>
+          <button className="manager-home-avatar" type="button" aria-label="Open Manager's Page" onClick={() => navigate("/manager")}>
+            <img className="manager-home-manager-icon" src={managerPageIcon} alt="" draggable="false" />
+          </button>
+          <button className="manager-home-logout" type="button" aria-label="Log Out" onClick={logout}>
+            <img className="manager-home-logout-icon" src={managerLogoutIcon} alt="" draggable="false" />
+          </button>
+        </div>
+      </header>
+      <main className="manager-home-shell">
+        <div
+          aria-hidden={isOverviewCollapsed}
+          className={`manager-home-overview-stage${isOverviewCollapsed ? " is-collapsed" : ""}${isOverviewDragging ? " is-dragging" : ""}`}
+          data-overview-progress={overviewProgress.toFixed(2)}
+          data-overview-state={overviewStageState}
+          style={overviewStageStyle}
+        >
+          <section className="manager-home-overview" aria-label="Manager home overview" ref={overviewContentRef}>
+            <article className="manager-home-profile-card" aria-label="Manager profile overview">
+            <Link className="manager-home-profile-settings-link" to="/manager?profile=settings" aria-label="Profile Settings">
+              <img className="manager-home-profile-settings-icon" src={managerProfileSettingsIcon} alt="" draggable="false" />
+            </Link>
+            <button
+              aria-checked={managerProfile.theme === "dark"}
+              aria-label={managerProfile.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              className={`manager-home-profile-theme-toggle manager-home-profile-theme-toggle--${managerProfile.theme}`}
+              onClick={toggleManagerHomeTheme}
+              role="switch"
+              type="button"
+            >
+              <span className="manager-home-profile-theme-icons" aria-hidden="true">
+                <Sun size={15} />
+                <Moon size={15} />
+              </span>
+              <span className="manager-home-profile-theme-thumb" aria-hidden="true">
+                {managerProfile.theme === "dark" ? <Moon size={14} /> : <Sun size={14} />}
+              </span>
+            </button>
+            <label className="manager-home-profile-frame manager-home-profile-upload">
+                <span className="sr-only">Upload manager profile picture</span>
+                <input type="file" accept="image/*" aria-label="Upload manager profile picture" onChange={changeManagerProfilePhoto} />
+                <img src={managerProfile.photoDataUrl ?? managerWolfProfileImage} alt={`${managerProfile.name} profile portrait`} draggable="false" />
+                <span className="manager-home-profile-online" aria-hidden="true" />
+                <span className="manager-home-profile-change-badge" aria-hidden="true">
+                  <Camera size={15} />
                 </span>
-                <h2>{action.title}</h2>
-                <p>{action.text}</p>
-                <Link to={action.path}>{action.button}</Link>
-              </article>
-            );
-          })}
-        </section>
-
-        <section className="manager-communication">
-          <div className="manager-panel-title">
-            <Users size={31} />
-            <h2>Student Management &amp; Communication</h2>
-          </div>
-          <div className="manager-communication-grid">
-            <article>
-              <div className="manager-round-icon database-icon">
-                <span />
+              </label>
+              <div className="manager-home-profile-copy">
+                <h2>{managerProfile.name}</h2>
+                <p>Head Coach &amp; Manager</p>
               </div>
-              <div>
-                <h3>Input New Students</h3>
-                <p>Add new students into the database quickly and easily.</p>
-                <button type="button" onClick={() => navigate("/students")}>Add Student</button>
-              </div>
+              <dl className="manager-home-profile-facts">
+                <div>
+                  <dt><Award size={20} /></dt>
+                  <dd>Team: Summer Champions</dd>
+                </div>
+                <div>
+                  <dt><Target size={20} /></dt>
+                  <dd>Member Since: {memberSinceLabel}</dd>
+                </div>
+                <div>
+                  <dt><Users size={20} /></dt>
+                  <dd>Team Size: {activeStudentCount} Member{activeStudentCount === 1 ? "" : "s"}</dd>
+                </div>
+              </dl>
             </article>
-            <article>
-              <div className="manager-round-icon phone-icon">
-                <Phone size={42} />
+            <section className="manager-home-week-card" aria-label="Weekly manager schedule">
+              <header className="manager-home-week-nav">
+                <button type="button" aria-label="Previous week" onClick={() => shiftHomeScheduleWeek(-1)}>
+                  <ChevronLeft size={20} />
+                </button>
+                <h2>{formatWeekRange(homeScheduleWeekDays)}</h2>
+                <button type="button" aria-label="Next week" onClick={() => shiftHomeScheduleWeek(1)}>
+                  <ChevronRight size={20} />
+                </button>
+              </header>
+              <div className="manager-home-week-days" aria-label="Week days">
+                {homeScheduleWeekDays.map((day) => {
+                  const dateKey = toDateKey(day);
+                  const isSelected = dateKey === selectedHomeScheduleDateKey;
+                  return (
+                    <button
+                      aria-label={`Select ${formatHomeScheduleDay(day)}`}
+                      aria-pressed={isSelected}
+                      className={isSelected ? "is-selected" : undefined}
+                      key={dateKey}
+                      onClick={() => setSelectedHomeScheduleDateKey(dateKey)}
+                      type="button"
+                    >
+                      <span>{day.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}</span>
+                      <strong>{day.getDate()}</strong>
+                    </button>
+                  );
+                })}
               </div>
-              <div>
-                <h3>Send Reminder Texts</h3>
-                <p>Send class reminders, testing reminders, and important updates.</p>
-                <button type="button" onClick={queueReminderText}>Send Reminder</button>
-              </div>
-            </article>
-            <article>
-              <div className="manager-round-icon chat-icon">
-                <MessagesSquare size={42} />
-              </div>
-              <div>
-                <h3>Follow Up Texts</h3>
-                <p>Send follow up texts with welcoming messages, social media links, and website.</p>
-                <button type="button" onClick={queueFollowUps}>Send Follow Up</button>
-              </div>
-            </article>
-          </div>
-          <div className="manager-welcome-strip">
-            <div>
-              <h3>Welcome Message Includes:</h3>
-              <p><CheckCircle2 size={16} /> Welcome to Cho&apos;s Martial Arts!</p>
-              <p><CheckCircle2 size={16} /> Class information &amp; what to expect</p>
-            </div>
-            <div>
-              <p><CheckCircle2 size={16} /> Social Media Links</p>
-              <div className="manager-socials" aria-label="Social media links">
-                <span>f</span>
-                <span>ig</span>
-                <span>tk</span>
-                <span>yt</span>
-              </div>
-            </div>
-            <div>
-              <p><Globe size={16} /> Website Link</p>
-              <a href="https://www.chosmartialarts.com">www.chosmartialarts.com</a>
-            </div>
-          </div>
-        </section>
-
-        <div className="manager-lower-grid">
-          <section className="manager-card-panel">
-            <header>
-              <div>
-                <CalendarCheck size={28} />
-                <h2>Events</h2>
-              </div>
-              <Link to="/events">View All</Link>
-            </header>
-            <div className="manager-event-list">
-              {managerEvents.map((event) => (
-                <article key={event.title}>
-                  <span className={`manager-event-thumb ${event.tone}`} aria-hidden="true" />
-                  <div>
-                    <h3>{event.title}</h3>
-                    <p>{event.date}</p>
-                    <p>{event.time}</p>
-                  </div>
-                  <Link to="/events" aria-label={`Edit ${event.title}`}>
-                    <CalendarCheck size={21} />
-                  </Link>
-                </article>
-              ))}
-            </div>
-            <button type="button" onClick={() => navigate("/events")}>
-              <Plus size={18} /> Add New Event
-            </button>
-          </section>
-
-          <section className="manager-card-panel manager-merch-panel">
-            <header>
-              <div>
-                <ShoppingCart size={29} />
-                <h2>Merchandise</h2>
-              </div>
-              <Link to="/merchandise">View All</Link>
-            </header>
-            <p>Manage and showcase products we sell.</p>
-            <div className="manager-product-grid">
-              {managerMerchandise.map((item) => (
-                <article key={item.name}>
-                  <span className={`manager-product-thumb ${item.tone}`} aria-hidden="true" />
-                  <h3>{item.name}</h3>
-                  <strong>{item.price}</strong>
-                </article>
-              ))}
-            </div>
-            <button type="button" onClick={() => navigate("/merchandise")}>
-              <Plus size={18} /> Add New Product
-            </button>
+              <section className="manager-home-agenda-card" aria-live="polite" aria-label="Selected day agenda">
+                <h3>{formatHomeScheduleDay(selectedHomeScheduleDate)}</h3>
+                <div className="manager-home-agenda-list">
+                  {selectedHomeAgendaItems.length ? (
+                    selectedHomeAgendaItems.slice(0, 5).map((item) => (
+                      <article className={`manager-home-agenda-item manager-home-agenda-item--${item.kind}`} key={item.id}>
+                        <time>{item.time}</time>
+                        <span aria-hidden="true">
+                          {item.kind === "event" ? <CalendarDays size={20} /> : item.kind === "class" ? <Users size={20} /> : <MessagesSquare size={20} />}
+                        </span>
+                        <div>
+                          <strong>{item.title}</strong>
+                          <small>{item.meta}</small>
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <p>No classes or events scheduled for this date.</p>
+                  )}
+                </div>
+              </section>
+            </section>
           </section>
         </div>
-
-        <section className="manager-quick-stats">
-          <h2>Quick Stats</h2>
-          <div>
-            {quickStats.map((stat) => {
-              const Icon = stat.icon;
-              return (
-                <article key={stat.label}>
-                  <Icon size={39} />
-                  <div>
-                    <strong>{stat.value}</strong>
-                    <span>{stat.label}</span>
-                    <Link to={stat.path}>{stat.link}</Link>
+        <button
+          aria-expanded={!isOverviewCollapsed}
+          aria-label={isOverviewCollapsed ? "Expand manager overview" : "Collapse manager overview"}
+          className={`manager-home-overview-handle${isOverviewCollapsed ? " is-collapsed" : ""}${isOverviewDragging ? " is-dragging" : ""}`}
+          onClick={handleOverviewHandleClick}
+          onKeyDown={handleOverviewHandleKeyDown}
+          onPointerCancel={(event) => finishOverviewHandlePointer(event, false)}
+          onPointerDown={handleOverviewHandlePointerDown}
+          onPointerMove={handleOverviewHandlePointerMove}
+          onPointerUp={(event) => finishOverviewHandlePointer(event, true)}
+          ref={overviewHandleRef}
+          type="button"
+        >
+          <span className="manager-home-overview-handle-arrows" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+          <span className="manager-home-overview-handle-bar" aria-hidden="true" />
+        </button>
+        <section className="manager-home-feed-panel" aria-label="Messages and event notifications">
+          <div className="manager-home-feed-head">
+            <div className="manager-home-feed-counts" aria-label="Feed totals">
+              <span className="manager-home-count manager-home-count--message">{messageCount} {messageCount === 1 ? "Message" : "Messages"}</span>
+              <span className="manager-home-count manager-home-count--event">{eventCount} Event {eventCount === 1 ? "Notification" : "Notifications"}</span>
+              {selectedFeedCount > 0 && (
+                <span className="manager-home-bulk-actions" aria-live="polite">
+                  <strong>{selectedFeedCount} selected</strong>
+                  <button type="button" aria-label="Delete selected" onClick={deleteSelectedFeedThreads}>
+                    <Trash2 size={17} />
+                    <span>Delete</span>
+                  </button>
+                </span>
+              )}
+            </div>
+          </div>
+          <div className={`manager-home-search-shell${isFeedSearchOpen ? " is-open" : ""}`}>
+            {isFeedSearchOpen ? (
+              <div className="manager-home-search" role="search">
+                <Search size={22} aria-hidden="true" />
+                <label className="sr-only" htmlFor="manager-home-feed-search">Search messages and event notifications</label>
+                <input
+                  aria-label="Search messages and event notifications"
+                  id="manager-home-feed-search"
+                  ref={feedSearchInputRef}
+                  type="search"
+                  placeholder="Search messages and event notifications..."
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onKeyDown={handleFeedSearchKeyDown}
+                />
+                <button className="manager-home-search-close" type="button" aria-label="Close search messages and event notifications" onClick={closeFeedSearch}>
+                  <X size={18} />
+                </button>
+              </div>
+            ) : (
+              <button
+                className="manager-home-search-trigger"
+                type="button"
+                aria-label="Open search messages and event notifications"
+                aria-controls="manager-home-feed-search"
+                aria-expanded="false"
+                onClick={() => setIsFeedSearchOpen(true)}
+              >
+                <Search size={24} />
+              </button>
+            )}
+          </div>
+          <div className="manager-home-unified-feed" aria-label="Home message and notification feed">
+            {visibleFeedSections.length ? (
+              visibleFeedSections.map((section) => (
+                <section className="manager-home-date-section" key={section.date} aria-label={`Messages and event notifications from ${section.date}`}>
+                  <div className="manager-home-date-divider" role="separator" aria-label={`Messages and event notifications from ${section.date}`}>
+                    <span>{section.date}</span>
                   </div>
-                </article>
-              );
-            })}
+                  {section.threads.map((thread) => {
+                    const isSelected = thread.id === selectedThreadId;
+                    const isBulkSelected = selectedFeedThreadIds.has(thread.id);
+                    const kindLabel = thread.kind === "event" ? "Event Notification" : "Message";
+
+                    return (
+                      <article className={`manager-home-feed-item manager-home-feed-item--${thread.kind}${isSelected ? " is-selected" : ""}${isBulkSelected ? " is-bulk-selected" : ""}`} key={thread.id}>
+                        <div className="manager-home-feed-row">
+                          <button
+                            className="manager-home-feed-button"
+                            type="button"
+                            aria-expanded={isSelected}
+                            aria-controls={`manager-home-feed-detail-${thread.id}`}
+                            onClick={() => setSelectedThreadId((currentThreadId) => currentThreadId === thread.id ? null : thread.id)}
+                          >
+                            <span className="manager-home-thread-avatar">
+                              <img src={thread.avatar} alt="" draggable="false" />
+                            </span>
+                            <span>
+                              <em>{kindLabel}</em>
+                              <strong>{thread.sender}</strong>
+                              <b>{thread.title}</b>
+                              <small>{thread.preview}</small>
+                              <time className="manager-home-inline-sent" dateTime={thread.sentDateTime} aria-label={`${thread.title} sent at ${thread.sentTime}`}>
+                                {thread.sentTime}
+                              </time>
+                            </span>
+                            {thread.unread && <i aria-hidden="true" />}
+                          </button>
+                          <label className="manager-home-feed-check">
+                            <span className="sr-only">Select {thread.title}</span>
+                            <input
+                              aria-label={`Select ${thread.title}`}
+                              type="checkbox"
+                              checked={isBulkSelected}
+                              onChange={() => toggleFeedThreadSelection(thread.id)}
+                            />
+                            <span aria-hidden="true" />
+                          </label>
+                        </div>
+                        {isSelected && (
+                          <div className="manager-home-feed-detail" id={`manager-home-feed-detail-${thread.id}`} aria-label={`${thread.title} details`}>
+                            <div className="manager-home-detail-title-row">
+                              <span>{kindLabel}</span>
+                              <time dateTime={thread.sentDateTime}>Sent {thread.sentDate} at {thread.sentTime}</time>
+                            </div>
+                            <h2>{thread.title}</h2>
+                            <header>
+                              <span className="manager-home-thread-avatar">
+                                <img src={thread.avatar} alt="" draggable="false" />
+                              </span>
+                              <div>
+                                <strong>{thread.sender}</strong>
+                                <p>{thread.kind === "event" ? "event notice to All Students, Coaches" : "message to All Students, Coaches"}</p>
+                              </div>
+                              <button type="button" aria-label="More message actions">
+                                <MoreHorizontal size={20} />
+                              </button>
+                            </header>
+                            <div className="manager-home-message-copy">
+                              <p>Hello everyone,</p>
+                              <p>{thread.preview.replace("...", ".")} Please read the details carefully and reach out if you have any questions.</p>
+                            </div>
+                            {thread.kind === "event" && (
+                              <section className="manager-home-event-card" aria-label="Event details">
+                                <h3>Event Details</h3>
+                                <p><CalendarDays size={18} /> <span>Date: July 25 - July 27, 2025</span></p>
+                                <p><MapPin size={18} /> <span>Location: Grand Sports Arena, New York</span></p>
+                                <p><Users size={18} /> <span>Participants: All registered students</span></p>
+                                <p><CheckCircle2 size={18} /> <span>Check-in Time: 8:00 AM on July 25</span></p>
+                              </section>
+                            )}
+                            <p>{thread.kind === "event" ? "Make sure to arrive on time and bring all required gear. Let's make this a great event!" : "This message is ready for staff follow-up from the Home Page feed."}</p>
+                            <p>Best regards,<br />{thread.sender}</p>
+                            <div className="manager-home-reply">
+                              <input
+                                aria-label="Write a reply"
+                                placeholder="Write a reply..."
+                                value={replyText}
+                                onChange={(event) => setReplyText(event.target.value)}
+                              />
+                              <button type="button" onClick={sendReply}>
+                                <Send size={20} /> Reply
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </section>
+              ))
+            ) : (
+              <p className="manager-home-empty">No messages or event notifications match your search.</p>
+            )}
           </div>
         </section>
-
-        <footer className="manager-footer">
-          <span />
-          <strong>Cho&apos;s Martial Arts</strong>
-          <span />
-          <small>Respect · Discipline · Focus · Confidence</small>
-        </footer>
       </main>
+    </section>
+  );
+}
+
+function ManagerLauncherPage() {
+  const { logout, session, showToast } = useAppState();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileSettings, setProfileSettings] = useState(() => readManagerProfile(session?.email));
+  const [profilePassword, setProfilePassword] = useState({ newPassword: "", confirmPassword: "" });
+
+  const openProfileSettings = () => {
+    setProfileSettings(readManagerProfile(session?.email));
+    setProfilePassword({ newPassword: "", confirmPassword: "" });
+    setProfileOpen(true);
+  };
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get("profile") !== "settings") return;
+    setProfileSettings(readManagerProfile(session?.email));
+    setProfilePassword({ newPassword: "", confirmPassword: "" });
+    setProfileOpen(true);
+    navigate("/manager", { replace: true });
+  }, [location.search, navigate, session?.email]);
+
+  const selectProfileTheme = (theme: AppThemeMode) => {
+    setProfileSettings((current) => ({ ...current, theme }));
+    writeManagerProfile({ ...readManagerProfile(session?.email), theme });
+    writeStoredAppTheme(theme);
+  };
+
+  const saveProfileSettings = (event: FormEvent) => {
+    event.preventDefault();
+    const newPassword = profilePassword.newPassword.trim();
+    const confirmPassword = profilePassword.confirmPassword.trim();
+    const nextProfile: ManagerProfileSettings = {
+      name: profileSettings.name.trim(),
+      username: profileSettings.username.trim(),
+      email: profileSettings.email.trim(),
+      phone: profileSettings.phone.trim(),
+      updates: profileSettings.updates,
+      theme: profileSettings.theme,
+      photoDataUrl: profileSettings.photoDataUrl,
+      passwordUpdatedAt: profileSettings.passwordUpdatedAt
+    };
+
+    if (!nextProfile.name) {
+      showToast("Enter a manager profile name.");
+      return;
+    }
+
+    if (!nextProfile.username) {
+      showToast("Enter a manager username.");
+      return;
+    }
+
+    if (!validateEmail(nextProfile.email)) {
+      showToast("Enter a valid manager profile email.");
+      return;
+    }
+
+    if (newPassword || confirmPassword) {
+      if (newPassword.length < 8) {
+        showToast("Enter a password with at least 8 characters.");
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        showToast("The manager passwords do not match.");
+        return;
+      }
+
+      nextProfile.passwordUpdatedAt = new Date().toISOString();
+    }
+
+    applyAppTheme(nextProfile.theme);
+    writeStoredAppTheme(nextProfile.theme);
+    writeManagerProfile(nextProfile);
+    setProfileSettings(nextProfile);
+    setProfilePassword({ newPassword: "", confirmPassword: "" });
+    setProfileOpen(false);
+    showToast("Manager profile settings saved.");
+  };
+
+  return (
+    <section className="manager-launcher-page" aria-label="Manager dashboard">
+      <main className="manager-launcher-main">
+        <header className="manager-launcher-topbar" aria-label="Manager page controls">
+          <div className="manager-launcher-actions">
+            <button className="manager-launcher-control manager-profile-trigger manager-profile-settings-button" type="button" aria-label="Profile Settings" onClick={openProfileSettings}>
+              <img className="manager-profile-settings-icon" src={managerProfileSettingsIcon} alt="" draggable="false" />
+            </button>
+            <Link className="manager-launcher-control manager-launcher-home-link" to="/" aria-label="Home">
+              <img className="manager-launcher-home-icon" src={managerHomeIcon} alt="" draggable="false" />
+            </Link>
+          </div>
+          <h1>
+            <img className="manager-launcher-title-icon" src={managerPageIcon} alt="" draggable="false" />
+            <span>Manager&apos;s Page</span>
+          </h1>
+          <button className="manager-launcher-control manager-launcher-logout-button" type="button" aria-label="Log Out" onClick={logout}>
+            <img className="manager-launcher-logout-icon" src={managerLogoutIcon} alt="" draggable="false" />
+          </button>
+        </header>
+        <nav className="manager-launcher-grid" aria-label="Manager app launcher">
+          {managerLauncherItems.map((item) => {
+            return (
+              <Link className="manager-launcher-item" key={item.label} to={item.path} data-future={item.future ? "true" : undefined}>
+                <ManagerLauncherIcon icon={item.icon} />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </main>
+      {profileOpen && (
+        <div className="modal-backdrop manager-profile-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setProfileOpen(false)}>
+          <form className="modal-card manager-profile-modal" role="dialog" aria-modal="true" aria-label="Manager profile settings" onSubmit={saveProfileSettings}>
+            <header className="student-modal-head">
+              <div>
+                <h2>Profile Settings</h2>
+                <p>Edit manager access, contact settings, and app theme.</p>
+              </div>
+              <button className="student-modal-close" type="button" aria-label="Close manager profile settings" onClick={() => setProfileOpen(false)}>
+                <X size={20} />
+              </button>
+            </header>
+            <section className="student-form-section manager-profile-form-section">
+              <label className="field-label">
+                Name
+                <input
+                  className="input"
+                  value={profileSettings.name}
+                  onChange={(event) => setProfileSettings({ ...profileSettings, name: event.target.value })}
+                  placeholder="Cho's Manager"
+                />
+              </label>
+              <label className="field-label">
+                Username
+                <input
+                  className="input"
+                  value={profileSettings.username}
+                  onChange={(event) => setProfileSettings({ ...profileSettings, username: event.target.value })}
+                  autoComplete="username"
+                  placeholder="chos-manager"
+                />
+              </label>
+              <label className="field-label">
+                Email
+                <input
+                  className="input"
+                  value={profileSettings.email}
+                  onChange={(event) => setProfileSettings({ ...profileSettings, email: event.target.value })}
+                  placeholder="manager@chos.prototype"
+                />
+              </label>
+              <label className="field-label">
+                Phone
+                <input
+                  className="input"
+                  value={profileSettings.phone}
+                  onChange={(event) => setProfileSettings({ ...profileSettings, phone: event.target.value })}
+                  placeholder="(262) 555-0100"
+                />
+              </label>
+              <label className="field-label">
+                New Password
+                <input
+                  className="input"
+                  type="password"
+                  value={profilePassword.newPassword}
+                  onChange={(event) => setProfilePassword({ ...profilePassword, newPassword: event.target.value })}
+                  autoComplete="new-password"
+                  placeholder="Enter new password"
+                />
+              </label>
+              <label className="field-label">
+                Confirm Password
+                <input
+                  className="input"
+                  type="password"
+                  value={profilePassword.confirmPassword}
+                  onChange={(event) => setProfilePassword({ ...profilePassword, confirmPassword: event.target.value })}
+                  autoComplete="new-password"
+                  placeholder="Confirm new password"
+                />
+              </label>
+              <div className="manager-theme-setting" role="group" aria-label="App theme">
+                <span>App Theme</span>
+                <div className="manager-theme-options">
+                  <button
+                    type="button"
+                    className={`manager-theme-option${profileSettings.theme === "light" ? " is-active" : ""}`}
+                    aria-pressed={profileSettings.theme === "light"}
+                    onClick={() => selectProfileTheme("light")}
+                  >
+                    <Sun size={16} /> Light
+                  </button>
+                  <button
+                    type="button"
+                    className={`manager-theme-option${profileSettings.theme === "dark" ? " is-active" : ""}`}
+                    aria-pressed={profileSettings.theme === "dark"}
+                    onClick={() => selectProfileTheme("dark")}
+                  >
+                    <Moon size={16} /> Dark
+                  </button>
+                </div>
+              </div>
+              <label className="manager-profile-check">
+                <input
+                  type="checkbox"
+                  checked={profileSettings.updates}
+                  onChange={(event) => setProfileSettings({ ...profileSettings, updates: event.target.checked })}
+                />
+                <span>Receive manager updates and reminders</span>
+              </label>
+            </section>
+            <div className="student-editor-actions manager-profile-actions">
+              <button type="submit">
+                <CheckCircle2 size={18} /> Save Profile Settings
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DashboardPage() {
+  const { scheduledClasses, studioClasses, studioEvents } = useAppState();
+
+  return (
+    <OperationsPage title="Dashboard" text="Review the live studio month calendar and jump into schedule management.">
+      <div className="manager-dashboard-calendar-page">
+        <ManagerLiveCalendar scheduledClasses={scheduledClasses} studioClasses={studioClasses} studioEvents={studioEvents} />
+      </div>
+    </OperationsPage>
+  );
+}
+
+function ReportsPage() {
+  return (
+    <section className="manager-future-page" aria-label="Manager reports">
+      <div className="manager-future-panel">
+        <BarChart3 size={72} strokeWidth={1.6} aria-hidden="true" />
+        <p>Coming soon</p>
+        <h1>Reports</h1>
+      </div>
     </section>
   );
 }
@@ -1767,9 +2553,16 @@ const messengerFinderFilters: { value: MessengerFinderFilter; label: string }[] 
   { value: "parent", label: "Parents" }
 ];
 
-function MessagesPage() {
-  const { accountRole, students, messageCampaigns, messageLogs, directMessages, sendDirectMessage, sendMarketingBlast, sendMissedClassFollowUps, showToast } = useAppState();
-  const [marketingMessage, setMarketingMessage] = useState("Monthly special: 10% off gloves and uniforms this week.");
+function DirectMessengerPanel({
+  className = "",
+  title = "Direct Messenger",
+  description = "Click any user name to open a private conversation and send a message instantly."
+}: {
+  className?: string;
+  title?: string;
+  description?: string;
+}) {
+  const { accountRole, students, directMessages, sendDirectMessage, showToast } = useAppState();
   const studentParticipants = useMemo(() => students.map(studentToMessengerParticipant), [students]);
   const parentParticipants = useMemo(() => students.map(studentToParentMessengerParticipant), [students]);
   const currentParticipant = accountRole === "student" && studentParticipants[0] ? studentParticipants[0] : managerMessengerParticipant;
@@ -1782,7 +2575,6 @@ function MessagesPage() {
   const [finderOpen, setFinderOpen] = useState(false);
   const [finderFilter, setFinderFilter] = useState<MessengerFinderFilter>("student");
   const [finderQuery, setFinderQuery] = useState("");
-  const missedCount = students.filter((student) => student.missedClassCount >= 3).length;
   const selectedParticipant = messageContacts.find((participant) => participant.id === selectedParticipantId) ?? messageContacts[0];
   const selectedThreadId = selectedParticipant ? directMessageThreadId(currentParticipant.id, selectedParticipant.id) : "";
   const selectedConversationMessages = useMemo(
@@ -1804,17 +2596,6 @@ function MessagesPage() {
       setSelectedParticipantId(messageContacts[0].id);
     }
   }, [messageContacts, selectedParticipantId]);
-
-  const sendFollowUps = () => {
-    const count = sendMissedClassFollowUps();
-    showToast(count ? `${count} missed-class follow-up text${count === 1 ? "" : "s"} queued.` : "No missed-class follow-ups needed.");
-  };
-
-  const sendMarketing = (event: FormEvent) => {
-    event.preventDefault();
-    const count = sendMarketingBlast(marketingMessage);
-    showToast(count ? `Marketing blast queued for ${count} student${count === 1 ? "" : "s"}.` : "Enter a marketing message.");
-  };
 
   const sendDirect = (event: FormEvent) => {
     event.preventDefault();
@@ -1840,77 +2621,77 @@ function MessagesPage() {
     setFinderOpen(false);
   };
 
+  const panelClassName = ["operations-panel", "messenger-panel", className].filter(Boolean).join(" ");
+
   return (
-    <OperationsPage title="Messages" text="Direct-message students, families, and staff while keeping text campaigns close by.">
-      <section className="operations-panel messenger-panel" aria-label="Direct message center">
-        <div className="student-roster-head">
-          <div>
-            <h2>Direct Messenger</h2>
-            <p>Click any user name to open a private conversation and send a message instantly.</p>
-          </div>
-          <div className="messenger-head-actions">
-            <button type="button" className="operations-action secondary" onClick={() => setFinderOpen(true)}>
-              <Search size={18} /> Find User
-            </button>
-            <span className="messenger-self-badge">Signed in as {currentParticipant.name}</span>
-          </div>
+    <section className={panelClassName} aria-label="Direct message center">
+      <div className="student-roster-head">
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
         </div>
-        <div className="messenger-shell">
-          <aside className="messenger-people" aria-label="Message people">
-            {messageContacts.map((participant) => {
-              const threadId = directMessageThreadId(currentParticipant.id, participant.id);
-              const latestMessage = directMessages.filter((message) => message.threadId === threadId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-              return (
-                <button
-                  key={participant.id}
-                  type="button"
-                  className={`messenger-contact${selectedParticipant?.id === participant.id ? " active" : ""}`}
-                  aria-label={`Open conversation with ${participant.name}`}
-                  onClick={() => setSelectedParticipantId(participant.id)}
-                >
-                  <div>
-                    <strong>{participant.name}</strong>
-                    <small>{participant.subtitle}</small>
-                    <p>{latestMessage?.body ?? participant.detail}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </aside>
-          <section className="messenger-chat" aria-label={selectedParticipant ? `Conversation with ${selectedParticipant.name}` : "Conversation"}>
-            {selectedParticipant ? (
-              <>
-                <header>
-                  <div>
-                    <h2>{selectedParticipant.name}</h2>
-                    <p>{selectedParticipant.subtitle}</p>
-                  </div>
-                </header>
-                <div className="messenger-thread" aria-live="polite">
-                  {selectedConversationMessages.length ? (
-                    selectedConversationMessages.map((message) => (
-                      <DirectMessageBubble key={message.id} message={message} mine={message.senderId === currentParticipant.id} />
-                    ))
-                  ) : (
-                    <p className="messenger-empty">No messages yet. Start the conversation with {selectedParticipant.name}.</p>
-                  )}
+        <div className="messenger-head-actions">
+          <button type="button" className="operations-action secondary" onClick={() => setFinderOpen(true)}>
+            <Search size={18} /> Find User
+          </button>
+          <span className="messenger-self-badge">Signed in as {currentParticipant.name}</span>
+        </div>
+      </div>
+      <div className="messenger-shell">
+        <aside className="messenger-people" aria-label="Message people">
+          {messageContacts.map((participant) => {
+            const threadId = directMessageThreadId(currentParticipant.id, participant.id);
+            const latestMessage = directMessages.filter((message) => message.threadId === threadId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+            return (
+              <button
+                key={participant.id}
+                type="button"
+                className={`messenger-contact${selectedParticipant?.id === participant.id ? " active" : ""}`}
+                aria-label={`Open conversation with ${participant.name}`}
+                onClick={() => setSelectedParticipantId(participant.id)}
+              >
+                <div>
+                  <strong>{participant.name}</strong>
+                  <small>{participant.subtitle}</small>
+                  <p>{latestMessage?.body ?? participant.detail}</p>
                 </div>
-                <form className="messenger-composer" onSubmit={sendDirect}>
-                  <label>
-                    Message {selectedParticipant.name}
-                    <textarea rows={3} value={directMessageText} onChange={(event) => setDirectMessageText(event.target.value)} />
-                  </label>
-                  <button type="submit" className="operations-action">
-                    <MessagesSquare size={18} /> Send Message
-                  </button>
-                </form>
-              </>
-            ) : (
-              <p className="messenger-empty">Add students to start direct messaging.</p>
-            )}
-          </section>
-        </div>
-      </section>
+              </button>
+            );
+          })}
+        </aside>
+        <section className="messenger-chat" aria-label={selectedParticipant ? `Conversation with ${selectedParticipant.name}` : "Conversation"}>
+          {selectedParticipant ? (
+            <>
+              <header>
+                <div>
+                  <h2>{selectedParticipant.name}</h2>
+                  <p>{selectedParticipant.subtitle}</p>
+                </div>
+              </header>
+              <div className="messenger-thread" aria-live="polite">
+                {selectedConversationMessages.length ? (
+                  selectedConversationMessages.map((message) => (
+                    <DirectMessageBubble key={message.id} message={message} mine={message.senderId === currentParticipant.id} />
+                  ))
+                ) : (
+                  <p className="messenger-empty">No messages yet. Start the conversation with {selectedParticipant.name}.</p>
+                )}
+              </div>
+              <form className="messenger-composer" onSubmit={sendDirect}>
+                <label>
+                  Message {selectedParticipant.name}
+                  <textarea rows={3} value={directMessageText} onChange={(event) => setDirectMessageText(event.target.value)} />
+                </label>
+                <button type="submit" className="operations-action">
+                  <MessagesSquare size={18} /> Send Message
+                </button>
+              </form>
+            </>
+          ) : (
+            <p className="messenger-empty">Add students to start direct messaging.</p>
+          )}
+        </section>
+      </div>
       {finderOpen && (
         <div className="modal-backdrop" role="presentation" onClick={() => setFinderOpen(false)}>
           <section
@@ -1973,6 +2754,35 @@ function MessagesPage() {
           </section>
         </div>
       )}
+    </section>
+  );
+}
+
+function MessagesPage() {
+  const { students, messageCampaigns, messageLogs, sendMarketingBlast, sendMissedClassFollowUps, showToast } = useAppState();
+  const [marketingMessage, setMarketingMessage] = useState("Monthly special: 10% off gloves and uniforms this week.");
+  const missedCount = students.filter((student) => student.missedClassCount >= 3).length;
+
+  const sendFollowUps = () => {
+    const count = sendMissedClassFollowUps();
+    showToast(count ? `${count} missed-class follow-up text${count === 1 ? "" : "s"} queued.` : "No missed-class follow-ups needed.");
+  };
+
+  const sendMarketing = (event: FormEvent) => {
+    event.preventDefault();
+    const count = sendMarketingBlast(marketingMessage);
+    showToast(count ? `Marketing blast queued for ${count} student${count === 1 ? "" : "s"}.` : "Enter a marketing message.");
+  };
+
+  return (
+    <OperationsPage title="Message Settings" text="Manage mass messages, missed-class text follow-ups, message logs, and other message tools.">
+      <section className="operations-panel message-settings-panel">
+        <h2>Messenger Settings</h2>
+        <p>All one-to-one app messenger conversations now stay inside the Home Page messenger container. Use this Manager&apos;s Page tool for message settings, mass texts, text logs, and other messaging operations.</p>
+        <Link className="operations-action secondary" to="/">
+          <MessageCircle size={18} /> Open Home Page Messages
+        </Link>
+      </section>
       <div className="operations-two-column">
         <section className="operations-panel">
           <h2>Follow-Up Automation</h2>
@@ -2345,7 +3155,9 @@ export function OperationsApp() {
   return (
     <OperationsShell>
       <Routes>
-        <Route path="/" element={<DashboardPage />} />
+        <Route path="/" element={<ManagerHomePage />} />
+        <Route path="/manager" element={<ManagerLauncherPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/students" element={<StudentsPage />} />
         <Route path="/classes" element={<ClassesPage />} />
         <Route path="/schedule" element={<SchedulePage />} />
@@ -2353,6 +3165,7 @@ export function OperationsApp() {
         <Route path="/check-ins" element={<CheckInsPage />} />
         <Route path="/events" element={<EventsPage />} />
         <Route path="/merchandise" element={<MerchandisePage />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </OperationsShell>

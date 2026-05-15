@@ -21,6 +21,34 @@ function stubMatchMedia(matches = false) {
   });
 }
 
+function stubResizeObserver(height = 360) {
+  class ResizeObserverMock {
+    private callback: ResizeObserverCallback;
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+
+    observe = (target: Element) => {
+      this.callback([
+        {
+          target,
+          contentRect: { height } as DOMRectReadOnly
+        } as ResizeObserverEntry
+      ], this as unknown as ResizeObserver);
+    };
+
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+  }
+
+  Object.defineProperty(window, "ResizeObserver", {
+    configurable: true,
+    writable: true,
+    value: ResizeObserverMock
+  });
+}
+
 function renderLoggedInApp(path = "/", role: "staff" | "student" = "staff") {
   window.localStorage.setItem("chos.session.v1", JSON.stringify({ email: "team@chos.prototype", remembered: true, createdAt: "2026-05-10T00:00:00.000Z" }));
   window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "team@chos.prototype", role }]));
@@ -47,6 +75,8 @@ function renderLoggedOutApp(path = "/") {
 describe("login landing", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.style.colorScheme = "";
     window.scrollTo = vi.fn();
     stubMatchMedia();
   });
@@ -100,6 +130,8 @@ describe("login landing", () => {
 describe("app fullscreen behavior", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.style.colorScheme = "";
     window.scrollTo = vi.fn();
     stubMatchMedia();
   });
@@ -142,93 +174,393 @@ describe("app fullscreen behavior", () => {
 describe("post-login operations app", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.style.colorScheme = "";
     window.scrollTo = vi.fn();
     stubMatchMedia();
   });
 
-  it("opens a manager dashboard matching the reference layout sections", () => {
+  it("opens the manager home page first after login", () => {
     renderLoggedInApp("/");
 
-    expect(screen.getByRole("heading", { name: "Welcome back, Manager!" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Awakening Dojo" })).not.toBeInTheDocument();
-
-    const sidebar = screen.getByLabelText("Manager navigation");
-    ["Dashboard", "Students", "Classes", "Scheduling", "Events", "Merchandise", "Messages", "Reports", "Settings"].forEach((label) => {
-      expect(within(sidebar).getByText(label)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Home Page" })).toBeInTheDocument();
+    const managerPageLink = screen.getByRole("link", { name: "Manager's Page" });
+    expect(managerPageLink).toHaveAttribute("href", "/manager");
+    expect(managerPageLink.querySelector("img.manager-page-entry-icon")).toHaveAttribute("src", expect.stringContaining("ManagerPage.webp"));
+    const managerPageIconButton = screen.getByRole("button", { name: "Open Manager's Page" });
+    expect(managerPageIconButton.querySelector("img.manager-home-manager-icon")).toHaveAttribute("src", expect.stringContaining("ManagerPage.webp"));
+    const logoutButton = screen.getByRole("button", { name: "Log Out" });
+    expect(logoutButton).toHaveTextContent("");
+    expect(logoutButton.querySelector("img.manager-home-logout-icon")).toHaveAttribute("src", expect.stringContaining("ManagerLogoutProfessional.png"));
+    const homeOverview = screen.getByLabelText("Manager home overview");
+    const profileOverview = within(homeOverview).getByLabelText("Manager profile overview");
+    const weeklySchedule = within(homeOverview).getByLabelText("Weekly manager schedule");
+    expect(profileOverview.compareDocumentPosition(weeklySchedule) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(weeklySchedule.compareDocumentPosition(screen.getByLabelText("Messages and event notifications")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(profileOverview).getByRole("img", { name: "Cho's Manager profile portrait" })).toHaveAttribute("src", expect.stringContaining("ManagerWolfProfile"));
+    expect(within(profileOverview).getByRole("heading", { name: "Cho's Manager" })).toBeInTheDocument();
+    expect(within(profileOverview).getByText("Head Coach & Manager")).toBeInTheDocument();
+    expect(within(profileOverview).getByText("Team: Summer Champions")).toBeInTheDocument();
+    expect(within(profileOverview).getByText("Member Since: May 2026")).toBeInTheDocument();
+    expect(within(profileOverview).getByText("Team Size: 2 Members")).toBeInTheDocument();
+    expect(within(weeklySchedule).getByRole("heading", { name: "May 17 - 23, 2026" })).toBeInTheDocument();
+    expect(within(weeklySchedule).getByRole("button", { name: "Select Monday, May 18, 2026" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(weeklySchedule).getByText("Monday, May 18, 2026")).toBeInTheDocument();
+    expect(within(weeklySchedule).getByText("Youth Beginners")).toBeInTheDocument();
+    fireEvent.click(within(weeklySchedule).getByRole("button", { name: "Next week" }));
+    expect(within(weeklySchedule).getByRole("heading", { name: "May 24 - 30, 2026" })).toBeInTheDocument();
+    expect(within(weeklySchedule).getByText("Color Belt Testing")).toBeInTheDocument();
+    const feedPanel = screen.getByLabelText("Messages and event notifications");
+    const overviewHandle = screen.getByRole("button", { name: "Collapse manager overview" });
+    expect(homeOverview.compareDocumentPosition(overviewHandle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(overviewHandle.compareDocumentPosition(feedPanel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(overviewHandle).toHaveAttribute("aria-expanded", "true");
+    expect(feedPanel).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Messages & Event Notifications" })).not.toBeInTheDocument();
+    expect(screen.queryByText("One clean Home Page feed for every message and event notification.")).not.toBeInTheDocument();
+    expect(screen.getByText("4 Messages")).toBeInTheDocument();
+    expect(screen.getByText("2 Event Notifications")).toBeInTheDocument();
+    expect(screen.queryByRole("searchbox", { name: "Search messages and event notifications" })).not.toBeInTheDocument();
+    const searchTrigger = screen.getByRole("button", { name: "Open search messages and event notifications" });
+    expect(searchTrigger).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(searchTrigger);
+    const feedSearchBox = screen.getByRole("searchbox", { name: "Search messages and event notifications" });
+    expect(feedSearchBox).toHaveAttribute("placeholder", "Search messages and event notifications...");
+    expect(screen.getByRole("button", { name: "Close search messages and event notifications" })).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "Messages and event notifications from May 15, 2026" })).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "Messages and event notifications from May 14, 2026" })).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "Messages and event notifications from May 13, 2026" })).toBeInTheDocument();
+    expect(screen.getByText("10:30 AM")).toBeInTheDocument();
+    expect(screen.queryByText("Sent May 15, 2026 at 10:30 AM")).not.toBeInTheDocument();
+    ["System Admin", "Head Coach", "John Doe", "Merch Store", "Event Team"].forEach((sender) => {
+      expect(screen.getAllByText(sender).length).toBeGreaterThan(0);
     });
-    const sidebarLabels = within(sidebar).getAllByRole("link").map((link) => link.textContent?.trim());
-    expect(sidebarLabels.slice(0, 3)).toEqual(["Dashboard", "Messages", "Students"]);
+    const summerEventRow = screen.getByRole("button", { name: /System Admin.*Event Update: Summer Championship/i });
+    expect(summerEventRow.closest(".manager-home-feed-item")).toHaveClass("manager-home-feed-item--event");
+    expect(screen.getByRole("button", { name: /Head Coach.*Practice Session Reminder/i }).closest(".manager-home-feed-item")).toHaveClass("manager-home-feed-item--message");
+    expect(screen.getByRole("button", { name: /Event Team.*Upcoming Event: Parent Meeting/i }).closest(".manager-home-feed-item")).toHaveClass("manager-home-feed-item--event");
+    expect(screen.queryByLabelText("Selected feed item detail")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Event Update: Summer Championship details")).not.toBeInTheDocument();
+    fireEvent.click(summerEventRow);
 
-    const actionCards = screen.getByLabelText("Manager quick actions");
-    const liveCalendar = screen.getByLabelText("Live studio calendar");
-    expect(liveCalendar.compareDocumentPosition(actionCards) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    ["Create New Student", "Edit Student", "Delete Student", "Edit Scheduling"].forEach((label) => {
-      expect(within(actionCards).getByRole("heading", { name: label })).toBeInTheDocument();
-    });
+    expect(summerEventRow).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("heading", { name: "Event Update: Summer Championship" })).toBeInTheDocument();
+    expect(screen.getAllByText("Sent May 15, 2026 at 10:30 AM").length).toBeGreaterThan(0);
+    expect(screen.getByText("Event Details")).toBeInTheDocument();
+    expect(screen.getByText("Date: July 25 - July 27, 2025")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reply" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager app launcher")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Direct message center")).not.toBeInTheDocument();
 
-    expect(screen.getByRole("heading", { name: "Student Management & Communication" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add Student" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send Reminder" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send Follow Up" })).toBeInTheDocument();
-    expect(liveCalendar).toBeInTheDocument();
-    expect(within(liveCalendar).getByRole("link", { name: "Manage Schedule" })).toBeInTheDocument();
-    expect(within(liveCalendar).getByLabelText("Selected date events")).toBeInTheDocument();
-    const calendarGrid = within(liveCalendar).getByRole("grid", { name: /Cho's studio calendar/i });
-    expect(calendarGrid).toHaveClass("manager-calendar-grid--month");
-    expect(calendarGrid.querySelectorAll(".manager-calendar-day")).toHaveLength(42);
-    const calendarViewControls = within(liveCalendar).getByRole("group", { name: "Calendar view" });
-    expect(within(calendarViewControls).getByRole("button", { name: "Month" })).toHaveAttribute("aria-pressed", "true");
-    const todayLabel = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-    expect(within(liveCalendar).getByRole("button", { name: new RegExp(`Select ${todayLabel}, today`) })).toHaveClass("is-glowing-today", "is-transparent-today");
-    const selectedCalendarDate = within(liveCalendar).getByRole("button", { name: /Select Monday, May 18/i });
-    fireEvent.click(selectedCalendarDate);
-    expect(selectedCalendarDate).toHaveClass("is-pulsing-selected");
-    fireEvent.click(within(calendarViewControls).getByRole("button", { name: "Week" }));
-    expect(within(calendarViewControls).getByRole("button", { name: "Week" })).toHaveAttribute("aria-pressed", "true");
-    expect(calendarGrid).toHaveClass("manager-calendar-grid--week");
-    expect(calendarGrid.querySelectorAll(".manager-calendar-day")).toHaveLength(7);
-    expect(within(liveCalendar).getByRole("button", { name: "Previous week" })).toBeInTheDocument();
-    expect(within(liveCalendar).getByRole("button", { name: "Next week" })).toBeInTheDocument();
-    expect(within(calendarGrid).getByRole("button", { name: /Select Monday, May 18/i })).toHaveClass("is-pulsing-selected");
-    fireEvent.click(within(liveCalendar).getByRole("button", { name: "Next week" }));
-    expect(within(calendarGrid).getByRole("button", { name: /Select Monday, May 25/i })).toHaveClass("is-pulsing-selected");
-    fireEvent.click(within(liveCalendar).getByRole("button", { name: "Previous week" }));
-    expect(within(calendarGrid).getByRole("button", { name: /Select Monday, May 18/i })).toHaveClass("is-pulsing-selected");
-    fireEvent.click(within(calendarViewControls).getByRole("button", { name: "Day" }));
-    expect(calendarGrid).toHaveClass("manager-calendar-grid--day");
-    expect(calendarGrid.querySelectorAll(".manager-calendar-day")).toHaveLength(1);
-    expect(within(liveCalendar).getByRole("button", { name: "Previous day" })).toBeInTheDocument();
-    expect(within(liveCalendar).getByRole("button", { name: "Next day" })).toBeInTheDocument();
-    expect(within(calendarGrid).getByRole("button", { name: /Select Monday, May 18/i })).toHaveClass("is-pulsing-selected");
-    fireEvent.click(within(liveCalendar).getByRole("button", { name: "Next day" }));
-    expect(within(calendarGrid).getByRole("button", { name: /Select Tuesday, May 19/i })).toHaveClass("is-pulsing-selected");
-    fireEvent.click(within(liveCalendar).getByRole("button", { name: "Previous day" }));
-    expect(within(calendarGrid).getByRole("button", { name: /Select Monday, May 18/i })).toHaveClass("is-pulsing-selected");
-    fireEvent.click(within(calendarViewControls).getByRole("button", { name: "Month" }));
-    expect(calendarGrid).toHaveClass("manager-calendar-grid--month");
-    expect(calendarGrid.querySelectorAll(".manager-calendar-day")).toHaveLength(42);
-    expect(within(liveCalendar).getByRole("button", { name: "Previous month" })).toBeInTheDocument();
-    expect(within(liveCalendar).getByRole("button", { name: "Next month" })).toBeInTheDocument();
-    fireEvent.click(within(liveCalendar).getByRole("button", { name: "Next month" }));
-    expect(within(calendarGrid).getByRole("button", { name: /Select Thursday, June 18/i })).toHaveClass("is-pulsing-selected");
-    fireEvent.click(within(liveCalendar).getByRole("button", { name: "Previous month" }));
-    expect(within(calendarGrid).getByRole("button", { name: /Select Monday, May 18/i })).toHaveClass("is-pulsing-selected");
-    const selectedDatePanel = within(liveCalendar).getByLabelText("Selected date events");
-    expect(within(selectedDatePanel).getByRole("heading", { name: /Monday, May 18/i })).toBeInTheDocument();
-    expect(within(selectedDatePanel).getByText("Youth Beginners")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Events" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Merchandise" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Quick Stats" })).toBeInTheDocument();
+    const attendanceRow = screen.getByRole("button", { name: /John Doe.*Attendance Confirmation/i });
+    fireEvent.click(attendanceRow);
+
+    expect(attendanceRow).toHaveAttribute("aria-expanded", "true");
+    expect(attendanceRow.closest(".manager-home-feed-item")).toHaveClass("manager-home-feed-item--message", "is-selected");
+    expect(screen.getByLabelText("Attendance Confirmation details")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Attendance Confirmation" })).toBeInTheDocument();
+    expect(screen.getAllByText("Sent May 15, 2026 at 8:45 AM").length).toBeGreaterThan(0);
+
+    fireEvent.click(attendanceRow);
+
+    expect(attendanceRow).toHaveAttribute("aria-expanded", "false");
+    expect(attendanceRow.closest(".manager-home-feed-item")).not.toHaveClass("is-selected");
+    expect(screen.queryByLabelText("Attendance Confirmation details")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Message Settings" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager app launcher")).not.toBeInTheDocument();
   });
 
-  it("keeps the manager dashboard visual frame even when a saved account is student mode", () => {
-    renderLoggedInApp("/", "student");
+  it("collapses, expands, and drag-adjusts the manager overview from the Home handle", () => {
+    stubResizeObserver(360);
+    renderLoggedInApp("/");
 
-    expect(screen.getByRole("heading", { name: "Welcome back, Manager!" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Manager navigation")).toBeInTheDocument();
+    const homeOverview = screen.getByLabelText("Manager home overview");
+    const overviewStage = homeOverview.closest(".manager-home-overview-stage");
+    const feedPanel = screen.getByLabelText("Messages and event notifications");
+    expect(overviewStage).toHaveAttribute("data-overview-state", "expanded");
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse manager overview" }));
+
+    expect(overviewStage).toHaveAttribute("data-overview-state", "collapsed");
+    const expandHandle = screen.getByRole("button", { name: "Expand manager overview" });
+    expect(expandHandle).toHaveAttribute("aria-expanded", "false");
+    expect(feedPanel).toBeInTheDocument();
+
+    fireEvent.click(expandHandle);
+
+    const collapseHandle = screen.getByRole("button", { name: "Collapse manager overview" });
+    expect(overviewStage).toHaveAttribute("data-overview-state", "expanded");
+    expect(collapseHandle).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.pointerDown(collapseHandle, { pointerId: 1, clientY: 300 });
+    fireEvent.pointerMove(collapseHandle, { pointerId: 1, clientY: 192 });
+    fireEvent.pointerUp(collapseHandle, { pointerId: 1, clientY: 192 });
+
+    expect(overviewStage).toHaveAttribute("data-overview-state", "partial");
+    expect(Number(overviewStage?.getAttribute("data-overview-progress"))).toBeLessThan(1);
+    expect(feedPanel).toBeInTheDocument();
+  });
+
+  it("lets managers update the Home profile picture in real time", async () => {
+    renderLoggedInApp("/");
+
+    const profileOverview = within(screen.getByLabelText("Manager home overview")).getByLabelText("Manager profile overview");
+    const profileImage = within(profileOverview).getByRole("img", { name: "Cho's Manager profile portrait" });
+    const photoUpload = within(profileOverview).getByLabelText("Upload manager profile picture") as HTMLInputElement;
+
+    expect(profileImage).toHaveAttribute("src", expect.stringContaining("ManagerWolfProfile"));
+    expect(photoUpload).toHaveAttribute("type", "file");
+    expect(photoUpload.closest(".manager-home-profile-frame")).toBeInTheDocument();
+
+    fireEvent.change(photoUpload, {
+      target: {
+        files: [new File(["manager profile"], "manager-profile.png", { type: "image/png" })]
+      }
+    });
+
+    await waitFor(() => {
+      expect(profileImage).toHaveAttribute("src", expect.stringContaining("data:image/png;base64,"));
+    });
+
+    const savedProfile = JSON.parse(window.localStorage.getItem("chos.profile.v1") ?? "{}") as { photoDataUrl?: string };
+    expect(savedProfile.photoDataUrl).toContain("data:image/png;base64,");
+  });
+
+  it("opens profile settings from the Home profile card icon", async () => {
+    renderLoggedInApp("/");
+
+    const profileOverview = within(screen.getByLabelText("Manager home overview")).getByLabelText("Manager profile overview");
+    const profileSettingsLink = within(profileOverview).getByRole("link", { name: "Profile Settings" });
+
+    expect(profileSettingsLink).toHaveAttribute("href", "/manager?profile=settings");
+    expect(profileSettingsLink.querySelector("img.manager-home-profile-settings-icon")).toHaveAttribute("src", expect.stringContaining("ManagerProfileSettings.png"));
+
+    fireEvent.click(profileSettingsLink);
+
+    expect(await screen.findByRole("dialog", { name: "Manager profile settings" })).toBeInTheDocument();
+  });
+
+  it("toggles light and dark mode from the Home profile card", () => {
+    renderLoggedInApp("/");
+
+    const profileOverview = within(screen.getByLabelText("Manager home overview")).getByLabelText("Manager profile overview");
+    const themeSwitch = within(profileOverview).getByRole("switch", { name: "Switch to light mode" });
+
+    expect(themeSwitch).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(themeSwitch);
+
+    const savedProfile = JSON.parse(window.localStorage.getItem("chos.profile.v1") || "{}");
+    expect(savedProfile.theme).toBe("light");
+    expect(window.localStorage.getItem("chos.theme.v1")).toBe("light");
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(within(profileOverview).getByRole("switch", { name: "Switch to dark mode" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("Light mode enabled.")).toBeInTheDocument();
+  });
+
+  it("keeps the Home weekly agenda rows compact on busy recurring class days", () => {
+    renderLoggedInApp("/");
+
+    const weeklySchedule = within(screen.getByLabelText("Manager home overview")).getByLabelText("Weekly manager schedule");
+    fireEvent.click(within(weeklySchedule).getByRole("button", { name: "Select Tuesday, May 19, 2026" }));
+
+    expect(within(weeklySchedule).getByText("Tuesday, May 19, 2026")).toBeInTheDocument();
+    expect(within(weeklySchedule).getByText("Private Intro Lesson")).toBeInTheDocument();
+    expect(within(weeklySchedule).getByText("Youth Foundations")).toBeInTheDocument();
+    expect(within(weeklySchedule).getByText("Family Training")).toBeInTheDocument();
+    expect(within(weeklySchedule).getByText("12:30 PM")).toBeInTheDocument();
+    expect(within(weeklySchedule).getByText("5:00 PM")).toBeInTheDocument();
+    expect(within(weeklySchedule).getByText("6:00 PM")).toBeInTheDocument();
+    expect(within(weeklySchedule).queryByText("5:00 PM - 5:45 PM")).not.toBeInTheDocument();
+    expect(within(weeklySchedule).queryByText("6:00 PM - 6:50 PM")).not.toBeInTheDocument();
+  });
+
+  it("lets managers select multiple home feed items and delete them together", () => {
+    renderLoggedInApp("/");
+
+    expect(screen.queryByRole("button", { name: "Delete selected" })).not.toBeInTheDocument();
+
+    const attendanceCheckbox = screen.getByRole("checkbox", { name: "Select Attendance Confirmation" });
+    const eventCheckbox = screen.getByRole("checkbox", { name: "Select Event Update: Summer Championship" });
+
+    fireEvent.click(attendanceCheckbox);
+    fireEvent.click(eventCheckbox);
+
+    expect(attendanceCheckbox).toBeChecked();
+    expect(eventCheckbox).toBeChecked();
+    expect(screen.queryByLabelText("Attendance Confirmation details")).not.toBeInTheDocument();
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete selected" }));
+
+    expect(screen.queryByText("Attendance Confirmation")).not.toBeInTheDocument();
+    expect(screen.queryByText("Event Update: Summer Championship")).not.toBeInTheDocument();
+    expect(screen.getByText("3 Messages")).toBeInTheDocument();
+    expect(screen.getByText("1 Event Notification")).toBeInTheDocument();
+    expect(screen.queryByText("2 selected")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete selected" })).not.toBeInTheDocument();
+  });
+
+  it("logs out from the manager home page icon button", () => {
+    renderLoggedInApp("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "Log Out" }));
+
+    expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
+  });
+
+  it("opens the manager landing launcher with the approved icon order", () => {
+    renderLoggedInApp("/manager");
+
+    const managerControls = screen.getByLabelText("Manager page controls");
+    const profileButton = within(managerControls).getByRole("button", { name: "Profile Settings" });
+    const homeLink = within(managerControls).getByRole("link", { name: "Home" });
+    expect(profileButton.compareDocumentPosition(homeLink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(profileButton).toHaveTextContent("");
+    expect(profileButton.querySelector("img.manager-profile-settings-icon")).toHaveAttribute("src", expect.stringContaining("ManagerProfileSettings.png"));
+    expect(homeLink).toHaveAttribute("href", "/");
+    expect(homeLink).toHaveTextContent("");
+    expect(homeLink.querySelector("img.manager-launcher-home-icon")).toHaveAttribute("src", expect.stringContaining("ManagerHome.webp"));
+    const managerTitle = screen.getByRole("heading", { name: "Manager's Page" });
+    expect(managerTitle.querySelector("img.manager-launcher-title-icon")).toHaveAttribute("src", expect.stringContaining("ManagerPage.webp"));
+    const launcherLogoutButton = screen.getByRole("button", { name: "Log Out" });
+    expect(launcherLogoutButton).toHaveTextContent("");
+    expect(launcherLogoutButton.querySelector("img.manager-launcher-logout-icon")).toHaveAttribute("src", expect.stringContaining("ManagerLogoutProfessional.png"));
+    expect(screen.queryByText("Tools and settings are organized below so you can jump into each manager page quickly.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Use the icons to open messages, students, classes, scheduling, events, merchandise, and future reports.")).not.toBeInTheDocument();
+
+    const launcher = screen.getByLabelText("Manager app launcher");
+    const launcherLinks = within(launcher).getAllByRole("link");
+
+    expect(launcherLinks.map((link) => link.textContent?.trim())).toEqual([
+      "Dashboard",
+      "Messages",
+      "Students",
+      "Classes",
+      "Events",
+      "Scheduling",
+      "Merchandise",
+      "Reports"
+    ]);
+    expect(launcherLinks.map((link) => link.getAttribute("href"))).toEqual([
+      "/dashboard",
+      "/messages",
+      "/students",
+      "/classes",
+      "/events",
+      "/schedule",
+      "/merchandise",
+      "/reports"
+    ]);
+    const launcherImages = launcher.querySelectorAll("img.manager-launcher-image");
+    expect(launcherImages).toHaveLength(8);
+    launcherImages.forEach((image) => {
+      expect(image).toHaveAttribute("src", expect.stringContaining(".webp"));
+      expect(image).not.toHaveAttribute("width");
+      expect(image).not.toHaveAttribute("height");
+      expect(image).toHaveAttribute("draggable", "false");
+      expect(image.parentElement).toHaveClass("manager-launcher-graphic");
+    });
+
+    const studentsIcon = within(launcher).getByRole("link", { name: "Students" }).querySelector("img.manager-students-emblem");
+    expect(studentsIcon).not.toBeNull();
+    expect(studentsIcon).toHaveAttribute("src", expect.stringContaining("Students.webp"));
+    expect(screen.queryByLabelText("Live studio calendar")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Awakening Dojo" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager navigation")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager quick actions")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Student Management & Communication" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Quick Stats" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the Manager's Page Messages route focused on message tools", () => {
+    renderLoggedInApp("/messages");
+
+    expect(screen.getByRole("heading", { name: "Message Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Messenger Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Follow-Up Automation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Marketing Tool" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Text Log" })).toBeInTheDocument();
+    const homeMessengerLink = screen.getByRole("link", { name: "Open Home Page Messages" });
+    expect(homeMessengerLink).toHaveAttribute("href", "/");
+    expect(screen.queryByLabelText("Direct message center")).not.toBeInTheDocument();
+
+    fireEvent.click(homeMessengerLink);
+
+    expect(screen.getByRole("heading", { name: "Home Page" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Messages and event notifications")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Direct message center")).not.toBeInTheDocument();
+  });
+
+  it("opens the month calendar from the Dashboard icon destination", () => {
+    renderLoggedInApp("/dashboard");
+
+    expect(screen.getByLabelText("Manager workspace")).toHaveClass("manager-full-page-shell");
+    expect(screen.getByRole("link", { name: "Back to Manager Page" })).toHaveAttribute("href", "/manager");
+    expect(screen.getByRole("img", { name: "Cho's Martial Arts" })).toBeInTheDocument();
+    const dashboardLogoutButton = screen.getByRole("button", { name: "Log Out" });
+    expect(dashboardLogoutButton).toHaveTextContent("");
+    expect(dashboardLogoutButton.querySelector("img.manager-logout-icon")).toHaveAttribute("src", expect.stringContaining("ManagerLogoutProfessional.png"));
+    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager app launcher")).not.toBeInTheDocument();
+    const liveCalendar = screen.getByLabelText("Live studio calendar");
+    const calendarViewControls = within(liveCalendar).getByRole("group", { name: "Calendar view" });
+    expect(within(calendarViewControls).getByRole("button", { name: "Month" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(liveCalendar).getByRole("grid", { name: /Cho's studio calendar/i })).toHaveClass("manager-calendar-grid--month");
+    expect(within(liveCalendar).getByRole("link", { name: "Manage Schedule" })).toHaveAttribute("href", "/schedule");
+  });
+
+  it("keeps the manager launcher frame even when a saved account is student mode", () => {
+    renderLoggedInApp("/manager", "student");
+
+    expect(screen.getByLabelText("Manager app launcher")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager navigation")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Cho's Operations home")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Operations navigation")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Cho's Operations" })).not.toBeInTheDocument();
+  });
+
+  it("lets the manager edit their own profile settings", () => {
+    renderLoggedInApp("/manager");
+
+    fireEvent.click(screen.getByRole("button", { name: "Profile Settings" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Manager profile settings" });
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Master Cho" } });
+    fireEvent.change(within(dialog).getByLabelText("Username"), { target: { value: "master-cho" } });
+    fireEvent.change(within(dialog).getByLabelText("Email"), { target: { value: "manager@chos.test" } });
+    fireEvent.change(within(dialog).getByLabelText("Phone"), { target: { value: "(262) 555-0199" } });
+    fireEvent.change(within(dialog).getByLabelText("New Password"), { target: { value: "dojo-pass-2026" } });
+    fireEvent.change(within(dialog).getByLabelText("Confirm Password"), { target: { value: "dojo-pass-2026" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Light" }));
+    fireEvent.click(within(dialog).getByLabelText("Receive manager updates and reminders"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save Profile Settings" }));
+
+    expect(screen.queryByRole("dialog", { name: "Manager profile settings" })).not.toBeInTheDocument();
+    expect(screen.getByText("Manager profile settings saved.")).toBeInTheDocument();
+    const savedProfile = JSON.parse(window.localStorage.getItem("chos.profile.v1") || "{}");
+    expect(savedProfile).toEqual(expect.objectContaining({
+      name: "Master Cho",
+      username: "master-cho",
+      email: "manager@chos.test",
+      phone: "(262) 555-0199",
+      updates: false,
+      theme: "light",
+      passwordUpdatedAt: expect.any(String)
+    }));
+    expect(savedProfile).not.toHaveProperty("password");
+    expect(window.localStorage.getItem("chos.theme.v1")).toBe("light");
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  });
+
+  it("opens a polished future reports page from the manager launcher", () => {
+    renderLoggedInApp("/reports");
+
+    expect(screen.getByRole("link", { name: "Back to Manager Page" })).toHaveAttribute("href", "/manager");
+    expect(screen.getByRole("img", { name: "Cho's Martial Arts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log Out" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Reports" })).toBeInTheDocument();
+    expect(screen.getByText("Coming soon")).toBeInTheDocument();
   });
 
   it("lets staff add a new student and creates a welcome text log", () => {
@@ -291,7 +623,10 @@ describe("post-login operations app", () => {
   it("shows a sortable student directory instead of opening the student editor by default", () => {
     renderLoggedInApp("/students");
 
-    expect(screen.getByLabelText("Manager navigation")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Manager Page" })).toHaveAttribute("href", "/manager");
+    expect(screen.getByRole("img", { name: "Cho's Martial Arts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log Out" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager navigation")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Operations navigation")).not.toBeInTheDocument();
     const studentsHeader = screen.getByRole("heading", { name: "Students" }).closest(".operations-page-head");
     expect(studentsHeader).not.toBeNull();
@@ -342,7 +677,8 @@ describe("post-login operations app", () => {
   it("lets managers create a new student from the restored students page", () => {
     renderLoggedInApp("/students", "student");
 
-    expect(screen.getByLabelText("Manager navigation")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Manager Page" })).toHaveAttribute("href", "/manager");
+    expect(screen.queryByLabelText("Manager navigation")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Students" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Student Directory" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Student Check-In" })).not.toBeInTheDocument();
@@ -370,44 +706,19 @@ describe("post-login operations app", () => {
     expect(screen.queryByRole("dialog", { name: "Edit Mina Cho" })).not.toBeInTheDocument();
   });
 
-  it("lets staff click the red sidebar edge line to cycle expanded, compact, and hidden navigation", () => {
+  it("uses full-page manager chrome instead of a sidebar on tool pages", () => {
     renderLoggedInApp("/students");
 
-    const workspace = screen.getByLabelText("Manager workspace");
-    const sidebarDivider = screen.getByRole("button", { name: "Toggle manager sidebar" });
-
-    expect(screen.queryByRole("switch", { name: "Manager sidebar size" })).not.toBeInTheDocument();
-    expect(sidebarDivider).toHaveClass("manager-sidebar-edge-toggle");
-    expect(sidebarDivider).toHaveAttribute("aria-pressed", "false");
-    expect(workspace).not.toHaveClass("manager-dashboard--compact");
-    expect(workspace).not.toHaveClass("manager-dashboard--hidden");
-    expect(screen.getByLabelText("Manager navigation")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Operations navigation")).not.toBeInTheDocument();
-
-    fireEvent.click(sidebarDivider);
-
-    expect(sidebarDivider).toHaveAttribute("aria-pressed", "mixed");
-    expect(workspace).toHaveClass("manager-dashboard--compact");
-    expect(workspace).not.toHaveClass("manager-dashboard--hidden");
-    expect(screen.getByLabelText("Manager navigation")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Operations navigation")).not.toBeInTheDocument();
-
-    fireEvent.click(sidebarDivider);
-
-    expect(sidebarDivider).toHaveAttribute("aria-pressed", "true");
-    expect(workspace).toHaveClass("manager-dashboard--hidden");
-    expect(workspace).not.toHaveClass("manager-dashboard--compact");
-    expect(screen.getByLabelText("Manager navigation")).toBeInTheDocument();
-
-    fireEvent.click(sidebarDivider);
-
-    expect(sidebarDivider).toHaveAttribute("aria-pressed", "false");
-    expect(workspace).not.toHaveClass("manager-dashboard--compact");
-    expect(workspace).not.toHaveClass("manager-dashboard--hidden");
+    expect(screen.getByLabelText("Manager workspace")).toHaveClass("manager-full-page-shell");
+    expect(screen.getByRole("link", { name: "Back to Manager Page" })).toHaveAttribute("href", "/manager");
+    expect(screen.getByRole("img", { name: "Cho's Martial Arts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log Out" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toggle manager sidebar" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager navigation")).not.toBeInTheDocument();
   });
 
   it("lets staff create schedule items and studio events", () => {
-    renderLoggedInApp("/schedule");
+    const { unmount } = renderLoggedInApp("/schedule");
 
     fireEvent.change(screen.getByLabelText("Event title"), { target: { value: "Youth Testing Prep" } });
     fireEvent.change(screen.getByLabelText("Schedule date"), { target: { value: "2026-05-22" } });
@@ -417,7 +728,9 @@ describe("post-login operations app", () => {
     expect(screen.getByText("Youth Testing Prep")).toBeInTheDocument();
     expect(screen.getByText("2026-05-22 at 5:30 PM")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("link", { name: /Events/i }));
+    unmount();
+    renderLoggedInApp("/events");
+
     fireEvent.change(screen.getByLabelText("Event title"), { target: { value: "Black Belt Testing" } });
     fireEvent.change(screen.getByLabelText("Event date"), { target: { value: "2026-06-01" } });
     fireEvent.change(screen.getByLabelText("Event time"), { target: { value: "6:00 PM" } });
@@ -428,7 +741,7 @@ describe("post-login operations app", () => {
     expect(screen.getByText(/Testing date for eligible students/i)).toBeInTheDocument();
   });
 
-  it("lets staff make a schedule item recurring so it repeats on the dashboard calendar", () => {
+  it("lets staff make a schedule item recurring from the existing Scheduling page", () => {
     renderLoggedInApp("/schedule");
 
     fireEvent.change(screen.getByLabelText("Event title"), { target: { value: "Friday Demo Class" } });
@@ -438,17 +751,11 @@ describe("post-login operations app", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Schedule Event" }));
 
     expect(screen.getByText("Repeats weekly")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("link", { name: "Dashboard" }));
-
-    const liveCalendar = screen.getByLabelText("Live studio calendar");
-    fireEvent.click(within(liveCalendar).getByRole("button", { name: /Select Friday, May 29/i }));
-    const selectedDatePanel = within(liveCalendar).getByLabelText("Selected date events");
-    expect(within(selectedDatePanel).getByText("Friday Demo Class")).toBeInTheDocument();
-    expect(within(selectedDatePanel).getByText(/6:15 PM · Class · recurring/i)).toBeInTheDocument();
+    expect(screen.getByText("Friday Demo Class")).toBeInTheDocument();
+    expect(screen.getByText("2026-05-15 at 6:15 PM")).toBeInTheDocument();
   });
 
-  it("lets staff set a custom title color for schedule items and calendar entries", () => {
+  it("lets staff set a custom title color for schedule items", () => {
     renderLoggedInApp("/schedule");
 
     fireEvent.change(screen.getByLabelText("Event title"), { target: { value: "Blue Team Class" } });
@@ -458,13 +765,6 @@ describe("post-login operations app", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Schedule Event" }));
 
     expect(screen.getByText("Blue Team Class")).toHaveStyle({ color: "#7dd3fc" });
-
-    fireEvent.click(screen.getByRole("link", { name: "Dashboard" }));
-    const liveCalendar = screen.getByLabelText("Live studio calendar");
-    fireEvent.click(within(liveCalendar).getByRole("button", { name: /Select Friday, May 29/i }));
-    const selectedDatePanel = within(liveCalendar).getByLabelText("Selected date events");
-
-    expect(within(selectedDatePanel).getByText("Blue Team Class")).toHaveStyle({ color: "#7dd3fc" });
   });
 
   it("lets staff create a custom schedule type and reuse it from the dropdown", () => {
@@ -527,7 +827,7 @@ describe("post-login operations app", () => {
     expect(screen.getByRole("heading", { name: "Create Class" })).toBeInTheDocument();
   });
 
-  it("adds recurring classes from the Classes tab into the dashboard calendar", () => {
+  it("keeps recurring classes visible on the existing Classes page", () => {
     renderLoggedInApp("/classes");
 
     const todayWeekday = new Date().toLocaleDateString("en-US", { weekday: "long" });
@@ -538,11 +838,8 @@ describe("post-login operations app", () => {
     expect(screen.getByLabelText("Recurring")).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Create Class" }));
 
-    fireEvent.click(screen.getByRole("link", { name: "Dashboard" }));
-
-    const selectedDatePanel = within(screen.getByLabelText("Live studio calendar")).getByLabelText("Selected date events");
-    expect(within(selectedDatePanel).getByText("Tiny Tigers")).toBeInTheDocument();
-    expect(within(selectedDatePanel).getByText(/4:00 PM - 4:45 PM/)).toBeInTheDocument();
+    expect(screen.getByText("Tiny Tigers")).toBeInTheDocument();
+    expect(screen.getByText(/4:00 PM - 4:45 PM/)).toBeInTheDocument();
   });
 
   it("lets managers choose class title color and disable class calendar recurrence", () => {
@@ -559,11 +856,6 @@ describe("post-login operations app", () => {
 
     expect(screen.getByText("Drop In Clinic")).toHaveStyle({ color: "#f9a8d4" });
     expect(screen.getByText("Not recurring on calendar")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("link", { name: "Dashboard" }));
-
-    const selectedDatePanel = within(screen.getByLabelText("Live studio calendar")).getByLabelText("Selected date events");
-    expect(within(selectedDatePanel).queryByText("Drop In Clinic")).not.toBeInTheDocument();
   });
 
   it("lets students check in and see rank progress", () => {
@@ -597,45 +889,41 @@ describe("post-login operations app", () => {
     expect(screen.getAllByText(/Marketing blast/i).length).toBeGreaterThan(0);
   });
 
-  it("lets managers message users directly by clicking a name", () => {
-    renderLoggedInApp("/messages");
+  it("expands selected messages inside the single Home feed panel", () => {
+    renderLoggedInApp("/");
 
-    expect(screen.getByRole("heading", { name: "Direct Messenger" })).toBeInTheDocument();
-    const peopleList = screen.getByLabelText("Message people");
-    expect(peopleList.querySelector(".messenger-contact > span")).not.toBeInTheDocument();
-    fireEvent.click(within(peopleList).getByRole("button", { name: /Open conversation with Mina Cho/i }));
+    const attendanceRow = screen.getByRole("button", { name: /John Doe.*Attendance Confirmation/i });
+    expect(attendanceRow.closest(".manager-home-feed-item")).toHaveClass("manager-home-feed-item--message");
 
-    expect(screen.getByRole("heading", { name: "Mina Cho" })).toBeInTheDocument();
-    const conversation = screen.getByLabelText("Conversation with Mina Cho");
-    expect(conversation.querySelector(".messenger-avatar")).not.toBeInTheDocument();
-    expect(within(conversation).getByText("Green belt")).toBeInTheDocument();
+    fireEvent.click(attendanceRow);
 
-    fireEvent.change(screen.getByLabelText("Message Mina Cho"), { target: { value: "Hi Mina, please bring your sparring gloves tonight." } });
-    fireEvent.click(screen.getByRole("button", { name: "Send Message" }));
+    expect(attendanceRow).toHaveAttribute("aria-expanded", "true");
+    expect(attendanceRow.closest(".manager-home-feed-item")).toHaveClass("is-selected");
+    expect(screen.getByLabelText("Attendance Confirmation details")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Attendance Confirmation" })).toBeInTheDocument();
+    expect(screen.getAllByText("Message").length).toBeGreaterThan(0);
 
-    expect(within(conversation).getByText("Hi Mina, please bring your sparring gloves tonight.")).toBeInTheDocument();
-    expect(within(conversation).getAllByText("Cho's Manager").length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("Message Mina Cho")).toHaveValue("");
+    fireEvent.change(screen.getByLabelText("Write a reply"), { target: { value: "Thanks, confirmed." } });
+    fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+
+    expect(screen.getByText("Reply queued for the selected message.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Write a reply")).toHaveValue("");
+
+    fireEvent.click(attendanceRow);
+
+    expect(attendanceRow).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText("Attendance Confirmation details")).not.toBeInTheDocument();
   });
 
-  it("lets managers find users by staff, students, and parents before messaging", () => {
-    renderLoggedInApp("/messages");
+  it("filters messages and event notifications in the single Home feed panel", () => {
+    renderLoggedInApp("/");
 
-    fireEvent.click(screen.getByRole("button", { name: "Find User" }));
-    const finder = screen.getByRole("dialog", { name: "Find User" });
+    fireEvent.click(screen.getByRole("button", { name: "Open search messages and event notifications" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search messages and event notifications" }), { target: { value: "parent" } });
 
-    expect(within(finder).getByRole("button", { name: "Staff" })).toBeInTheDocument();
-    expect(within(finder).getByRole("button", { name: "Students" })).toBeInTheDocument();
-    expect(within(finder).getByRole("button", { name: "Parents" })).toBeInTheDocument();
-
-    fireEvent.click(within(finder).getByRole("button", { name: "Parents" }));
-    fireEvent.change(within(finder).getByLabelText("Search users"), { target: { value: "Daniel" } });
-    fireEvent.click(within(finder).getByRole("button", { name: /Open conversation with Daniel Cho/i }));
-
-    expect(screen.queryByRole("dialog", { name: "Find User" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Daniel Cho" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation with Daniel Cho")).toBeInTheDocument();
-    expect(screen.getByLabelText("Message Daniel Cho")).toBeInTheDocument();
+    const parentEvent = screen.getByRole("button", { name: /Event Team.*Upcoming Event: Parent Meeting/i });
+    expect(parentEvent.closest(".manager-home-feed-item")).toHaveClass("manager-home-feed-item--event");
+    expect(screen.queryByRole("button", { name: /John Doe.*Attendance Confirmation/i })).not.toBeInTheDocument();
   });
 
   it("lets staff add, edit, upload an image, and delete merchandise", async () => {

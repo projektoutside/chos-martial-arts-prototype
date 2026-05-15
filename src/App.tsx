@@ -35,6 +35,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { Link, NavLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { DojoInteractiveScene } from "./DojoInteractiveScene";
 import { OperationsApp } from "./OperationsApp";
+import managerLogoutIcon from "./assets/manager-icons/ManagerLogoutProfessional.png";
 import { buildDojoScenePanels } from "./dojoSceneData";
 import {
   apartCards,
@@ -57,6 +58,7 @@ import {
   testimonials
 } from "./data";
 import { useAppState } from "./state";
+import { initializeAppTheme } from "./theme";
 import type { AccountRole, AppTopic, ChildAccount, ClassEvent, Product } from "./types";
 import {
   displayDate,
@@ -205,6 +207,9 @@ function loadStudentProgress(): StudentProgressSettings {
 
 function App() {
   useAppFullscreen();
+  useEffect(() => {
+    initializeAppTheme();
+  }, []);
   const { session, accountRole } = useAppState();
   const [launchComplete, setLaunchComplete] = useState(false);
   const revealLogin = useCallback(() => undefined, []);
@@ -2101,8 +2106,8 @@ function AccountPage() {
               <button className="btn btn-red" type="submit">
                 Save Profile Settings
               </button>
-              <button className="btn btn-dark" type="button" onClick={logout}>
-                Log out
+              <button className="btn btn-dark account-logout-icon-button" type="button" aria-label="Log Out" onClick={logout}>
+                <img className="account-logout-icon" src={managerLogoutIcon} alt="" draggable="false" />
               </button>
             </div>
             </form>

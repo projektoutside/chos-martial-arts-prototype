@@ -10,6 +10,7 @@ coverage/
 /ImageSegmentationProfilePage/
 /roundhouse-frames/
 /3dmodel/
+/Icons/
 *.local
 *.log
 npm-debug.log*
