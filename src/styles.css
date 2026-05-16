@@ -1735,38 +1735,9 @@ select option { color: #111; }
   grid-column: 1;
 }
 
-.account-role-modal {
-  display: grid;
-  gap: 18px;
-  width: min(100%, 560px);
-}
-.role-choice-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-}
-.role-choice-head > svg {
-  flex: 0 0 auto;
-  color: var(--gold);
-}
-.role-choice-head h2,
-.role-choice-head p {
-  margin: 0;
-}
-.role-choice-head p:not(.eyebrow) {
-  color: var(--muted);
-  line-height: 1.55;
-}
-.role-choice-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
 @media (max-width: 760px) {
   .guardian-child-form,
-  .child-account-card,
-  .role-choice-actions {
+  .child-account-card {
     grid-template-columns: 1fr;
   }
   .child-account-card .btn {
@@ -2302,6 +2273,30 @@ select option { color: #111; }
   min-height: 100dvh;
   background: #030405;
   overflow: hidden;
+}
+
+.authenticated-app-shell {
+  position: relative;
+  min-height: 100svh;
+  min-height: 100dvh;
+  background: #030405;
+  isolation: isolate;
+}
+
+.authenticated-app-shell.is-login-transitioning::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(255, 244, 225, 0.2), transparent 34%),
+    linear-gradient(180deg, rgba(3, 4, 5, 0.96), rgba(3, 4, 5, 0.74) 42%, rgba(3, 4, 5, 0));
+  animation: loginHandoffVeil 760ms cubic-bezier(0.16, 0.9, 0.14, 1) both;
+}
+
+.authenticated-app-shell.is-login-transitioning .manager-shell {
+  animation: authenticatedAppFadeIn 680ms cubic-bezier(0.16, 0.9, 0.14, 1) both;
 }
 
 .auth-logo {
@@ -3016,6 +3011,36 @@ select option { color: #111; }
   }
 }
 
+@keyframes authenticatedAppFadeIn {
+  0% {
+    opacity: 0;
+    filter: blur(5px) brightness(0.82);
+    transform: translateY(12px) scale(0.992);
+  }
+  58% {
+    opacity: 1;
+    filter: blur(0) brightness(1.04);
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0) brightness(1);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes loginHandoffVeil {
+  0% {
+    opacity: 1;
+  }
+  48% {
+    opacity: 0.58;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @keyframes loginControlsHandoff {
   from {
     opacity: 0;
@@ -3072,11 +3097,16 @@ select option { color: #111; }
   .launch-letter-sparks,
   .launch-fighter-frame,
   .auth-logo,
+  .authenticated-app-shell.is-login-transitioning .manager-shell,
+  .authenticated-app-shell.is-login-transitioning::before,
   .login-landing,
   .login-portrait-stage,
   .login-character-stage {
     animation: none;
     transition: none;
+  }
+  .authenticated-app-shell.is-login-transitioning::before {
+    display: none;
   }
   .login-landing.is-handoff .login-portrait-stage {
     opacity: var(--login-portrait-opacity);

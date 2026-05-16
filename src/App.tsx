@@ -212,14 +212,27 @@ function App() {
   useEffect(() => {
     initializeAppTheme();
   }, []);
-  const { session, accountRole } = useAppState();
+  const { session } = useAppState();
   const [launchComplete, setLaunchComplete] = useState(false);
+  const loginGateState = getLoginGateState(session);
+  const previousLoginGateStateRef = useRef(loginGateState);
+  const loginJustCompleted = previousLoginGateStateRef.current === "login" && loginGateState !== "login";
+  const [loginTransitionActive, setLoginTransitionActive] = useState(false);
   const revealLogin = useCallback(() => undefined, []);
   const completeLaunch = useCallback(() => {
     setLaunchComplete(true);
   }, []);
 
-  if (getLoginGateState(session) === "login") {
+  useEffect(() => {
+    previousLoginGateStateRef.current = loginGateState;
+    if (!loginJustCompleted) return;
+
+    setLoginTransitionActive(true);
+    const timer = window.setTimeout(() => setLoginTransitionActive(false), 760);
+    return () => window.clearTimeout(timer);
+  }, [loginGateState, loginJustCompleted]);
+
+  if (loginGateState === "login") {
     return (
       <>
         <div className="auth-gate" data-testid="auth-gate">
@@ -234,8 +247,9 @@ function App() {
 
   return (
     <>
-      <OperationsApp />
-      {session && !accountRole && <AccountRolePrompt />}
+      <div className={`authenticated-app-shell${loginJustCompleted || loginTransitionActive ? " is-login-transitioning" : ""}`} data-testid="authenticated-app-shell">
+        <OperationsApp />
+      </div>
       <ToastViewport />
     </>
   );
@@ -514,12 +528,10 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
     }
     if (isPrototypeManagerLogin(loginForm)) {
       login(prototypeManagerLogin.email, true, prototypeManagerLogin.role);
-      showToast("Signed in to Cho's manager prototype.");
       navigate("/");
       return;
     }
-    login(loginForm.username, true);
-    showToast("Signed in to Cho's prototype.");
+    login(loginForm.username, true, "staff");
     navigate("/");
   };
 
@@ -532,15 +544,13 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
       return;
     }
     register(registerForm.email);
-    login(registerForm.email, true);
-    showToast("Prototype account created.");
+    login(registerForm.email, true, "staff");
     navigate("/");
   };
 
   const guest = () => {
     const guestSession = createGuestSession();
-    login(guestSession.email, guestSession.remembered);
-    showToast("Signed in as guest.");
+    login(guestSession.email, guestSession.remembered, "staff");
     navigate("/");
   };
 
@@ -629,36 +639,6 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
         </ModalShell>
       )}
     </section>
-  );
-}
-
-function AccountRolePrompt() {
-  const { setAccountRole, showToast } = useAppState();
-
-  const chooseRole = (role: AccountRole) => {
-    setAccountRole(role);
-    showToast(role === "staff" ? "Cho's staff mode enabled." : "Student mode enabled.");
-  };
-
-  return (
-    <ModalShell label="Account type" onClose={() => chooseRole("student")} panelClass="modal-card account-role-modal">
-      <div className="role-choice-head">
-        <ShieldCheck size={34} />
-        <div>
-          <p className="eyebrow">Account Setup</p>
-          <h2>Choose how you will use Cho&apos;s</h2>
-          <p>Choose Cho&apos;s Staff to manage students, scheduling, messages, events, and merchandise. Choose Student / Family for check-ins, rank progress, events, and gear.</p>
-        </div>
-      </div>
-      <div className="role-choice-actions">
-        <button className="btn btn-red" type="button" onClick={() => chooseRole("staff")}>
-          Cho&apos;s Staff
-        </button>
-        <button className="btn btn-dark" type="button" onClick={() => chooseRole("student")}>
-          Student / Family
-        </button>
-      </div>
-    </ModalShell>
   );
 }
 

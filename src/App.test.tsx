@@ -90,15 +90,17 @@ describe("login landing", () => {
     expect(portrait?.parentElement).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("signs the prototype manager credential directly into staff mode", async () => {
-    renderLoggedOutApp("/");
+  it("signs the prototype manager credential directly into staff mode without post-login popups", async () => {
+    const { container } = renderLoggedOutApp("/");
 
     fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "Manager123" } });
     fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "123456" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
+    expect(container.querySelector(".authenticated-app-shell")).toHaveClass("is-login-transitioning");
     expect(await screen.findByRole("heading", { name: "Profile" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Account type" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Signed in to Cho's manager prototype.")).not.toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toMatchObject({ email: "manager123@chos.prototype", remembered: true });
     expect(JSON.parse(window.localStorage.getItem("chos.accountRoles.v1") ?? "[]")).toContainEqual({ email: "manager123@chos.prototype", role: "staff" });
   });
@@ -173,14 +175,16 @@ describe("app fullscreen behavior", () => {
     expect(requestFullscreen).not.toHaveBeenCalled();
   });
 
-  it("asks new guest users whether they are staff or a student", async () => {
-    renderLoggedOutApp("/");
+  it("signs guest users into the app without post-login popups", async () => {
+    const { container } = renderLoggedOutApp("/");
 
     fireEvent.click(screen.getByRole("button", { name: "Sign in as Guest" }));
 
-    expect(await screen.findByRole("dialog", { name: "Account type" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cho's Staff" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Student / Family" })).toBeInTheDocument();
+    expect(container.querySelector(".authenticated-app-shell")).toHaveClass("is-login-transitioning");
+    expect(await screen.findByRole("heading", { name: "Profile" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Account type" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Signed in as guest.")).not.toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("chos.accountRoles.v1") ?? "[]")).toContainEqual({ email: "guest@chos.prototype", role: "staff" });
   });
 });
 
