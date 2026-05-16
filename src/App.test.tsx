@@ -50,8 +50,8 @@ function stubResizeObserver(height = 360) {
 }
 
 function renderLoggedInApp(path = "/", role: "staff" | "student" = "staff") {
-  window.localStorage.setItem("chos.session.v1", JSON.stringify({ email: "team@chos.prototype", remembered: true, createdAt: "2026-05-10T00:00:00.000Z" }));
-  window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "team@chos.prototype", role }]));
+  window.localStorage.setItem("chos.session.v1", JSON.stringify({ email: "manager123@chos.prototype", remembered: true, createdAt: "2026-05-10T00:00:00.000Z" }));
+  window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "manager123@chos.prototype", role }]));
 
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -103,6 +103,30 @@ describe("login landing", () => {
     expect(screen.queryByText("Signed in to Cho's manager prototype.")).not.toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toMatchObject({ email: "manager123@chos.prototype", remembered: true });
     expect(JSON.parse(window.localStorage.getItem("chos.accountRoles.v1") ?? "[]")).toContainEqual({ email: "manager123@chos.prototype", role: "staff" });
+  });
+
+  it("returns refreshed guest sessions to the opening login animation", () => {
+    window.localStorage.setItem("chos.session.v1", JSON.stringify({ email: "guest@chos.prototype", remembered: false, createdAt: "2026-05-16T00:00:00.000Z" }));
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "guest@chos.prototype", role: "staff" }]));
+
+    const { container } = renderLoggedOutApp("/");
+
+    expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
+    expect(container.querySelector(".launch-loader")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Profile" })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
+  });
+
+  it("keeps a refreshed Manager123 session on the Profile page", () => {
+    window.localStorage.setItem("chos.session.v1", JSON.stringify({ email: "manager123@chos.prototype", remembered: true, createdAt: "2026-05-16T00:00:00.000Z" }));
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "manager123@chos.prototype", role: "staff" }]));
+
+    renderLoggedOutApp("/");
+
+    expect(screen.queryByTestId("auth-gate")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Profile" })).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toMatchObject({ email: "manager123@chos.prototype", remembered: true });
   });
 
   it("keeps the portrait available on the reduced-motion login screen", () => {

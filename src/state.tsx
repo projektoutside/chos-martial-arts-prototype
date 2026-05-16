@@ -20,7 +20,7 @@ import type {
   StudentRecord,
   StudioEvent
 } from "./types";
-import { applyCoupon, calculateTotals, createOrder } from "./utils";
+import { applyCoupon, calculateTotals, createOrder, prototypeManagerLogin } from "./utils";
 
 const keys = {
   cart: "chos.cart.v1",
@@ -285,6 +285,15 @@ function writeStorage<T>(key: string, value: T) {
   }
 }
 
+function removeStorage(key: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Storage can fail in private browsing or blocked-storage contexts.
+  }
+}
+
 function useStoredState<T>(key: string, fallback: T) {
   const [value, setValue] = useState<T>(() => readStorage<T>(key, fallback));
   const update = useCallback(
@@ -297,6 +306,30 @@ function useStoredState<T>(key: string, fallback: T) {
     },
     [key]
   );
+  return [value, update] as const;
+}
+
+function readPrototypeSession() {
+  const session = readStorage<AccountSession | undefined>(keys.session, undefined);
+  if (!session?.email) return undefined;
+  if (session.email.toLowerCase() === prototypeManagerLogin.email.toLowerCase()) return session;
+  removeStorage(keys.session);
+  return undefined;
+}
+
+function useSessionState() {
+  const [value, setValue] = useState<AccountSession | undefined>(() => readPrototypeSession());
+  const update = useCallback((next: AccountSession | undefined | ((previous: AccountSession | undefined) => AccountSession | undefined)) => {
+    setValue((previous) => {
+      const resolved = typeof next === "function" ? (next as (previous: AccountSession | undefined) => AccountSession | undefined)(previous) : next;
+      if (resolved) {
+        writeStorage(keys.session, resolved);
+      } else {
+        removeStorage(keys.session);
+      }
+      return resolved;
+    });
+  }, []);
   return [value, update] as const;
 }
 
@@ -373,7 +406,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [orders, setOrders] = useStoredState<Order[]>(keys.orders, []);
   const [bookings, setBookings] = useStoredState<BookingDetails[]>(keys.bookings, []);
   const [contacts, setContacts] = useStoredState<ContactSubmission[]>(keys.contacts, []);
-  const [session, setSession] = useStoredState<AccountSession | undefined>(keys.session, undefined);
+  const [session, setSession] = useSessionState();
   const [accounts, setAccounts] = useStoredState<AccountRecord[]>(keys.accounts, []);
   const [accountRoles, setAccountRoles] = useStoredState<AccountRoleRecord[]>(keys.accountRoles, []);
   const [childAccounts, setChildAccounts] = useStoredState<ChildAccount[]>(keys.childAccounts, []);
