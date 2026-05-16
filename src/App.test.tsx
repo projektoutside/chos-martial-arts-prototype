@@ -90,6 +90,19 @@ describe("login landing", () => {
     expect(portrait?.parentElement).toHaveAttribute("aria-hidden", "true");
   });
 
+  it("signs the prototype manager credential directly into staff mode", async () => {
+    renderLoggedOutApp("/");
+
+    fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "Manager123" } });
+    fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    expect(await screen.findByRole("heading", { name: "Profile" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Account type" })).not.toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toMatchObject({ email: "manager123@chos.prototype", remembered: true });
+    expect(JSON.parse(window.localStorage.getItem("chos.accountRoles.v1") ?? "[]")).toContainEqual({ email: "manager123@chos.prototype", role: "staff" });
+  });
+
   it("keeps the portrait available on the reduced-motion login screen", () => {
     stubMatchMedia(true);
     const { container } = renderLoggedOutApp("/");
@@ -183,21 +196,27 @@ describe("post-login operations app", () => {
   it("opens the manager home page first after login", () => {
     renderLoggedInApp("/");
 
-    expect(screen.getByRole("heading", { name: "Home Page" })).toBeInTheDocument();
-    const managerPageLink = screen.getByRole("link", { name: "Manager's Page" });
-    expect(managerPageLink).toHaveAttribute("href", "/manager");
-    expect(managerPageLink.querySelector("img.manager-page-entry-icon")).toHaveAttribute("src", expect.stringContaining("ManagerPage.webp"));
-    const managerPageIconButton = screen.getByRole("button", { name: "Open Manager's Page" });
-    expect(managerPageIconButton.querySelector("img.manager-home-manager-icon")).toHaveAttribute("src", expect.stringContaining("ManagerPage.webp"));
-    const logoutButton = screen.getByRole("button", { name: "Log Out" });
-    expect(logoutButton).toHaveTextContent("");
-    expect(logoutButton.querySelector("img.manager-home-logout-icon")).toHaveAttribute("src", expect.stringContaining("ManagerLogoutProfessional.png"));
+    expect(screen.getByRole("heading", { name: "Profile" })).toBeInTheDocument();
+    const profileTitleHeader = screen.getByLabelText("Profile page header");
+    expect(profileTitleHeader.querySelector(".manager-home-profile-title-frame")).toBeInTheDocument();
+    expect(profileTitleHeader.querySelectorAll("svg.manager-home-title-rule-art")).toHaveLength(2);
+    expect(profileTitleHeader.querySelector(".manager-home-title-ornament")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Manager's Page" })).not.toBeInTheDocument();
+    const managerPanelLink = within(profileTitleHeader).getByRole("link", { name: "Manager's Panel" });
+    expect(managerPanelLink).toHaveAttribute("href", "/manager");
+    expect(managerPanelLink.querySelector("img.manager-home-panel-icon")).toHaveAttribute("src", expect.stringContaining("ManagerPage.webp"));
+    expect(within(managerPanelLink).getByText("Manager's Panel")).toBeInTheDocument();
+    const homeLogoutButton = within(profileTitleHeader).getByRole("button", { name: "Log Out" });
+    expect(homeLogoutButton.querySelector("img.manager-home-logout-icon")).toHaveAttribute("src", expect.stringContaining("ManagerLogoutProfessional.png"));
+    expect(within(homeLogoutButton).getByText("Log Out")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Notifications" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open Manager's Page" })).not.toBeInTheDocument();
     const homeOverview = screen.getByLabelText("Manager home overview");
     const profileOverview = within(homeOverview).getByLabelText("Manager profile overview");
     const weeklySchedule = within(homeOverview).getByLabelText("Weekly manager schedule");
     expect(profileOverview.compareDocumentPosition(weeklySchedule) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(weeklySchedule.compareDocumentPosition(screen.getByLabelText("Messages and event notifications")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(profileOverview).getByRole("img", { name: "Cho's Manager profile portrait" })).toHaveAttribute("src", expect.stringContaining("ManagerWolfProfile"));
+    expect(within(profileOverview).getByRole("img", { name: "Cho's Manager profile portrait" })).toHaveAttribute("src", expect.stringContaining("assets/CheetahProfilePic/Cheetah.png"));
     expect(within(profileOverview).getByRole("heading", { name: "Cho's Manager" })).toBeInTheDocument();
     expect(within(profileOverview).getByText("Head Coach & Manager")).toBeInTheDocument();
     expect(within(profileOverview).getByText("Team: Summer Champions")).toBeInTheDocument();
@@ -270,6 +289,23 @@ describe("post-login operations app", () => {
     expect(screen.queryByLabelText("Manager app launcher")).not.toBeInTheDocument();
   });
 
+  it("opens the manager panel from the manager home icon button", () => {
+    renderLoggedInApp("/");
+
+    fireEvent.click(screen.getByRole("link", { name: "Manager's Panel" }));
+
+    expect(screen.getByLabelText("Manager app launcher")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Manager's Page" })).toBeInTheDocument();
+  });
+
+  it("logs out from the manager home icon button", () => {
+    renderLoggedInApp("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "Log Out" }));
+
+    expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
+  });
+
   it("collapses, expands, and drag-adjusts the manager overview from the Home handle", () => {
     stubResizeObserver(360);
     renderLoggedInApp("/");
@@ -308,7 +344,7 @@ describe("post-login operations app", () => {
     const profileImage = within(profileOverview).getByRole("img", { name: "Cho's Manager profile portrait" });
     const photoUpload = within(profileOverview).getByLabelText("Upload manager profile picture") as HTMLInputElement;
 
-    expect(profileImage).toHaveAttribute("src", expect.stringContaining("ManagerWolfProfile"));
+    expect(profileImage).toHaveAttribute("src", expect.stringContaining("assets/CheetahProfilePic/Cheetah.png"));
     expect(photoUpload).toHaveAttribute("type", "file");
     expect(photoUpload.closest(".manager-home-profile-frame")).toBeInTheDocument();
 
@@ -340,7 +376,7 @@ describe("post-login operations app", () => {
     expect(await screen.findByRole("dialog", { name: "Manager profile settings" })).toBeInTheDocument();
   });
 
-  it("toggles light and dark mode from the Home profile card", () => {
+  it("toggles light and dark mode from the Home profile card without a toast", () => {
     renderLoggedInApp("/");
 
     const profileOverview = within(screen.getByLabelText("Manager home overview")).getByLabelText("Manager profile overview");
@@ -355,7 +391,8 @@ describe("post-login operations app", () => {
     expect(window.localStorage.getItem("chos.theme.v1")).toBe("light");
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
     expect(within(profileOverview).getByRole("switch", { name: "Switch to dark mode" })).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText("Light mode enabled.")).toBeInTheDocument();
+    expect(screen.queryByText("Light mode enabled.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dark mode enabled.")).not.toBeInTheDocument();
   });
 
   it("keeps the Home weekly agenda rows compact on busy recurring class days", () => {
@@ -401,8 +438,8 @@ describe("post-login operations app", () => {
     expect(screen.queryByRole("button", { name: "Delete selected" })).not.toBeInTheDocument();
   });
 
-  it("logs out from the manager home page icon button", () => {
-    renderLoggedInApp("/");
+  it("logs out from the manager launcher icon button", () => {
+    renderLoggedInApp("/manager");
 
     fireEvent.click(screen.getByRole("button", { name: "Log Out" }));
 
@@ -487,7 +524,7 @@ describe("post-login operations app", () => {
 
     fireEvent.click(homeMessengerLink);
 
-    expect(screen.getByRole("heading", { name: "Home Page" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Profile" })).toBeInTheDocument();
     expect(screen.getByLabelText("Messages and event notifications")).toBeInTheDocument();
     expect(screen.queryByLabelText("Direct message center")).not.toBeInTheDocument();
   });
@@ -915,15 +952,42 @@ describe("post-login operations app", () => {
     expect(screen.queryByLabelText("Attendance Confirmation details")).not.toBeInTheDocument();
   });
 
+  it("marks Home feed messages and event notifications as read when opened", () => {
+    renderLoggedInApp("/");
+
+    const summerEventRow = screen.getByRole("button", { name: /System Admin.*Event Update: Summer Championship/i });
+    const summerEventItem = summerEventRow.closest(".manager-home-feed-item") as HTMLElement;
+
+    expect(summerEventItem).toHaveClass("is-unread");
+    expect(within(summerEventItem).getByText("Unread")).toBeInTheDocument();
+
+    fireEvent.click(summerEventRow);
+
+    expect(summerEventRow).toHaveAttribute("aria-expanded", "true");
+    expect(summerEventItem).toHaveClass("is-read");
+    expect(summerEventItem).not.toHaveClass("is-unread");
+    expect(within(summerEventItem).getByText("Read")).toBeInTheDocument();
+  });
+
   it("filters messages and event notifications in the single Home feed panel", () => {
     renderLoggedInApp("/");
 
     fireEvent.click(screen.getByRole("button", { name: "Open search messages and event notifications" }));
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search messages and event notifications" }), { target: { value: "parent" } });
+    const feedSearch = screen.getByRole("searchbox", { name: "Search messages and event notifications" });
+    fireEvent.change(feedSearch, { target: { value: "parent" } });
 
     const parentEvent = screen.getByRole("button", { name: /Event Team.*Upcoming Event: Parent Meeting/i });
     expect(parentEvent.closest(".manager-home-feed-item")).toHaveClass("manager-home-feed-item--event");
     expect(screen.queryByRole("button", { name: /John Doe.*Attendance Confirmation/i })).not.toBeInTheDocument();
+
+    fireEvent.change(feedSearch, { target: { value: "zzzz" } });
+
+    expect(screen.getByText("No messages or event notifications match your search.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close search messages and event notifications" }));
+
+    expect(screen.queryByRole("searchbox", { name: "Search messages and event notifications" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /John Doe.*Attendance Confirmation/i })).toBeInTheDocument();
   });
 
   it("lets staff add, edit, upload an image, and delete merchandise", async () => {

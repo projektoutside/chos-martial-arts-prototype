@@ -70,8 +70,10 @@ import {
   getInitialLaunchPhase,
   getLoginGateState,
   groupEventsByDate,
+  isPrototypeManagerLogin,
   makeContactSubmission,
   monthKey,
+  prototypeManagerLogin,
   searchSite,
   todayIso,
   validateCheckoutForm,
@@ -508,6 +510,12 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
       showToast("Enter a username and password.");
+      return;
+    }
+    if (isPrototypeManagerLogin(loginForm)) {
+      login(prototypeManagerLogin.email, true, prototypeManagerLogin.role);
+      showToast("Signed in to Cho's manager prototype.");
+      navigate("/");
       return;
     }
     login(loginForm.username, true);

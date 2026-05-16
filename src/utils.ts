@@ -187,6 +187,17 @@ export function validateLoginForm(input: { username: string; password: string })
   return errors;
 }
 
+export const prototypeManagerLogin = {
+  username: "Manager123",
+  password: "123456",
+  email: "manager123@chos.prototype",
+  role: "staff"
+} as const;
+
+export function isPrototypeManagerLogin(input: { username: string; password: string }) {
+  return input.username.trim().toLowerCase() === prototypeManagerLogin.username.toLowerCase() && input.password.trim() === prototypeManagerLogin.password;
+}
+
 export function validateRegisterForm(input: { email: string; password: string }) {
   const errors: Record<string, string> = {};
   if (!validateEmail(input.email)) errors.email = "Valid email is required.";

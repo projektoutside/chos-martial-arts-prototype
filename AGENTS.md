@@ -30,6 +30,7 @@
 
 - Do not remove or degrade the login intro animation and login page.
 - The post-login experience should stay focused on practical Cho's business workflows: manager home, manager launcher, scheduling, marketing/messages, sign-ins/check-ins, events, students, classes, merchandise, and reports.
+- The `/` manager home route is currently presented as the Profile surface. Keep the compact PROFILE header, Manager's Panel/Log Out actions, locked page shell, and internally scrolling message feed unless the user explicitly asks to rework that structure.
 - Favor phone-app-style icon launchers and direct workflow pages over long scrolling dashboards when redesigning authenticated surfaces.
 - Keep the UI polished, responsive, accessible, and usable on mobile-sized screens.
 - Use real app behavior and testable controls; avoid marketing-only screens when the user asks for an app feature.
@@ -47,6 +48,7 @@
 - Respect GitHub Pages project-subpath hosting. Use React Router links and existing `import.meta.env.BASE_URL` patterns.
 - Use imported `src/assets` files for bundled UI assets and `public/` for public runtime assets.
 - Do not hardcode root-relative asset paths that break under `/chos-martial-arts-prototype/`.
+- The default manager profile portrait is `public/assets/CheetahProfilePic/Cheetah.png`; reference it through the existing `publicAsset()` helper so local and GitHub Pages paths both work.
 - Do not make runtime code depend on ignored or local-only folders. If an asset is required by the app, ensure it is tracked or moved into an appropriate tracked asset location.
 - Keep `dist/`, logs, `node_modules/`, scratch/reference folders, and export artifacts out of commits.
 

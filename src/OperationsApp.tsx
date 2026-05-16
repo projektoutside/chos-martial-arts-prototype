@@ -2,8 +2,6 @@ import {
   Archive,
   Award,
   BarChart3,
-  BatteryFull,
-  Bell,
   Camera,
   CalendarDays,
   CheckCircle2,
@@ -21,12 +19,10 @@ import {
   ShoppingCart,
   Search,
   Send,
-  Signal,
   Sun,
   Target,
   Trash2,
   Users,
-  Wifi,
   X
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
@@ -38,7 +34,6 @@ import managerHomeIcon from "./assets/manager-icons/ManagerHome.webp";
 import managerLogoutIcon from "./assets/manager-icons/ManagerLogoutProfessional.png";
 import managerPageIcon from "./assets/manager-icons/ManagerPage.webp";
 import managerProfileSettingsIcon from "./assets/manager-icons/ManagerProfileSettings.png";
-import managerWolfProfileImage from "./assets/manager-icons/ManagerWolfProfile.jpg";
 import merchandiseLauncherIcon from "./assets/manager-icons/Merchandise.webp";
 import messagesLauncherIcon from "./assets/manager-icons/Messages.webp";
 import reportsLauncherIcon from "./assets/manager-icons/Reports.webp";
@@ -677,6 +672,7 @@ const managerHomeThreads: ManagerHomeThread[] = [
 
 const HOME_OVERVIEW_DRAG_THRESHOLD = 6;
 const HOME_OVERVIEW_KEYBOARD_STEP = 0.12;
+const HOME_OVERVIEW_STAGE_VISUAL_BUFFER = 6;
 
 function clampHomeOverviewProgress(value: number) {
   return Math.min(1, Math.max(0, value));
@@ -789,9 +785,23 @@ function buildHomeAgendaItems(weekDays: Date[], scheduledClasses: ScheduledClass
     .sort(compareHomeAgendaItems);
 }
 
+function ProfileTitleRule({ variant }: { variant: "top" | "bottom" }) {
+  return (
+    <svg className={`manager-home-title-rule-art manager-home-title-rule-art--${variant}`} viewBox="0 0 360 54" aria-hidden="true" focusable="false">
+      <path className="manager-home-title-rule-main" d="M2 27 H154" />
+      <path className="manager-home-title-rule-main" d="M206 27 H358" />
+      <path className="manager-home-title-rule-flourish" d="M154 27 C164 27 170 21 176 21 C179 21 180 25 180 27 C180 25 181 21 184 21 C190 21 196 27 206 27" />
+      <path className="manager-home-title-rule-flourish" d="M164 30 C171 34 176 33 180 27 C184 33 189 34 196 30" />
+      <path className="manager-home-title-rule-accent" d="M180 16 L188 27 L180 38 L172 27 Z" />
+      <circle className="manager-home-title-rule-dot" cx="145" cy="27" r="1.45" />
+      <circle className="manager-home-title-rule-dot" cx="215" cy="27" r="1.45" />
+      <circle className="manager-home-title-rule-dot" cx="180" cy="27" r="1.2" />
+    </svg>
+  );
+}
+
 function ManagerHomePage() {
   const { logout, scheduledClasses, session, showToast, studioClasses, studioEvents, students } = useAppState();
-  const navigate = useNavigate();
   const today = useLiveCalendarDate();
   const [managerProfile, setManagerProfile] = useState(() => readManagerProfile(session?.email));
   const activeStudentCount = students.filter((student) => (student.status ?? "Active").toLowerCase() === "active").length;
@@ -869,24 +879,29 @@ function ManagerHomePage() {
     const node = overviewContentRef.current;
     if (!node) return;
 
-    const updateOverviewHeight = () => {
-      const measuredHeight = node.getBoundingClientRect().height || node.scrollHeight || node.offsetHeight;
-      setOverviewHeight(measuredHeight);
+    const updateOverviewHeight = (entry?: ResizeObserverEntry) => {
+      const borderBoxHeight = entry?.borderBoxSize?.[0]?.blockSize ?? 0;
+      const measuredHeight =
+        node.getBoundingClientRect().height ||
+        borderBoxHeight ||
+        node.offsetHeight ||
+        node.scrollHeight ||
+        entry?.contentRect.height ||
+        0;
+      setOverviewHeight(Math.ceil(measuredHeight + HOME_OVERVIEW_STAGE_VISUAL_BUFFER));
     };
 
     updateOverviewHeight();
 
     if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateOverviewHeight);
-      return () => window.removeEventListener("resize", updateOverviewHeight);
+      const updateOverviewHeightFromWindow = () => updateOverviewHeight();
+      window.addEventListener("resize", updateOverviewHeightFromWindow);
+      return () => window.removeEventListener("resize", updateOverviewHeightFromWindow);
     }
 
-    const observer = new ResizeObserver((entries) => {
-      const measuredHeight = entries[0]?.contentRect.height || node.getBoundingClientRect().height || node.scrollHeight || node.offsetHeight;
-      setOverviewHeight(measuredHeight);
-    });
+    const observer = new ResizeObserver((entries) => updateOverviewHeight(entries[0]));
 
-    observer.observe(node);
+    observer.observe(node, { box: "border-box" });
     return () => observer.disconnect();
   }, []);
 
@@ -1023,6 +1038,13 @@ function ManagerHomePage() {
     });
   };
 
+  const openFeedThread = (threadId: string) => {
+    setSelectedThreadId((currentThreadId) => currentThreadId === threadId ? null : threadId);
+    setFeedThreads((currentThreads) =>
+      currentThreads.map((thread) => thread.id === threadId && thread.unread ? { ...thread, unread: false } : thread)
+    );
+  };
+
   const deleteSelectedFeedThreads = () => {
     if (!selectedFeedCount) return;
     const idsToDelete = selectedFeedThreadIds;
@@ -1051,7 +1073,6 @@ function ManagerHomePage() {
       return nextProfile;
     });
     writeStoredAppTheme(nextTheme);
-    showToast(`${nextTheme === "dark" ? "Dark" : "Light"} mode enabled.`);
   };
 
   const sendReply = () => {
@@ -1065,34 +1086,26 @@ function ManagerHomePage() {
 
   return (
     <section className="manager-home-page" aria-label="Manager home page">
-      <div className="manager-home-status" aria-hidden="true">
-        <span>12:45</span>
-        <span>
-          <Signal size={18} />
-          <Wifi size={18} />
-          100%
-          <BatteryFull size={18} />
-        </span>
-      </div>
-      <header className="manager-home-topbar" aria-label="Manager home controls">
-        <Link className="manager-home-back" to="/manager" aria-label="Manager's Page">
-          <ChevronLeft size={22} />
-          <img className="manager-page-entry-icon" src={managerPageIcon} alt="" draggable="false" />
-          <span>Manager&apos;s Page</span>
-        </Link>
-        <h1>Home Page</h1>
-        <div className="manager-home-actions">
-          <button className="manager-home-bell" type="button" aria-label="Notifications" onClick={() => showToast("Notifications center coming soon.")}>
-            <Bell size={22} />
-            <span />
-          </button>
-          <button className="manager-home-avatar" type="button" aria-label="Open Manager's Page" onClick={() => navigate("/manager")}>
-            <img className="manager-home-manager-icon" src={managerPageIcon} alt="" draggable="false" />
-          </button>
-          <button className="manager-home-logout" type="button" aria-label="Log Out" onClick={logout}>
-            <img className="manager-home-logout-icon" src={managerLogoutIcon} alt="" draggable="false" />
-          </button>
+      <header className="manager-home-profile-title" aria-label="Profile page header">
+        <div className="manager-home-profile-title-frame">
+          <span className="manager-home-title-rule manager-home-title-rule--top" aria-hidden="true">
+            <ProfileTitleRule variant="top" />
+          </span>
+          <h1>Profile</h1>
+          <span className="manager-home-title-rule manager-home-title-rule--bottom" aria-hidden="true">
+            <ProfileTitleRule variant="bottom" />
+          </span>
         </div>
+        <nav className="manager-home-top-actions" aria-label="Profile quick actions">
+          <Link className="manager-home-top-action manager-home-panel-link" to="/manager" aria-label="Manager's Panel">
+            <img className="manager-home-panel-icon" src={managerPageIcon} alt="" draggable="false" />
+            <span className="manager-home-top-action-label">Manager&apos;s Panel</span>
+          </Link>
+          <button className="manager-home-top-action manager-home-logout-button" type="button" aria-label="Log Out" onClick={logout}>
+            <img className="manager-home-logout-icon" src={managerLogoutIcon} alt="" draggable="false" />
+            <span className="manager-home-top-action-label">Log Out</span>
+          </button>
+        </nav>
       </header>
       <main className="manager-home-shell">
         <div
@@ -1126,8 +1139,7 @@ function ManagerHomePage() {
             <label className="manager-home-profile-frame manager-home-profile-upload">
                 <span className="sr-only">Upload manager profile picture</span>
                 <input type="file" accept="image/*" aria-label="Upload manager profile picture" onChange={changeManagerProfilePhoto} />
-                <img src={managerProfile.photoDataUrl ?? managerWolfProfileImage} alt={`${managerProfile.name} profile portrait`} draggable="false" />
-                <span className="manager-home-profile-online" aria-hidden="true" />
+                <img src={managerProfile.photoDataUrl ?? publicAsset("assets/CheetahProfilePic/Cheetah.png")} alt={`${managerProfile.name} profile portrait`} draggable="false" />
                 <span className="manager-home-profile-change-badge" aria-hidden="true">
                   <Camera size={15} />
                 </span>
@@ -1217,11 +1229,6 @@ function ManagerHomePage() {
           ref={overviewHandleRef}
           type="button"
         >
-          <span className="manager-home-overview-handle-arrows" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </span>
           <span className="manager-home-overview-handle-bar" aria-hidden="true" />
         </button>
         <section className="manager-home-feed-panel" aria-label="Messages and event notifications">
@@ -1282,31 +1289,36 @@ function ManagerHomePage() {
                   {section.threads.map((thread) => {
                     const isSelected = thread.id === selectedThreadId;
                     const isBulkSelected = selectedFeedThreadIds.has(thread.id);
+                    const isUnread = Boolean(thread.unread);
                     const kindLabel = thread.kind === "event" ? "Event Notification" : "Message";
+                    const readStatusLabel = isUnread ? "Unread" : "Read";
 
                     return (
-                      <article className={`manager-home-feed-item manager-home-feed-item--${thread.kind}${isSelected ? " is-selected" : ""}${isBulkSelected ? " is-bulk-selected" : ""}`} key={thread.id}>
+                      <article className={`manager-home-feed-item manager-home-feed-item--${thread.kind}${isUnread ? " is-unread" : " is-read"}${isSelected ? " is-selected" : ""}${isBulkSelected ? " is-bulk-selected" : ""}`} key={thread.id}>
                         <div className="manager-home-feed-row">
                           <button
                             className="manager-home-feed-button"
                             type="button"
                             aria-expanded={isSelected}
                             aria-controls={`manager-home-feed-detail-${thread.id}`}
-                            onClick={() => setSelectedThreadId((currentThreadId) => currentThreadId === thread.id ? null : thread.id)}
+                            onClick={() => openFeedThread(thread.id)}
                           >
                             <span className="manager-home-thread-avatar">
                               <img src={thread.avatar} alt="" draggable="false" />
                             </span>
-                            <span>
-                              <em>{kindLabel}</em>
+                            <span className="manager-home-feed-copy">
                               <strong>{thread.sender}</strong>
+                              <span className={`manager-home-read-status ${isUnread ? "is-unread" : "is-read"}`} aria-label={`${readStatusLabel} ${kindLabel.toLowerCase()}`}>
+                                <span aria-hidden="true" />
+                                <span>{readStatusLabel}</span>
+                              </span>
+                              <em>{kindLabel}</em>
                               <b>{thread.title}</b>
                               <small>{thread.preview}</small>
                               <time className="manager-home-inline-sent" dateTime={thread.sentDateTime} aria-label={`${thread.title} sent at ${thread.sentTime}`}>
                                 {thread.sentTime}
                               </time>
                             </span>
-                            {thread.unread && <i aria-hidden="true" />}
                           </button>
                           <label className="manager-home-feed-check">
                             <span className="sr-only">Select {thread.title}</span>

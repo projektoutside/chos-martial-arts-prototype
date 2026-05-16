@@ -241,7 +241,7 @@ interface AppState {
   placeOrder: (customer: CustomerInfo, notes: string) => Order;
   saveBooking: (booking: BookingDetails) => void;
   saveContact: (contact: ContactSubmission) => void;
-  login: (email: string, remembered: boolean) => void;
+  login: (email: string, remembered: boolean, role?: AccountRole) => void;
   loginChildAccount: (childId: string) => void;
   logout: () => void;
   register: (email: string) => void;
@@ -535,10 +535,11 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   );
 
   const login = useCallback(
-    (email: string, remembered: boolean) => {
+    (email: string, remembered: boolean, role?: AccountRole) => {
       setSession({ email, remembered, createdAt: new Date().toISOString() });
+      if (role) saveRoleForEmail(email, role);
     },
-    [setSession]
+    [saveRoleForEmail, setSession]
   );
 
   const logout = useCallback(() => setSession(undefined), [setSession]);
