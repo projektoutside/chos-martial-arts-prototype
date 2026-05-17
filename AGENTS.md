@@ -58,6 +58,7 @@
 - Keep global CSS changes scoped with existing class prefixes such as `manager-`, `operations-`, `auth-`, `dojo-`, and `student-`.
 - Avoid style-only rewrites. Change layout and styling only when it supports the requested behavior.
 - Maintain accessible labels, roles, focus states, button names, and Testing Library-friendly semantics.
+- Top-level page header titles must stay consistent with the established `PROFILE` and `MANAGER PANEL` treatment: top-left placement, shared ornamental line art, subtle line glow, title-bar height, font family, text shadow, and theme-aware color variables. Reuse `ManagerPageTitleFrame`, `.manager-page-title-bar`, and `.manager-page-title-frame` for manager/operations top page titles instead of hand-rolling separate `<h1>` styling; if a longer title needs smaller type, add a scoped modifier while preserving the same x/y alignment, title frame rhythm, and line glow.
 
 ## UI, Layout, Responsiveness, and Visual Asset Standards
 

@@ -2324,7 +2324,7 @@ select option { color: #111; }
 
 .auth-logo.is-animating {
   opacity: 0;
-  animation: authLogoJourney 4300ms cubic-bezier(0.16, 0.9, 0.14, 1) both;
+  animation: authLogoJourney 2600ms cubic-bezier(0.16, 0.9, 0.14, 1) both;
 }
 
 .auth-logo.is-settled {
@@ -2353,7 +2353,7 @@ select option { color: #111; }
     radial-gradient(circle at 50% 46%, rgba(255, 255, 255, 0.1), transparent 17%),
     radial-gradient(circle at 50% 74%, rgba(255, 255, 255, 0.05), transparent 31%),
     rgba(3, 4, 5, 0.98);
-  animation: launchBackdropHandoff 3700ms ease both;
+  animation: launchBackdropHandoff 2850ms ease both;
 }
 
 .launch-loader::before,
@@ -2554,7 +2554,7 @@ select option { color: #111; }
 .login-landing.is-handoff .login-divider {
   opacity: 0;
   transform: translateY(28px) scale(0.985);
-  animation: loginControlsHandoff 520ms cubic-bezier(0.16, 0.9, 0.14, 1) 3860ms both;
+  animation: loginControlsHandoff 380ms cubic-bezier(0.16, 0.9, 0.14, 1) 2640ms both;
 }
 
 .login-scrim {
@@ -2667,7 +2667,7 @@ select option { color: #111; }
 .login-landing.is-handoff .login-portrait-stage {
   opacity: 0;
   transform: translate3d(-50%, -44%, 0) scale(0.96);
-  animation: loginPortraitHandoff 680ms cubic-bezier(0.16, 0.9, 0.14, 1) 3860ms both;
+  animation: loginPortraitHandoff 420ms cubic-bezier(0.16, 0.9, 0.14, 1) 2640ms both;
 }
 
 .login-character-stage {
@@ -2687,7 +2687,7 @@ select option { color: #111; }
 }
 
 .login-character-stage.is-ready.is-handoff {
-  animation: loginCharacterReveal 980ms cubic-bezier(0.16, 0.9, 0.14, 1) 3000ms both;
+  animation: loginCharacterReveal 620ms cubic-bezier(0.16, 0.9, 0.14, 1) 2640ms both;
 }
 
 .login-character-stage.is-ready.is-settled {
@@ -2952,9 +2952,9 @@ select option { color: #111; }
 
 @keyframes launchFighterPresence {
   0% { opacity: 0; filter: brightness(1.04) contrast(1.06) blur(1px) drop-shadow(0 0 12px rgba(255, 255, 255, 0.38)); }
-  6%, 56% { opacity: 1; filter: brightness(1.16) contrast(1.08) blur(0) drop-shadow(0 0 16px rgba(255, 255, 255, 0.56)) drop-shadow(0 0 28px rgba(255, 255, 255, 0.24)); }
-  61.67% { opacity: 1; filter: brightness(1.65) contrast(1.08) blur(0) drop-shadow(0 0 24px rgba(255, 255, 255, 0.86)); }
-  66% { opacity: 0; filter: brightness(1.9) contrast(1) blur(3px) drop-shadow(0 0 34px rgba(255, 255, 255, 0.9)); }
+  6%, 38.5% { opacity: 1; filter: brightness(1.16) contrast(1.08) blur(0) drop-shadow(0 0 16px rgba(255, 255, 255, 0.56)) drop-shadow(0 0 28px rgba(255, 255, 255, 0.24)); }
+  40% { opacity: 1; filter: brightness(1.65) contrast(1.08) blur(0) drop-shadow(0 0 24px rgba(255, 255, 255, 0.86)); }
+  41.5% { opacity: 0; filter: brightness(1.9) contrast(1) blur(3px) drop-shadow(0 0 34px rgba(255, 255, 255, 0.9)); }
   100% { opacity: 0; }
 }
 
@@ -2966,17 +2966,17 @@ select option { color: #111; }
 }
 
 @keyframes launchLogoAura {
-  0%, 41% { opacity: 0; transform: scale(0.72); }
-  56% { opacity: 0.62; transform: scale(0.98); }
-  76% { opacity: 0.18; }
-  84%, 100% { opacity: 0; transform: scale(1.05); }
+  0%, 24.3% { opacity: 0; transform: scale(0.72); }
+  39.3% { opacity: 0.62; transform: scale(0.98); }
+  59.3% { opacity: 0.18; }
+  67.3%, 100% { opacity: 0; transform: scale(1.05); }
 }
 
 @keyframes launchLetterSparkle {
-  0%, 54% { opacity: 0; transform: translate3d(-1%, 1%, 0) scale(0.94); }
-  66% { opacity: 1; transform: translate3d(0, 0, 0) scale(1.02); }
-  81% { opacity: 0.34; transform: translate3d(1%, -1%, 0) scale(1); }
-  84%, 100% { opacity: 0; transform: translate3d(1%, -1%, 0) scale(1); }
+  0%, 37.3% { opacity: 0; transform: translate3d(-1%, 1%, 0) scale(0.94); }
+  49.3% { opacity: 1; transform: translate3d(0, 0, 0) scale(1.02); }
+  64.3% { opacity: 0.34; transform: translate3d(1%, -1%, 0) scale(1); }
+  67.3%, 100% { opacity: 0; transform: translate3d(1%, -1%, 0) scale(1); }
 }
 
 @keyframes launchBackdropHandoff {
@@ -2987,22 +2987,22 @@ select option { color: #111; }
 }
 
 @keyframes authLogoJourney {
-  0%, 41% {
+  0%, 48.5% {
     opacity: 0;
     filter: blur(7px) brightness(1.55) drop-shadow(0 0 54px rgba(255, 255, 255, 0));
     transform: translate3d(-50%, -50%, 0) scale(0.88);
   }
-  48% {
+  60% {
     opacity: 1;
     filter: blur(0) brightness(1.32) drop-shadow(0 0 42px rgba(255, 255, 255, 0.74));
     transform: translate3d(-50%, -50%, 0) scale(1.075);
   }
-  59%, 70% {
+  68%, 78% {
     opacity: 1;
     filter: blur(0) brightness(1.06) drop-shadow(0 18px 46px rgba(0, 0, 0, 0.78));
     transform: translate3d(-50%, -50%, 0) scale(1);
   }
-  88%, 100% {
+  100% {
     opacity: 1;
     filter: blur(0) brightness(1) drop-shadow(0 12px 36px rgba(0, 0, 0, 0.74));
     transform:
@@ -3690,6 +3690,16 @@ select option { color: #111; }
 
 .operations-page-head > div {
   min-width: 0;
+}
+
+.operations-page-title-copy {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.operations-page-title-frame {
+  max-width: min(100%, 520px);
 }
 
 .operations-page-head h1 {
@@ -5117,6 +5127,15 @@ select option { color: #111; }
 }
 
 .manager-shell {
+  --profile-title-bg: rgba(30, 35, 44, 0.72);
+  --profile-title-bg-deep: rgba(10, 14, 20, 0.72);
+  --profile-title-border: rgba(238, 226, 207, 0.46);
+  --profile-title-gold: #e0af6c;
+  --profile-title-gold-soft: rgba(224, 175, 108, 0.68);
+  --profile-title-line: rgba(255, 248, 236, 0.31);
+  --profile-title-line-glow: rgba(255, 232, 196, 0.32);
+  --profile-title-metal: #f4eee5;
+  --profile-title-metal-mid: #bfb6a9;
   min-height: 100vh;
   background: #050505;
   color: #111;
@@ -5142,6 +5161,22 @@ select option { color: #111; }
   --home-purple-hover-bg: rgba(204, 186, 255, 0.18);
   --home-purple-selected-start: #bda6ff;
   --home-purple-selected-end: #7657dc;
+  --profile-message-gradient: linear-gradient(90deg, rgba(24, 80, 86, 0.9) 0%, rgba(47, 183, 174, 0.76) 56%, rgba(16, 48, 60, 0.74) 100%);
+  --profile-message-gradient-read: linear-gradient(90deg, rgba(24, 80, 86, 0.42) 0%, rgba(47, 183, 174, 0.34) 56%, rgba(16, 48, 60, 0.3) 100%);
+  --profile-message-solid-gradient: linear-gradient(135deg, #185056 0%, #2fb7ae 48%, #10303c 100%);
+  --profile-message-border: rgba(184, 238, 242, 0.6);
+  --profile-message-glow: rgba(47, 183, 174, 0.52);
+  --profile-message-glow-soft: rgba(184, 238, 242, 0.22);
+  --profile-message-surface: rgba(7, 34, 38, 0.32);
+  --profile-message-surface-read: rgba(7, 34, 38, 0.18);
+  --profile-event-gradient: linear-gradient(90deg, rgba(110, 11, 20, 0.9) 0%, rgba(187, 22, 37, 0.78) 56%, rgba(42, 17, 22, 0.76) 100%);
+  --profile-event-gradient-read: linear-gradient(90deg, rgba(110, 11, 20, 0.42) 0%, rgba(187, 22, 37, 0.34) 56%, rgba(42, 17, 22, 0.32) 100%);
+  --profile-event-solid-gradient: linear-gradient(135deg, #6e0b14 0%, #bb1625 54%, #2a1116 100%);
+  --profile-event-border: rgba(201, 167, 99, 0.58);
+  --profile-event-glow: rgba(187, 22, 37, 0.54);
+  --profile-event-glow-soft: rgba(201, 167, 99, 0.2);
+  --profile-event-surface: rgba(52, 12, 19, 0.32);
+  --profile-event-surface-read: rgba(52, 12, 19, 0.18);
   --profile-title-bg: rgba(30, 35, 44, 0.72);
   --profile-title-bg-deep: rgba(10, 14, 20, 0.72);
   --profile-title-border: rgba(238, 226, 207, 0.46);
@@ -5183,6 +5218,7 @@ select option { color: #111; }
   z-index: 1;
 }
 
+.manager-page-title-bar,
 .manager-home-profile-title {
   position: relative;
   min-width: 0;
@@ -5249,11 +5285,22 @@ select option { color: #111; }
 }
 
 .manager-home-panel-icon,
-.manager-home-logout-icon {
+.manager-home-logout-icon,
+.manager-home-profile-action-photo {
   width: clamp(29px, min(4.9vw, 4.8svh), 42px);
   height: clamp(29px, min(4.9vw, 4.8svh), 42px);
   object-fit: contain;
   filter: drop-shadow(0 5px 9px rgba(4, 16, 29, 0.24));
+}
+
+.manager-home-profile-action-photo {
+  border: 1px solid rgba(228, 207, 154, 0.5);
+  border-radius: 999px;
+  object-fit: cover;
+  background: rgba(251, 248, 241, 0.16);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 0 0 1px rgba(116, 91, 255, 0.2);
 }
 
 .manager-home-top-action-label {
@@ -5268,6 +5315,7 @@ select option { color: #111; }
   white-space: nowrap;
 }
 
+.manager-page-title-frame,
 .manager-home-profile-title-frame {
   position: relative;
   width: max-content;
@@ -5277,10 +5325,11 @@ select option { color: #111; }
   align-content: start;
   gap: 0;
   padding: 0;
-  color: var(--home-text);
+  color: var(--home-text, var(--manager-theme-cream, var(--ops-text, #fbf7f2)));
   isolation: isolate;
 }
 
+.manager-page-title-frame::before,
 .manager-home-profile-title-frame::before {
   content: "";
   position: absolute;
@@ -5298,6 +5347,7 @@ select option { color: #111; }
   transform: translate(0, -47%);
 }
 
+.manager-page-title-frame h1,
 .manager-home-profile-title h1 {
   position: relative;
   z-index: 2;
@@ -5310,6 +5360,7 @@ select option { color: #111; }
   -webkit-background-clip: text;
   font-family: "Bodoni 72", "Bodoni MT", Didot, "Libre Bodoni", var(--font-display);
   font-size: clamp(1.82rem, 4.4vw, 3rem);
+  font-style: normal;
   font-weight: 500;
   line-height: 0.84;
   letter-spacing: 0;
@@ -5323,7 +5374,12 @@ select option { color: #111; }
     6px 9px 13px rgba(0, 0, 0, 0.34);
 }
 
+.manager-page-title-frame.manager-page-title-frame--manager-panel h1 {
+  font-size: clamp(1.56rem, 3.65vw, 2.52rem);
+}
+
 @supports (-webkit-background-clip: text) {
+  .manager-page-title-frame h1,
   .manager-home-profile-title h1 {
     color: transparent;
   }
@@ -6123,23 +6179,62 @@ select option { color: #111; }
 
 .manager-home-count {
   min-height: 30px;
+  appearance: none;
   padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   color: #ffffff;
+  cursor: pointer;
   font-family: var(--font-ui);
   font-size: 0.78rem;
   font-weight: 900;
   white-space: nowrap;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 8px 18px rgba(5, 13, 26, 0.14);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease,
+    transform 160ms ease;
+}
+
+.manager-home-count:hover,
+.manager-home-count:focus-visible {
+  outline: none;
+  filter: brightness(1.12);
+  transform: translateY(-1px);
 }
 
 .manager-home-count--message {
-  background: linear-gradient(90deg, rgba(175, 245, 200, 0.78), rgba(70, 184, 124, 0.68));
+  background: var(--profile-message-solid-gradient);
 }
 
 .manager-home-count--event {
-  background: linear-gradient(90deg, rgba(255, 190, 222, 0.8), rgba(207, 91, 149, 0.68));
+  background: var(--profile-event-solid-gradient);
+}
+
+.manager-home-count--message.is-active {
+  border-color: var(--profile-message-border);
+  box-shadow:
+    inset 0 0 0 1px var(--profile-message-border),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    0 0 0 1px var(--profile-message-glow-soft),
+    0 0 18px var(--profile-message-glow),
+    0 10px 24px rgba(5, 13, 26, 0.2);
+}
+
+.manager-home-count--event.is-active {
+  border-color: var(--profile-event-border);
+  box-shadow:
+    inset 0 0 0 1px var(--profile-event-border),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    0 0 0 1px var(--profile-event-glow-soft),
+    0 0 18px var(--profile-event-glow),
+    0 10px 24px rgba(5, 13, 26, 0.2);
 }
 
 .manager-home-unified-feed {
@@ -6563,14 +6658,14 @@ select option { color: #111; }
 
 .manager-home-feed-item--message {
   background:
-    linear-gradient(90deg, rgba(184, 248, 205, 0.62) 0%, rgba(94, 207, 145, 0.5) 56%, rgba(39, 134, 89, 0.46) 100%),
-    rgba(18, 47, 39, 0.3);
+    var(--profile-message-gradient),
+    var(--profile-message-surface);
 }
 
 .manager-home-feed-item--event {
   background:
-    linear-gradient(90deg, rgba(255, 197, 226, 0.64) 0%, rgba(238, 132, 184, 0.52) 56%, rgba(154, 70, 113, 0.48) 100%),
-    rgba(56, 28, 48, 0.3);
+    var(--profile-event-gradient),
+    var(--profile-event-surface);
 }
 
 .manager-home-feed-item.is-unread {
@@ -6589,14 +6684,14 @@ select option { color: #111; }
 
 .manager-home-feed-item.is-read.manager-home-feed-item--message {
   background:
-    linear-gradient(90deg, rgba(184, 248, 205, 0.25) 0%, rgba(94, 207, 145, 0.2) 56%, rgba(39, 134, 89, 0.18) 100%),
-    rgba(18, 47, 39, 0.18);
+    var(--profile-message-gradient-read),
+    var(--profile-message-surface-read);
 }
 
 .manager-home-feed-item.is-read.manager-home-feed-item--event {
   background:
-    linear-gradient(90deg, rgba(255, 197, 226, 0.27) 0%, rgba(238, 132, 184, 0.22) 56%, rgba(154, 70, 113, 0.19) 100%),
-    rgba(56, 28, 48, 0.18);
+    var(--profile-event-gradient-read),
+    var(--profile-event-surface-read);
 }
 
 .manager-home-feed-item.is-selected {
@@ -6613,6 +6708,26 @@ select option { color: #111; }
     inset 0 0 0 2px rgba(255, 255, 255, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
     0 16px 34px rgba(5, 13, 26, 0.22);
+}
+
+.manager-home-feed-item.is-unread.manager-home-feed-item--message {
+  border-color: var(--profile-message-border);
+  box-shadow:
+    inset 0 0 0 1px var(--profile-message-border),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 0 0 1px var(--profile-message-glow-soft),
+    0 0 18px var(--profile-message-glow),
+    0 14px 30px rgba(5, 13, 26, 0.2);
+}
+
+.manager-home-feed-item.is-unread.manager-home-feed-item--event {
+  border-color: var(--profile-event-border);
+  box-shadow:
+    inset 0 0 0 1px var(--profile-event-border),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 0 0 1px var(--profile-event-glow-soft),
+    0 0 18px var(--profile-event-glow),
+    0 14px 30px rgba(5, 13, 26, 0.2);
 }
 
 .manager-home-feed-row {
@@ -6726,13 +6841,11 @@ select option { color: #111; }
 }
 
 .manager-home-thread--message {
-  background:
-    linear-gradient(90deg, rgba(112, 243, 158, 0.95) 0%, rgba(31, 183, 103, 0.92) 56%, rgba(12, 99, 61, 0.94) 100%);
+  background: var(--profile-message-solid-gradient);
 }
 
 .manager-home-thread--event {
-  background:
-    linear-gradient(90deg, rgba(255, 150, 199, 0.96) 0%, rgba(219, 72, 145, 0.93) 56%, rgba(130, 27, 82, 0.94) 100%);
+  background: var(--profile-event-solid-gradient);
 }
 
 .manager-home-thread.is-selected {
@@ -6757,12 +6870,12 @@ select option { color: #111; }
 
 .manager-home-feed-item--message .manager-home-thread-avatar,
 .manager-home-message-detail--message .manager-home-thread-avatar {
-  border-color: #8ff4b0;
+  border-color: var(--profile-message-border);
 }
 
 .manager-home-feed-item--event .manager-home-thread-avatar,
 .manager-home-message-detail--event .manager-home-thread-avatar {
-  border-color: #ffb2d2;
+  border-color: var(--profile-event-border);
 }
 
 .manager-home-thread-avatar img {
@@ -6946,11 +7059,11 @@ select option { color: #111; }
 }
 
 .manager-home-message-detail--message {
-  border-color: rgba(112, 243, 158, 0.3);
+  border-color: var(--profile-message-border);
 }
 
 .manager-home-message-detail--event {
-  border-color: rgba(255, 150, 199, 0.34);
+  border-color: var(--profile-event-border);
 }
 
 .manager-home-detail-title-row {
@@ -6967,7 +7080,7 @@ select option { color: #111; }
   display: inline-flex;
   align-items: center;
   color: #ffffff;
-  background: linear-gradient(90deg, rgba(175, 245, 200, 0.78), rgba(70, 184, 124, 0.68));
+  background: var(--profile-message-solid-gradient);
   font-family: var(--font-ui);
   font-size: 0.78rem;
   font-weight: 900;
@@ -6976,7 +7089,7 @@ select option { color: #111; }
 
 .manager-home-message-detail--event .manager-home-detail-title-row span,
 .manager-home-feed-item--event .manager-home-detail-title-row span {
-  background: linear-gradient(90deg, rgba(255, 190, 222, 0.8), rgba(207, 91, 149, 0.68));
+  background: var(--profile-event-solid-gradient);
 }
 
 .manager-home-message-detail header,
@@ -7091,6 +7204,7 @@ select option { color: #111; }
 }
 
 @media (max-width: 760px) {
+  .manager-page-title-bar,
   .manager-home-profile-title {
     padding: 9px 8px 2px 18px;
     column-gap: 8px;
@@ -7108,7 +7222,8 @@ select option { color: #111; }
   }
 
   .manager-home-panel-icon,
-  .manager-home-logout-icon {
+  .manager-home-logout-icon,
+  .manager-home-profile-action-photo {
     width: 31px;
     height: 31px;
   }
@@ -7117,6 +7232,7 @@ select option { color: #111; }
     font-size: 0.52rem;
   }
 
+  .manager-page-title-frame,
   .manager-home-profile-title-frame {
     width: max-content;
     max-width: 100%;
@@ -7124,6 +7240,7 @@ select option { color: #111; }
     padding: 0;
   }
 
+  .manager-page-title-frame h1,
   .manager-home-profile-title h1 {
     font-size: clamp(1.62rem, 7.3vw, 2.25rem);
   }
@@ -7554,6 +7671,8 @@ select option { color: #111; }
 }
 
 .manager-launcher-main {
+  --manager-launcher-page-pad-x: clamp(10px, 4vw, 54px);
+  --manager-launcher-page-pad-y: clamp(10px, 2.2svh, 24px);
   min-height: 100svh;
   height: 100%;
   min-width: 0;
@@ -7564,27 +7683,16 @@ select option { color: #111; }
   align-content: stretch;
   justify-items: center;
   gap: clamp(12px, 2.4svh, 28px);
-  padding: clamp(10px, 2.2svh, 24px) clamp(10px, 4vw, 54px);
+  padding: 0 0 var(--manager-launcher-page-pad-y);
   overflow: hidden;
 }
 
 .manager-launcher-topbar {
-  width: min(100%, 1020px);
-  min-height: clamp(42px, 7svh, 62px);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: clamp(8px, 2vw, 18px);
-  padding: clamp(6px, 1.2svh, 10px) clamp(12px, 2.6vw, 24px);
-  border: 1px solid rgba(251, 248, 241, 0.28);
-  border-radius: clamp(16px, 2.4vw, 24px);
-  background:
-    linear-gradient(180deg, rgba(251, 248, 241, 0.18), rgba(251, 248, 241, 0.08)),
-    rgba(13, 33, 55, 0.28);
-  box-shadow:
-    0 18px 48px rgba(3, 15, 27, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.26);
-  backdrop-filter: blur(12px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .manager-launcher-topbar .manager-launcher-control {
@@ -7659,23 +7767,6 @@ select option { color: #111; }
   filter: drop-shadow(0 5px 9px rgba(4, 16, 29, 0.24));
 }
 
-.manager-launcher-topbar h1 {
-  margin: 0;
-  justify-self: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(8px, 1.4vw, 14px);
-  color: var(--manager-theme-cream);
-  font-size: clamp(1.24rem, min(4vw, 4.6svh), 2.45rem);
-  font-weight: 750;
-  line-height: 0.95;
-  letter-spacing: 0;
-  text-align: center;
-  text-shadow: 0 8px 26px rgba(4, 16, 29, 0.34);
-  white-space: nowrap;
-}
-
 .manager-launcher-title-icon {
   width: clamp(42px, min(6.4vw, 6.4svh), 68px);
   height: clamp(42px, min(6.4vw, 6.4svh), 68px);
@@ -7748,10 +7839,10 @@ select option { color: #111; }
 }
 
 .manager-profile-modal {
-  width: min(520px, calc(100vw - 24px));
-  max-height: min(88svh, 700px);
+  width: min(640px, calc(100vw - 24px));
+  max-height: calc(100svh - 28px);
   display: grid;
-  gap: 14px;
+  gap: 10px;
   color: var(--ops-text);
   border-color: rgba(228, 207, 154, 0.26);
   background:
@@ -7759,23 +7850,46 @@ select option { color: #111; }
     linear-gradient(145deg, rgba(13, 33, 55, 0.98), rgba(8, 24, 40, 0.98));
 }
 
+.manager-profile-modal .student-modal-head {
+  gap: 10px;
+}
+
+.manager-profile-modal .student-modal-head p {
+  margin-top: 2px;
+  line-height: 1.25;
+}
+
 .manager-profile-form-section {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 10px;
+  padding: 12px;
 }
 
 .manager-profile-form-section .field-label {
+  gap: 5px;
   color: var(--ops-text);
+  font-size: 0.88rem;
+  line-height: 1.1;
 }
 
-.manager-theme-setting,
-.manager-profile-check {
+.manager-profile-form-section .input {
+  min-height: 38px;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.manager-profile-preferences {
   grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(190px, 0.92fr);
+  gap: 10px;
+  align-items: stretch;
 }
 
 .manager-theme-setting {
   min-width: 0;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   color: var(--ops-text);
   font-weight: 900;
 }
@@ -7783,17 +7897,17 @@ select option { color: #111; }
 .manager-theme-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 4px;
+  gap: 6px;
+  padding: 3px;
   border: 1px solid rgba(228, 207, 154, 0.22);
-  border-radius: 14px;
+  border-radius: 12px;
   background: rgba(251, 248, 241, 0.06);
 }
 
 .manager-theme-option {
-  min-height: 40px;
+  min-height: 36px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 9px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -7815,10 +7929,14 @@ select option { color: #111; }
 }
 
 .manager-profile-check {
-  min-height: 44px;
+  min-height: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(228, 207, 154, 0.18);
+  border-radius: 12px;
+  background: rgba(251, 248, 241, 0.055);
   color: var(--ops-muted);
   font-weight: 800;
   line-height: 1.2;
@@ -7832,7 +7950,7 @@ select option { color: #111; }
 }
 
 .manager-profile-actions button {
-  min-height: 44px;
+  min-height: 40px;
   border: 0;
   border-radius: 10px;
   display: inline-flex;
@@ -7847,7 +7965,7 @@ select option { color: #111; }
 }
 
 .manager-launcher-grid {
-  width: min(100%, 1020px);
+  width: min(calc(100% - (var(--manager-launcher-page-pad-x) * 2)), 1020px);
   height: min(100%, 650px);
   min-height: 0;
   align-self: center;
@@ -8354,25 +8472,23 @@ select option { color: #111; }
 
 @media (max-width: 760px) {
   .manager-launcher-main {
+    --manager-launcher-page-pad-x: clamp(10px, 5vw, 22px);
+    --manager-launcher-page-pad-y: clamp(8px, 1.8svh, 16px);
     grid-template-rows: auto minmax(0, 1fr);
     gap: clamp(8px, 1.4svh, 14px);
-    padding: clamp(8px, 1.8svh, 16px) clamp(10px, 5vw, 22px);
+    padding: 0 0 var(--manager-launcher-page-pad-y);
   }
 
   .manager-launcher-topbar {
-    min-height: clamp(38px, 6svh, 50px);
-    gap: 6px;
-    padding: 5px clamp(8px, 2vw, 12px);
+    row-gap: 0;
+    column-gap: 8px;
+    padding: 9px 8px 2px 18px;
   }
 
   .manager-launcher-topbar .manager-launcher-control {
     min-height: clamp(28px, 4.5svh, 34px);
     padding-inline: clamp(8px, 2vw, 12px);
     font-size: clamp(0.68rem, min(2.7vw, 1.65svh), 0.82rem);
-  }
-
-  .manager-launcher-actions {
-    gap: 5px;
   }
 
   .manager-launcher-home-link {
@@ -8422,11 +8538,6 @@ select option { color: #111; }
     height: 40px;
   }
 
-  .manager-launcher-topbar h1 {
-    font-size: clamp(1.02rem, min(5vw, 3.2svh), 1.45rem);
-    gap: 6px;
-  }
-
   .manager-launcher-title-icon {
     width: clamp(32px, min(8.5vw, 5.6svh), 44px);
     height: clamp(32px, min(8.5vw, 5.6svh), 44px);
@@ -8434,15 +8545,50 @@ select option { color: #111; }
 
   .manager-profile-modal {
     width: calc(100vw - 20px);
-    max-height: min(88svh, 560px);
-    gap: 10px;
-    padding: 14px;
+    max-height: calc(100svh - 20px);
+    gap: 8px;
+    padding: 12px;
   }
 
   .manager-profile-form-section {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .manager-profile-modal .student-modal-head h2 {
+    font-size: clamp(1.35rem, 5vw, 1.65rem);
+  }
+
+  .manager-profile-modal .student-modal-head p {
+    font-size: 0.9rem;
+  }
+
+  .manager-profile-form-section .field-label {
+    font-size: 0.8rem;
+  }
+
+  .manager-profile-form-section .input {
+    min-height: 34px;
+    padding: 7px 9px;
+  }
+
+  .manager-profile-preferences {
     grid-template-columns: 1fr;
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+  }
+
+  .manager-theme-option {
+    min-height: 34px;
+  }
+
+  .manager-profile-check {
+    min-height: 38px;
+    padding: 7px 9px;
+  }
+
+  .manager-profile-actions button {
+    min-height: 38px;
   }
 
   .manager-launcher-grid {
@@ -8569,7 +8715,7 @@ select option { color: #111; }
 
   .manager-launcher-main {
     gap: clamp(7px, 1.2svh, 12px);
-    padding-top: clamp(6px, 1.6svh, 12px);
+    padding-top: 0;
   }
 }
 
@@ -10437,6 +10583,7 @@ select option { color: #111; }
     overflow: hidden;
   }
 
+  .manager-page-title-bar,
   .manager-home-profile-title {
     padding: 8px 7px 2px 16px;
     column-gap: 7px;
@@ -10454,7 +10601,8 @@ select option { color: #111; }
   }
 
   .manager-home-panel-icon,
-  .manager-home-logout-icon {
+  .manager-home-logout-icon,
+  .manager-home-profile-action-photo {
     width: 30px;
     height: 30px;
   }
@@ -10463,6 +10611,7 @@ select option { color: #111; }
     font-size: 0.5rem;
   }
 
+  .manager-page-title-frame,
   .manager-home-profile-title-frame {
     gap: 0;
     width: max-content;
@@ -10470,6 +10619,7 @@ select option { color: #111; }
     padding: 0;
   }
 
+  .manager-page-title-frame h1,
   .manager-home-profile-title h1 {
     font-size: clamp(1.5rem, 7.2vw, 2.05rem);
   }
@@ -10797,29 +10947,11 @@ select option { color: #111; }
   }
 
   .manager-launcher-topbar {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas: "launcher-actions launcher-title launcher-logout";
-    align-items: center;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
     row-gap: 0;
-    column-gap: 4px;
-    padding: 6px 8px;
-  }
-
-  .manager-launcher-actions {
-    grid-area: launcher-actions;
-    gap: 2px;
-    max-width: 100%;
-  }
-
-  .manager-launcher-topbar h1 {
-    grid-area: launcher-title;
-    min-width: 0;
-    width: auto;
-    justify-self: center;
-    gap: 3px;
-    font-size: clamp(0.78rem, 3.8vw, 1.02rem);
-    line-height: 1;
-    white-space: nowrap;
+    column-gap: 7px;
+    padding: 8px 7px 2px 16px;
   }
 
   .manager-launcher-title-icon {
@@ -10828,7 +10960,6 @@ select option { color: #111; }
   }
 
   .manager-launcher-topbar > .manager-launcher-control {
-    grid-area: launcher-logout;
     justify-self: end;
   }
 
@@ -11157,6 +11288,18 @@ html[data-theme="light"] .manager-logout-button {
   color: var(--ops-text);
 }
 
+html[data-theme="light"] .manager-shell {
+  --profile-title-bg: rgba(56, 62, 72, 0.76);
+  --profile-title-bg-deep: rgba(25, 31, 39, 0.78);
+  --profile-title-border: rgba(154, 117, 69, 0.44);
+  --profile-title-gold: #c58b48;
+  --profile-title-gold-soft: rgba(197, 139, 72, 0.68);
+  --profile-title-line: rgba(18, 24, 34, 0.28);
+  --profile-title-line-glow: rgba(130, 98, 62, 0.2);
+  --profile-title-metal: #fff8ec;
+  --profile-title-metal-mid: #cfc2b3;
+}
+
 html[data-theme="light"] .manager-launcher-page {
   --manager-theme-navy: #172033;
   --manager-theme-navy-soft: #e9eef4;
@@ -11185,18 +11328,9 @@ html[data-theme="light"] .manager-launcher-page::after {
 }
 
 html[data-theme="light"] .manager-launcher-topbar {
-  border-color: rgba(25, 40, 62, 0.16);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 242, 0.52)),
-    rgba(255, 255, 255, 0.42);
-  box-shadow:
-    0 18px 44px rgba(35, 42, 55, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72);
-}
-
-html[data-theme="light"] .manager-launcher-topbar h1 {
-  color: #172033;
-  text-shadow: 0 8px 22px rgba(35, 42, 55, 0.14);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 html[data-theme="light"] .manager-launcher-topbar .manager-launcher-control {
@@ -11232,6 +11366,11 @@ html[data-theme="light"] .manager-theme-options {
   background: rgba(255, 255, 255, 0.62);
 }
 
+html[data-theme="light"] .manager-profile-check {
+  border-color: rgba(25, 40, 62, 0.13);
+  background: rgba(255, 255, 255, 0.58);
+}
+
 html[data-theme="light"] .manager-theme-option.is-active,
 html[data-theme="light"] .manager-theme-option:hover,
 html[data-theme="light"] .manager-theme-option:focus-visible {
@@ -11258,6 +11397,20 @@ html[data-theme="light"] .manager-home-page {
   --home-purple-hover-bg: rgba(92, 62, 174, 0.1);
   --home-purple-selected-start: #7857d8;
   --home-purple-selected-end: #4a2f99;
+  --profile-message-gradient: linear-gradient(90deg, rgba(24, 80, 86, 0.46) 0%, rgba(47, 183, 174, 0.4) 56%, rgba(16, 48, 60, 0.32) 100%);
+  --profile-message-gradient-read: linear-gradient(90deg, rgba(24, 80, 86, 0.28) 0%, rgba(47, 183, 174, 0.24) 56%, rgba(16, 48, 60, 0.19) 100%);
+  --profile-message-border: rgba(35, 151, 157, 0.6);
+  --profile-message-glow: rgba(35, 151, 157, 0.5);
+  --profile-message-glow-soft: rgba(35, 151, 157, 0.2);
+  --profile-message-surface: rgba(224, 252, 255, 0.9);
+  --profile-message-surface-read: rgba(232, 250, 252, 0.74);
+  --profile-event-gradient: linear-gradient(90deg, rgba(110, 11, 20, 0.4) 0%, rgba(187, 22, 37, 0.34) 56%, rgba(42, 17, 22, 0.3) 100%);
+  --profile-event-gradient-read: linear-gradient(90deg, rgba(110, 11, 20, 0.24) 0%, rgba(187, 22, 37, 0.2) 56%, rgba(42, 17, 22, 0.17) 100%);
+  --profile-event-border: rgba(187, 22, 37, 0.54);
+  --profile-event-glow: rgba(187, 22, 37, 0.48);
+  --profile-event-glow-soft: rgba(187, 22, 37, 0.18);
+  --profile-event-surface: rgba(255, 234, 228, 0.88);
+  --profile-event-surface-read: rgba(255, 241, 235, 0.72);
   --profile-title-bg: rgba(56, 62, 72, 0.76);
   --profile-title-bg-deep: rgba(25, 31, 39, 0.78);
   --profile-title-border: rgba(154, 117, 69, 0.44);
@@ -11282,7 +11435,8 @@ html[data-theme="light"] .manager-home-page::before {
   opacity: 0.72;
 }
 
-html[data-theme="light"] .manager-home-profile-title h1 {
+html[data-theme="light"] .manager-home-profile-title h1,
+html[data-theme="light"] .manager-page-title-frame h1 {
   color: var(--home-text);
 }
 
@@ -11451,14 +11605,14 @@ html[data-theme="light"] .manager-home-feed-check input:checked + span {
 
 html[data-theme="light"] .manager-home-feed-item--message {
   background:
-    linear-gradient(90deg, rgba(207, 246, 219, 0.72) 0%, rgba(151, 223, 178, 0.58) 56%, rgba(100, 181, 131, 0.48) 100%),
-    rgba(241, 255, 246, 0.54);
+    var(--profile-message-gradient),
+    var(--profile-message-surface);
 }
 
 html[data-theme="light"] .manager-home-feed-item--event {
   background:
-    linear-gradient(90deg, rgba(255, 219, 236, 0.74) 0%, rgba(244, 174, 210, 0.58) 56%, rgba(207, 132, 171, 0.48) 100%),
-    rgba(255, 243, 249, 0.58);
+    var(--profile-event-gradient),
+    var(--profile-event-surface);
 }
 
 html[data-theme="light"] .manager-home-feed-item.is-unread {
@@ -11466,6 +11620,26 @@ html[data-theme="light"] .manager-home-feed-item.is-unread {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.68),
     0 14px 28px rgba(35, 42, 55, 0.12);
+}
+
+html[data-theme="light"] .manager-home-feed-item.is-unread.manager-home-feed-item--message {
+  border-color: var(--profile-message-border);
+  box-shadow:
+    inset 0 0 0 1px var(--profile-message-border),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 0 0 1px var(--profile-message-glow-soft),
+    0 0 20px var(--profile-message-glow),
+    0 14px 30px rgba(35, 42, 55, 0.14);
+}
+
+html[data-theme="light"] .manager-home-feed-item.is-unread.manager-home-feed-item--event {
+  border-color: var(--profile-event-border);
+  box-shadow:
+    inset 0 0 0 1px var(--profile-event-border),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 0 0 1px var(--profile-event-glow-soft),
+    0 0 20px var(--profile-event-glow),
+    0 14px 30px rgba(35, 42, 55, 0.14);
 }
 
 html[data-theme="light"] .manager-home-feed-item.is-read {
@@ -11477,14 +11651,14 @@ html[data-theme="light"] .manager-home-feed-item.is-read {
 
 html[data-theme="light"] .manager-home-feed-item.is-read.manager-home-feed-item--message {
   background:
-    linear-gradient(90deg, rgba(207, 246, 219, 0.34) 0%, rgba(151, 223, 178, 0.25) 56%, rgba(100, 181, 131, 0.2) 100%),
-    rgba(241, 255, 246, 0.34);
+    var(--profile-message-gradient-read),
+    var(--profile-message-surface-read);
 }
 
 html[data-theme="light"] .manager-home-feed-item.is-read.manager-home-feed-item--event {
   background:
-    linear-gradient(90deg, rgba(255, 219, 236, 0.34) 0%, rgba(244, 174, 210, 0.25) 56%, rgba(207, 132, 171, 0.2) 100%),
-    rgba(255, 243, 249, 0.34);
+    var(--profile-event-gradient-read),
+    var(--profile-event-surface-read);
 }
 
 html[data-theme="light"] .manager-home-read-status {

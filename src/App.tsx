@@ -444,8 +444,8 @@ function LaunchLogoAnimation({ onReveal, onComplete }: { onReveal: () => void; o
   const [phase] = useState(() => getInitialLaunchPhase(window.matchMedia("(prefers-reduced-motion: reduce)").matches));
   const [frameIndex, setFrameIndex] = useState(0);
   const frameCount = 60;
-  const loaderDuration = phase === "final-logo" || prefersReducedMotion ? 950 : 4550;
-  const revealDelay = phase === "final-logo" || prefersReducedMotion ? 80 : 2360;
+  const loaderDuration = phase === "final-logo" || prefersReducedMotion ? 950 : 3050;
+  const revealDelay = phase === "final-logo" || prefersReducedMotion ? 80 : 1560;
   const fighterDuration = 1850;
   const frameSrc = `${publicAsset(`roundhouse-frames/frame-${String(frameIndex).padStart(2, "0")}.png`)}?v=clean-no-lines-2`;
 

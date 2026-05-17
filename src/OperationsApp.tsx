@@ -30,7 +30,6 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-r
 import classesLauncherIcon from "./assets/manager-icons/Classes.webp";
 import dashboardLauncherIcon from "./assets/manager-icons/Dashboard.webp";
 import eventsLauncherIcon from "./assets/manager-icons/Events.webp";
-import managerHomeIcon from "./assets/manager-icons/ManagerHome.webp";
 import managerLogoutIcon from "./assets/manager-icons/ManagerLogoutProfessional.png";
 import managerPageIcon from "./assets/manager-icons/ManagerPage.webp";
 import managerProfileSettingsIcon from "./assets/manager-icons/ManagerProfileSettings.png";
@@ -234,8 +233,8 @@ function OperationsPage({ title, text, action, children }: { title: string; text
   return (
     <section className="operations-page">
       <div className="operations-page-head">
-        <div>
-          <h1>{title}</h1>
+        <div className="operations-page-title-copy">
+          <ManagerPageTitleFrame title={title} className="operations-page-title-frame" />
           <p>{text}</p>
         </div>
         {action}
@@ -583,6 +582,8 @@ type ManagerHomeThread = {
   unread?: boolean;
 };
 
+type ManagerHomeFeedFilter = "all" | ManagerHomeThread["kind"];
+
 type ManagerHomeAgendaItem = {
   id: string;
   title: string;
@@ -800,6 +801,22 @@ function ProfileTitleRule({ variant }: { variant: "top" | "bottom" }) {
   );
 }
 
+function ManagerPageTitleFrame({ title, className = "" }: { title: string; className?: string }) {
+  const classNames = ["manager-page-title-frame", className].filter(Boolean).join(" ");
+
+  return (
+    <div className={classNames}>
+      <span className="manager-home-title-rule manager-home-title-rule--top" aria-hidden="true">
+        <ProfileTitleRule variant="top" />
+      </span>
+      <h1>{title}</h1>
+      <span className="manager-home-title-rule manager-home-title-rule--bottom" aria-hidden="true">
+        <ProfileTitleRule variant="bottom" />
+      </span>
+    </div>
+  );
+}
+
 function ManagerHomePage() {
   const { logout, scheduledClasses, session, showToast, studioClasses, studioEvents, students } = useAppState();
   const today = useLiveCalendarDate();
@@ -817,6 +834,7 @@ function ManagerHomePage() {
   const [selectedFeedThreadIds, setSelectedFeedThreadIds] = useState<Set<string>>(() => new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [isFeedSearchOpen, setIsFeedSearchOpen] = useState(false);
+  const [feedFilter, setFeedFilter] = useState<ManagerHomeFeedFilter>("all");
   const [replyText, setReplyText] = useState("");
   const [overviewProgress, setOverviewProgress] = useState(1);
   const [overviewHeight, setOverviewHeight] = useState(0);
@@ -835,6 +853,7 @@ function ManagerHomePage() {
   const eventCount = feedThreads.filter((thread) => thread.kind === "event").length;
   const selectedFeedCount = selectedFeedThreadIds.size;
   const visibleThreads = feedThreads.filter((thread) => {
+    if (feedFilter !== "all" && thread.kind !== feedFilter) return false;
     const query = searchQuery.trim().toLowerCase();
     if (!query) return true;
     return `${thread.kind} ${thread.sender} ${thread.title} ${thread.preview}`.toLowerCase().includes(query);
@@ -1038,6 +1057,17 @@ function ManagerHomePage() {
     });
   };
 
+  const changeFeedFilter = (nextFilter: ManagerHomeThread["kind"]) => {
+    const resolvedFilter: ManagerHomeFeedFilter = feedFilter === nextFilter ? "all" : nextFilter;
+    setFeedFilter(resolvedFilter);
+    setSelectedFeedThreadIds(new Set<string>());
+    setSelectedThreadId((currentThreadId) => {
+      if (!currentThreadId || resolvedFilter === "all") return currentThreadId;
+      const currentThread = feedThreads.find((thread) => thread.id === currentThreadId);
+      return currentThread?.kind === resolvedFilter ? currentThreadId : null;
+    });
+  };
+
   const openFeedThread = (threadId: string) => {
     setSelectedThreadId((currentThreadId) => currentThreadId === threadId ? null : threadId);
     setFeedThreads((currentThreads) =>
@@ -1086,16 +1116,8 @@ function ManagerHomePage() {
 
   return (
     <section className="manager-home-page" aria-label="Manager home page">
-      <header className="manager-home-profile-title" aria-label="Profile page header">
-        <div className="manager-home-profile-title-frame">
-          <span className="manager-home-title-rule manager-home-title-rule--top" aria-hidden="true">
-            <ProfileTitleRule variant="top" />
-          </span>
-          <h1>Profile</h1>
-          <span className="manager-home-title-rule manager-home-title-rule--bottom" aria-hidden="true">
-            <ProfileTitleRule variant="bottom" />
-          </span>
-        </div>
+      <header className="manager-home-profile-title manager-page-title-bar" aria-label="Profile page header">
+        <ManagerPageTitleFrame title="Profile" className="manager-home-profile-title-frame" />
         <nav className="manager-home-top-actions" aria-label="Profile quick actions">
           <Link className="manager-home-top-action manager-home-panel-link" to="/manager" aria-label="Manager's Panel">
             <img className="manager-home-panel-icon" src={managerPageIcon} alt="" draggable="false" />
@@ -1234,8 +1256,24 @@ function ManagerHomePage() {
         <section className="manager-home-feed-panel" aria-label="Messages and event notifications">
           <div className="manager-home-feed-head">
             <div className="manager-home-feed-counts" aria-label="Feed totals">
-              <span className="manager-home-count manager-home-count--message">{messageCount} {messageCount === 1 ? "Message" : "Messages"}</span>
-              <span className="manager-home-count manager-home-count--event">{eventCount} Event {eventCount === 1 ? "Notification" : "Notifications"}</span>
+              <button
+                className={`manager-home-count manager-home-count--message${feedFilter === "message" ? " is-active" : ""}`}
+                type="button"
+                aria-pressed={feedFilter === "message"}
+                aria-controls="manager-home-unified-feed"
+                onClick={() => changeFeedFilter("message")}
+              >
+                {messageCount} {messageCount === 1 ? "Message" : "Messages"}
+              </button>
+              <button
+                className={`manager-home-count manager-home-count--event${feedFilter === "event" ? " is-active" : ""}`}
+                type="button"
+                aria-pressed={feedFilter === "event"}
+                aria-controls="manager-home-unified-feed"
+                onClick={() => changeFeedFilter("event")}
+              >
+                {eventCount} Event {eventCount === 1 ? "Notification" : "Notifications"}
+              </button>
               {selectedFeedCount > 0 && (
                 <span className="manager-home-bulk-actions" aria-live="polite">
                   <strong>{selectedFeedCount} selected</strong>
@@ -1279,7 +1317,7 @@ function ManagerHomePage() {
               </button>
             )}
           </div>
-          <div className="manager-home-unified-feed" aria-label="Home message and notification feed">
+          <div className="manager-home-unified-feed" id="manager-home-unified-feed" aria-label="Home message and notification feed">
             {visibleFeedSections.length ? (
               visibleFeedSections.map((section) => (
                 <section className="manager-home-date-section" key={section.date} aria-label={`Messages and event notifications from ${section.date}`}>
@@ -1401,12 +1439,6 @@ function ManagerLauncherPage() {
   const [profileSettings, setProfileSettings] = useState(() => readManagerProfile(session?.email));
   const [profilePassword, setProfilePassword] = useState({ newPassword: "", confirmPassword: "" });
 
-  const openProfileSettings = () => {
-    setProfileSettings(readManagerProfile(session?.email));
-    setProfilePassword({ newPassword: "", confirmPassword: "" });
-    setProfileOpen(true);
-  };
-
   useEffect(() => {
     if (new URLSearchParams(location.search).get("profile") !== "settings") return;
     setProfileSettings(readManagerProfile(session?.email));
@@ -1419,6 +1451,11 @@ function ManagerLauncherPage() {
     setProfileSettings((current) => ({ ...current, theme }));
     writeManagerProfile({ ...readManagerProfile(session?.email), theme });
     writeStoredAppTheme(theme);
+  };
+
+  const closeProfileSettings = () => {
+    setProfileOpen(false);
+    navigate("/", { replace: true });
   };
 
   const saveProfileSettings = (event: FormEvent) => {
@@ -1471,28 +1508,30 @@ function ManagerLauncherPage() {
     setProfileSettings(nextProfile);
     setProfilePassword({ newPassword: "", confirmPassword: "" });
     setProfileOpen(false);
+    navigate("/", { replace: true });
     showToast("Manager profile settings saved.");
   };
 
   return (
     <section className="manager-launcher-page" aria-label="Manager dashboard">
       <main className="manager-launcher-main">
-        <header className="manager-launcher-topbar" aria-label="Manager page controls">
-          <div className="manager-launcher-actions">
-            <button className="manager-launcher-control manager-profile-trigger manager-profile-settings-button" type="button" aria-label="Profile Settings" onClick={openProfileSettings}>
-              <img className="manager-profile-settings-icon" src={managerProfileSettingsIcon} alt="" draggable="false" />
-            </button>
-            <Link className="manager-launcher-control manager-launcher-home-link" to="/" aria-label="Home">
-              <img className="manager-launcher-home-icon" src={managerHomeIcon} alt="" draggable="false" />
+        <header className="manager-launcher-topbar manager-page-title-bar" aria-label="Manager panel page header">
+          <ManagerPageTitleFrame title="MANAGER PANEL" className="manager-page-title-frame--manager-panel" />
+          <nav className="manager-home-top-actions" aria-label="Manager panel quick actions">
+            <Link className="manager-home-top-action manager-launcher-profile-link" to="/" aria-label="Profile">
+              <img
+                className="manager-home-profile-action-photo"
+                src={profileSettings.photoDataUrl ?? publicAsset("assets/CheetahProfilePic/Cheetah.png")}
+                alt=""
+                draggable="false"
+              />
+              <span className="manager-home-top-action-label">Profile</span>
             </Link>
-          </div>
-          <h1>
-            <img className="manager-launcher-title-icon" src={managerPageIcon} alt="" draggable="false" />
-            <span>Manager&apos;s Page</span>
-          </h1>
-          <button className="manager-launcher-control manager-launcher-logout-button" type="button" aria-label="Log Out" onClick={logout}>
-            <img className="manager-launcher-logout-icon" src={managerLogoutIcon} alt="" draggable="false" />
-          </button>
+            <button className="manager-home-top-action manager-home-logout-button" type="button" aria-label="Log Out" onClick={logout}>
+              <img className="manager-home-logout-icon" src={managerLogoutIcon} alt="" draggable="false" />
+              <span className="manager-home-top-action-label">Log Out</span>
+            </button>
+          </nav>
         </header>
         <nav className="manager-launcher-grid" aria-label="Manager app launcher">
           {managerLauncherItems.map((item) => {
@@ -1506,14 +1545,14 @@ function ManagerLauncherPage() {
         </nav>
       </main>
       {profileOpen && (
-        <div className="modal-backdrop manager-profile-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setProfileOpen(false)}>
+        <div className="modal-backdrop manager-profile-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeProfileSettings()}>
           <form className="modal-card manager-profile-modal" role="dialog" aria-modal="true" aria-label="Manager profile settings" onSubmit={saveProfileSettings}>
             <header className="student-modal-head">
               <div>
                 <h2>Profile Settings</h2>
                 <p>Edit manager access, contact settings, and app theme.</p>
               </div>
-              <button className="student-modal-close" type="button" aria-label="Close manager profile settings" onClick={() => setProfileOpen(false)}>
+              <button className="student-modal-close" type="button" aria-label="Close manager profile settings" onClick={closeProfileSettings}>
                 <X size={20} />
               </button>
             </header>
@@ -1577,35 +1616,37 @@ function ManagerLauncherPage() {
                   placeholder="Confirm new password"
                 />
               </label>
-              <div className="manager-theme-setting" role="group" aria-label="App theme">
-                <span>App Theme</span>
-                <div className="manager-theme-options">
-                  <button
-                    type="button"
-                    className={`manager-theme-option${profileSettings.theme === "light" ? " is-active" : ""}`}
-                    aria-pressed={profileSettings.theme === "light"}
-                    onClick={() => selectProfileTheme("light")}
-                  >
-                    <Sun size={16} /> Light
-                  </button>
-                  <button
-                    type="button"
-                    className={`manager-theme-option${profileSettings.theme === "dark" ? " is-active" : ""}`}
-                    aria-pressed={profileSettings.theme === "dark"}
-                    onClick={() => selectProfileTheme("dark")}
-                  >
-                    <Moon size={16} /> Dark
-                  </button>
+              <div className="manager-profile-preferences">
+                <div className="manager-theme-setting" role="group" aria-label="App theme">
+                  <span>App Theme</span>
+                  <div className="manager-theme-options">
+                    <button
+                      type="button"
+                      className={`manager-theme-option${profileSettings.theme === "light" ? " is-active" : ""}`}
+                      aria-pressed={profileSettings.theme === "light"}
+                      onClick={() => selectProfileTheme("light")}
+                    >
+                      <Sun size={16} /> Light
+                    </button>
+                    <button
+                      type="button"
+                      className={`manager-theme-option${profileSettings.theme === "dark" ? " is-active" : ""}`}
+                      aria-pressed={profileSettings.theme === "dark"}
+                      onClick={() => selectProfileTheme("dark")}
+                    >
+                      <Moon size={16} /> Dark
+                    </button>
+                  </div>
                 </div>
+                <label className="manager-profile-check">
+                  <input
+                    type="checkbox"
+                    checked={profileSettings.updates}
+                    onChange={(event) => setProfileSettings({ ...profileSettings, updates: event.target.checked })}
+                  />
+                  <span>Receive manager updates and reminders</span>
+                </label>
               </div>
-              <label className="manager-profile-check">
-                <input
-                  type="checkbox"
-                  checked={profileSettings.updates}
-                  onChange={(event) => setProfileSettings({ ...profileSettings, updates: event.target.checked })}
-                />
-                <span>Receive manager updates and reminders</span>
-              </label>
             </section>
             <div className="student-editor-actions manager-profile-actions">
               <button type="submit">
