@@ -3,17 +3,26 @@ const logoAssetPath = "682e95109aa21_chos-logo.png";
 const appShellCacheName = "chos-operations-shell-v2";
 const appShellPaths = ["", "manifest.webmanifest", logoAssetPath, "icons/icon-192.png", "icons/icon-512.png"];
 
+function workerScope() {
+  const scope = self.registration?.scope || `${self.location?.origin || "/"}/`;
+  return scope.endsWith("/") ? scope : `${scope}/`;
+}
+
 function scopedUrl(path) {
-  const scope = self.registration?.scope || self.location?.origin || "/";
-  return new URL(path, scope).toString();
+  return new URL(path, workerScope()).toString();
+}
+
+function isUrlInsideScope(candidateUrl, scopeUrl) {
+  const scopePath = scopeUrl.pathname.endsWith("/") ? scopeUrl.pathname : `${scopeUrl.pathname}/`;
+  return candidateUrl.origin === scopeUrl.origin && (candidateUrl.pathname === scopeUrl.pathname || candidateUrl.pathname.startsWith(scopePath));
 }
 
 function safeScopedUrl(value, fallbackPath) {
   const fallbackUrl = scopedUrl(fallbackPath);
   try {
-    const scope = self.registration?.scope || fallbackUrl;
-    const candidate = new URL(value || fallbackPath, scope).toString();
-    return candidate.startsWith(scope) ? candidate : fallbackUrl;
+    const scopeUrl = new URL(workerScope());
+    const candidateUrl = new URL(value || fallbackPath, scopeUrl);
+    return isUrlInsideScope(candidateUrl, scopeUrl) ? candidateUrl.toString() : fallbackUrl;
   } catch {
     return fallbackUrl;
   }
@@ -63,9 +72,9 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  const scope = self.registration?.scope || self.location?.origin || "/";
+  const scope = workerScope();
   const requestUrl = new URL(event.request.url);
-  if (!requestUrl.toString().startsWith(scope)) return;
+  if (!isUrlInsideScope(requestUrl, new URL(scope))) return;
 
   if (event.request.mode === "navigate") {
     event.respondWith(

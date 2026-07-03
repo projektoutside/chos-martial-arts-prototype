@@ -1,7 +1,9 @@
+import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildOperationsBackupSnapshot, type OperationsBackupInput } from "./operationsBackup";
 import { AppStateProvider, useAppState } from "./state";
+import type { StudentRecord } from "./types";
 
 const originalFetch = globalThis.fetch;
 const supabaseSessionStorageKey = "chos.supabase.auth.v1";
@@ -26,6 +28,14 @@ function storeSupabaseSession() {
   }));
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
+}
+
 function Harness() {
   const { accounts, addOperationsStudent, managedAccounts, students } = useAppState();
   return (
@@ -45,6 +55,19 @@ function Harness() {
         })}
       >
         Add Student
+      </button>
+    </div>
+  );
+}
+
+function MessageHydrationRaceHarness() {
+  const { messageLogs, sendMissedClassFollowUps, students } = useAppState();
+  return (
+    <div>
+      <p data-testid="student-count">{students.length}</p>
+      <p data-testid="message-log-count">{messageLogs.length}</p>
+      <button type="button" onClick={() => sendMissedClassFollowUps()}>
+        Queue missed-class reports
       </button>
     </div>
   );
@@ -170,6 +193,77 @@ describe("Supabase-backed app state provider", () => {
       ]));
     });
     expect(window.localStorage.getItem("chos.operations.students.v1")).toBeNull();
+  });
+
+  it("keeps report-queued message logs when Supabase message hydration returns late", async () => {
+    const remoteStudent: StudentRecord = {
+      id: "student-remote-risk",
+      firstName: "Remote",
+      lastName: "Risk",
+      phone: "(262) 555-0100",
+      email: "remote.risk@example.test",
+      dateOfBirth: "2014-09-01",
+      guardianName: "Remote Guardian",
+      guardianPhone: "(262) 555-0100",
+      guardianEmail: "remote.guardian@example.test",
+      emergencyContactName: "Remote Emergency",
+      emergencyContactRelationship: "Parent",
+      emergencyContactPhone: "(262) 555-0200",
+      status: "Active",
+      beltRank: "Yellow",
+      classesAttended: 12,
+      missedClassCount: 3,
+      joinedAt: "2026-01-01",
+      smsConsentUpdatedAt: "2026-05-01T10:00:00.000Z"
+    };
+    const messageHydration = deferred<Response>();
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const requestUrl = new URL(String(url));
+      if (requestUrl.pathname === "/rest/v1/app_state_items") {
+        if (init?.method === "POST") return emptyResponse();
+        const requestedKey = requestUrl.searchParams.get("key")?.replace(/^eq\./, "");
+        if (requestedKey === "chos.operations.students.v1") {
+          return jsonResponse([{ key: requestedKey, value: [remoteStudent] }]);
+        }
+        return jsonResponse([]);
+      }
+      if (requestUrl.pathname === "/rest/v1/direct_messages") {
+        return jsonResponse([]);
+      }
+      if (requestUrl.pathname === "/rest/v1/message_logs") {
+        if (init?.method === "POST") return emptyResponse();
+        if (init?.method === "DELETE") return emptyResponse();
+        return messageHydration.promise;
+      }
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    render(
+      <AppStateProvider>
+        <MessageHydrationRaceHarness />
+      </AppStateProvider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("student-count")).toHaveTextContent("1"));
+    fireEvent.click(screen.getByRole("button", { name: "Queue missed-class reports" }));
+    await waitFor(() => expect(screen.getByTestId("message-log-count")).toHaveTextContent("1"));
+
+    messageHydration.resolve(jsonResponse([]));
+
+    await waitFor(() => expect(screen.getByTestId("message-log-count")).toHaveTextContent("1"));
+    const messageLogPosts = fetchMock.mock.calls
+      .filter(([url, init]) => new URL(String(url)).pathname === "/rest/v1/message_logs" && init?.method === "POST")
+      .map(([, init]) => JSON.parse(String(init?.body)) as Array<Record<string, unknown>>);
+    expect(messageLogPosts.flat()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        recipient_name: "Remote Risk",
+        delivery_status: "queued",
+        status: "queued",
+        body: expect.stringMatching(/missed you in class/i)
+      })
+    ]));
+    expect(window.localStorage.getItem("chos.operations.messages.v1")).toBeNull();
   });
 
   it("does not fall back to local operations storage when Supabase is configured without a session", async () => {

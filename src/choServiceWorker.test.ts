@@ -11,9 +11,8 @@ type FetchHandler = (event: {
   waitUntil: (promise: Promise<unknown>) => void;
 }) => void;
 
-function loadChoServiceWorkerForFetchTest(fetchMock: typeof fetch, cachedShell?: Response) {
+function loadChoServiceWorkerForFetchTest(fetchMock: typeof fetch, cachedShell?: Response, scope = "https://xatori-dev.github.io/chos-martial-arts-operations-app/") {
   const listeners = new Map<string, FetchHandler>();
-  const scope = "https://xatori-dev.github.io/chos-martial-arts-operations-app/";
   const cachePut = vi.fn().mockResolvedValue(undefined);
   const cacheAddAll = vi.fn().mockResolvedValue(undefined);
   const cachesMock = {
@@ -62,5 +61,27 @@ describe("Cho service worker fetch handling", () => {
     expect(await response?.text()).toBe("<main>Cho app shell</main>");
     expect(fetchMock).toHaveBeenCalledWith(expect.objectContaining({ url: `${scope}profile` }));
     expect(cachesMock.match).toHaveBeenCalledWith(scope);
+  });
+
+  it("ignores same-prefix routes outside the service-worker scope", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("<main>Unexpected</main>", { status: 200 }));
+    const { cachesMock, listeners } = loadChoServiceWorkerForFetchTest(
+      fetchMock as unknown as typeof fetch,
+      undefined,
+      "https://xatori-dev.github.io/chos-martial-arts-operations-app"
+    );
+    const fetchHandler = listeners.get("fetch");
+    if (!fetchHandler) throw new Error("Expected service worker fetch handler.");
+    const respondWith = vi.fn();
+
+    fetchHandler({
+      request: { method: "GET", mode: "navigate", url: "https://xatori-dev.github.io/chos-martial-arts-operations-app.evil/profile" },
+      respondWith,
+      waitUntil: vi.fn()
+    });
+
+    expect(respondWith).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(cachesMock.match).not.toHaveBeenCalled();
   });
 });

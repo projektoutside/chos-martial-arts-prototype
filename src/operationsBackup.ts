@@ -1,4 +1,4 @@
-import { dataUrlMimeType, isSafeStudyMaterialFile, isSafeTrainingVideoFile } from "./contentSafety";
+import { isSafeMerchandiseImageDataUrl, isSafeStudyMaterialFile, isSafeTrainingVideoFile } from "./contentSafety";
 import { roundCurrency, TAX_RATE } from "./utils";
 import type {
   AccountRole,
@@ -268,7 +268,6 @@ const supportedClassWeekdays = new Set<ClassWeekday>([0, 1, 2, 3, 4, 5, 6]);
 const builtInLoginIdentities = new Set(["manager123@chos.prototype", "dev123@chos.prototype", "student123@chos.prototype", "parent123@chos.prototype", "guest@chos.prototype"]);
 const builtInGuardianLoginIdentities = new Set(["parent123@chos.prototype"]);
 const builtInLoginUsernames = new Set(["manager123", "dev123", "student123", "parent123"]);
-const allowedMerchandiseImageMimeTypes = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
 const productionMessagingSetupId = "production-messaging";
 const messagingSetupCredentialFieldPattern = /(?:TWILIO_|AUTH_TOKEN|ACCOUNT_SID|API_KEY|API_SECRET|SECRET|PASSWORD|PRIVATE_KEY|CREDENTIAL|VAPID_PRIVATE_KEY)/i;
 const rawPushSubscriptionFieldPattern = /^(?:pushSubscriptionJson|pushSubscriptionEndpoint|subscription|subscriptionEndpoint|endpoint|keys|p256dh|auth)$/i;
@@ -664,11 +663,6 @@ function cleanBackupPositiveInteger(value: unknown, fallback: number) {
   const numericValue = typeof value === "number" ? value : (typeof value === "string" && value.trim() ? Number(value.trim()) : Number.NaN);
   if (!Number.isFinite(numericValue)) return fallback;
   return Math.max(1, Math.floor(numericValue));
-}
-
-function isSafeMerchandiseImageDataUrl(value: string) {
-  const mimeType = dataUrlMimeType(value);
-  return Boolean(value.startsWith("data:image/") && mimeType && allowedMerchandiseImageMimeTypes.has(mimeType));
 }
 
 function sanitizeMerchandiseItemForBackup(item: MerchandiseItem) {

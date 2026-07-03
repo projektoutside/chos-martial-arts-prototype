@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
 import { childUsernameFromName, normalizeChildUsername } from "./childAccountUtils";
-import { isSafeStudyMaterialFile, isSafeTrainingVideoFile } from "./contentSafety";
+import { isSafeMerchandiseImageDataUrl, isSafeStudyMaterialFile, isSafeTrainingVideoFile } from "./contentSafety";
 import { getProduct, studio } from "./data";
 import { parseOperationsBackupSnapshot, type OperationsBackupData } from "./operationsBackup";
 import { getClassReminderCandidates, getLeadCandidates, getMerchandiseTargetStock, getStudentCelebrationEvents, getStudentProfileIssues, hasGuardianSmsConsent, hasStaffSmsConsent, hasStudentSmsConsent, isAttendanceGapFollowUpDue, isBeltTestInviteDue, isLowStockMerchandiseItem, isMilestoneEncouragementDue, isMissedClassFollowUpDue, isNewStudentCheckInDue, isPausedStudentReviewDue, isProfileUpdateRequestDue, isQueuedMessageDeliverable, isStaleOneTimeScheduledClass, isTrialConversionDue } from "./operationsReports";
@@ -1653,6 +1653,22 @@ function prependUniqueMessageLogs(logs: readonly MessageLog[], current: readonly
   };
 }
 
+function mergeHydratedMessageLogs(remoteLogs: readonly MessageLog[], currentLogs: readonly MessageLog[]) {
+  const seenIds = new Set<string>();
+  const merged: MessageLog[] = [];
+  currentLogs.forEach((log) => {
+    if (!log.id || seenIds.has(log.id)) return;
+    seenIds.add(log.id);
+    merged.push(log);
+  });
+  remoteLogs.forEach((log) => {
+    if (!log.id || seenIds.has(log.id)) return;
+    seenIds.add(log.id);
+    merged.push(log);
+  });
+  return merged;
+}
+
 function cleanNonnegativeInteger(value: number | undefined, fallback: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(0, Math.floor(value as number));
@@ -1843,6 +1859,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const messageLogsRef = useRef(messageLogs);
   const supabaseMessageLogsPersistedIdsRef = useRef<Set<string>>(new Set());
   const supabaseMessageLogsHydratedRef = useRef(false);
+  const supabaseMessageLogsLocallyMutatedBeforeHydrationRef = useRef(false);
   const textAutomationRunsRef = useRef(textAutomationRuns);
   const directMessagesRef = useRef(directMessages);
   const supabaseDirectMessagesPersistedIdsRef = useRef<Set<string>>(new Set());
@@ -1855,6 +1872,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const trainingVideosRef = useRef(trainingVideos);
   const studyGuideFoldersRef = useRef(studyGuideFolders);
   const studyGuideMaterialsRef = useRef(studyGuideMaterials);
+
+  const markMessageLogsLocallyMutated = useCallback(() => {
+    if (supabaseMessagesRemoteBacked && !supabaseMessageLogsHydratedRef.current) {
+      supabaseMessageLogsLocallyMutatedBeforeHydrationRef.current = true;
+    }
+  }, [supabaseMessagesRemoteBacked]);
 
   useEffect(() => {
     cartRef.current = cart;
@@ -2126,6 +2149,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     supabaseMessageLogsHydratedRef.current = false;
+    supabaseMessageLogsLocallyMutatedBeforeHydrationRef.current = false;
     supabaseDirectMessagesHydratedRef.current = false;
     if (!supabaseMessagesRemoteBacked) {
       supabaseMessageLogsPersistedIdsRef.current = new Set();
@@ -2144,10 +2168,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         removeStorage(keys.directMessages);
       }
       if (messageLogsResult.status === "ok") {
-        supabaseMessageLogsPersistedIdsRef.current = new Set(messageLogsResult.data.map((message) => message.id));
+        const hydratedMessageLogs = supabaseMessageLogsLocallyMutatedBeforeHydrationRef.current
+          ? mergeHydratedMessageLogs(messageLogsResult.data, messageLogsRef.current)
+          : messageLogsResult.data;
+        supabaseMessageLogsPersistedIdsRef.current = new Set(hydratedMessageLogs.map((message) => message.id));
         supabaseMessageLogsHydratedRef.current = true;
-        messageLogsRef.current = messageLogsResult.data;
-        setMessageLogs(messageLogsResult.data);
+        supabaseMessageLogsLocallyMutatedBeforeHydrationRef.current = false;
+        messageLogsRef.current = hydratedMessageLogs;
+        setMessageLogs(hydratedMessageLogs);
         removeStorage(keys.messageLogs);
       }
     });
@@ -2287,13 +2315,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     (logs: readonly MessageLog[]) => {
       const { inserted, next } = prependUniqueMessageLogs(logs, messageLogsRef.current);
       if (inserted.length) {
+        markMessageLogsLocallyMutated();
         messageLogsRef.current = next;
         setMessageLogs(next);
         if (supabaseMessagesRemoteBacked) void persistSupabaseMessageLogs(inserted);
       }
       return inserted;
     },
-    [setMessageLogs, supabaseMessagesRemoteBacked]
+    [markMessageLogsLocallyMutated, setMessageLogs, supabaseMessagesRemoteBacked]
   );
 
   const findExistingMessageLog = useCallback(
@@ -3140,6 +3169,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const category = item.category.trim();
       if (!name || !category || !Number.isFinite(item.price) || !Number.isFinite(item.stock) || item.price < 0 || item.stock < 0) return undefined;
       const thresholds = cleanMerchandiseThresholds(item);
+      const imageDataUrl = item.imageDataUrl?.trim();
+      const safeImageDataUrl = imageDataUrl && isSafeMerchandiseImageDataUrl(imageDataUrl) ? imageDataUrl : undefined;
       const createdItem: MerchandiseItem = {
         id: createPrototypeId("merch"),
         name,
@@ -3150,7 +3181,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         targetStock: thresholds.targetStock,
         description: item.description?.trim() || `${category} available for pickup at Cho's Martial Arts.`,
         imageLabel: category.toLowerCase(),
-        imageDataUrl: item.imageDataUrl
+        ...(safeImageDataUrl ? { imageDataUrl: safeImageDataUrl } : {})
       };
       const existingItem = merchandiseItemsRef.current.find((currentItem) => merchandiseItemCatalogKey(currentItem) === merchandiseItemCatalogKey(createdItem));
       if (existingItem) return existingItem;
@@ -3168,8 +3199,11 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const thresholds = cleanMerchandiseThresholds(item);
       const existingItem = merchandiseItemsRef.current.find((currentItem) => currentItem.id === itemId);
       if (!existingItem) return undefined;
+      const imageDataUrl = item.imageDataUrl?.trim();
+      const safeImageDataUrl = imageDataUrl && isSafeMerchandiseImageDataUrl(imageDataUrl) ? imageDataUrl : undefined;
+      const { imageDataUrl: _existingImageDataUrl, ...existingItemWithoutImage } = existingItem;
       const updatedItem: MerchandiseItem = {
-        ...existingItem,
+        ...existingItemWithoutImage,
         name,
         category,
         price: item.price,
@@ -3178,7 +3212,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         targetStock: thresholds.targetStock,
         description: item.description?.trim() || `${category} available for pickup at Cho's Martial Arts.`,
         imageLabel: category.toLowerCase(),
-        imageDataUrl: item.imageDataUrl
+        ...(safeImageDataUrl ? { imageDataUrl: safeImageDataUrl } : {})
       };
       updateMerchandiseItemsState((current) =>
         current.map((currentItem) => {
@@ -3961,12 +3995,13 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         return applyTwilioRelayResultToMessage(message, result, appliedAt);
       });
       if (applied) {
+        markMessageLogsLocallyMutated();
         messageLogsRef.current = nextMessageLogs;
         setMessageLogs(nextMessageLogs);
       }
       return { applied, sent, failed, ignored: unappliedResults.length };
     },
-    [setMessageLogs]
+    [markMessageLogsLocallyMutated, setMessageLogs]
   );
 
   const applyTwilioRelayResults = useCallback(
@@ -4005,10 +4040,11 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       if (staleQueuedIds.has(message.id)) return [];
       return [message];
     });
+    markMessageLogsLocallyMutated();
     messageLogsRef.current = nextMessageLogs;
     setMessageLogs(nextMessageLogs);
     return deliverableQueuedIds.size;
-  }, [setMessageLogs]);
+  }, [markMessageLogsLocallyMutated, setMessageLogs]);
 
   const sendQueuedText = useCallback(
     (messageId: string) => {
@@ -4017,6 +4053,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       if (!queuedMessage) return undefined;
       if (!isQueuedMessageDeliverable(queuedMessage, studentsRef.current, managedAccountsRef.current)) {
         const nextMessageLogs = currentMessageLogs.filter((message) => message.id !== messageId || message.status !== "queued");
+        markMessageLogsLocallyMutated();
         messageLogsRef.current = nextMessageLogs;
         setMessageLogs(nextMessageLogs);
         return undefined;
@@ -4024,11 +4061,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const sentAt = new Date().toISOString();
       const sentMessage: MessageLog = { ...queuedMessage, status: "sent", sentAt, deliveryStatus: "sent" };
       const nextMessageLogs = currentMessageLogs.map((message) => (message.id === messageId && message.status === "queued" ? sentMessage : message));
+      markMessageLogsLocallyMutated();
       messageLogsRef.current = nextMessageLogs;
       setMessageLogs(nextMessageLogs);
       return sentMessage;
     },
-    [setMessageLogs]
+    [markMessageLogsLocallyMutated, setMessageLogs]
   );
 
   const clearStaleQueuedTexts = useCallback(() => {
@@ -4040,10 +4078,11 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     );
     if (!staleQueuedIds.size) return 0;
     const nextMessageLogs = currentMessageLogs.filter((message) => message.status !== "queued" || !staleQueuedIds.has(message.id));
+    markMessageLogsLocallyMutated();
     messageLogsRef.current = nextMessageLogs;
     setMessageLogs(nextMessageLogs);
     return staleQueuedIds.size;
-  }, [setMessageLogs]);
+  }, [markMessageLogsLocallyMutated, setMessageLogs]);
 
   const applyTwilioInboundWebhook = useCallback(
     (rawWebhook: string) => {

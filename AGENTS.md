@@ -4,7 +4,8 @@
 
 - This is Cho's Martial Arts App Prototype: a Vite + React + TypeScript single-page app.
 - Stack: React 19, React Router 7, Vite 8, strict TypeScript, Vitest, Testing Library, jsdom, lucide-react, date-fns, and Three.js.
-- This is a local prototype with no backend, payment processor, SMS/email provider, calendar account, CAPTCHA service, or production auth. Mock app state persists in `localStorage`.
+- This is a staging pilot with local prototype behavior plus Supabase-backed staging surfaces. There is no production backend, payment processor, live SMS/email provider, calendar account, CAPTCHA service, or production auth.
+- Local prototype data and device preferences can persist in `localStorage`; when Supabase env and a valid Supabase Auth session are present, manager auth, owner-created accounts, live chat, direct messages, message logs, and shared operations app state use Supabase staging.
 - The app is GitHub Pages-ready. Preserve subpath routing and asset loading.
 
 ## Start Here
@@ -37,10 +38,11 @@
 
 ## State And Data Rules
 
-- Treat `localStorage` persistence as intentional prototype behavior.
+- Treat `localStorage` persistence as intentional prototype behavior for local mode and device-local preferences.
+- When Supabase is configured and a valid Supabase Auth session exists, preserve the staging boundary where shared operations records persist remotely instead of through browser-local fallbacks.
 - When adding or changing workflow data, update `src/types.ts`, `src/state.tsx`, the relevant UI, and tests together.
 - Keep localStorage reads/writes tolerant of blocked or failing storage.
-- Do not introduce real backend assumptions unless the user explicitly chooses a backend integration.
+- Do not introduce new production backend assumptions unless the user explicitly chooses a backend integration.
 - Preserve source-faithful Cho's content, product names, prices, categories, class times, and labels.
 
 ## Routing And Assets

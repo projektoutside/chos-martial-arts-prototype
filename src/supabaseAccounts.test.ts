@@ -117,6 +117,7 @@ describe("supabase account adapter", () => {
       })
     );
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("manager-access-token");
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).not.toContain("manager-refresh-token");
   });
 
   it("signs in created staff usernames through Supabase Auth and stores the JWT", async () => {
@@ -168,6 +169,7 @@ describe("supabase account adapter", () => {
       })
     );
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("staff-access-token");
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).not.toContain("staff-refresh-token");
   });
 
   it("creates managed accounts through the Edge Function with the stored owner JWT", async () => {

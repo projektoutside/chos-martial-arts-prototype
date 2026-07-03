@@ -27,6 +27,8 @@ const allowedTrainingVideoMimeTypes = new Set([
   "video/x-m4v"
 ]);
 
+const allowedMerchandiseImageMimeTypes = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
+
 export function dataUrlMimeType(dataUrl: string) {
   const match = dataUrl.match(/^data:([^;,]+)[;,]/i);
   return match?.[1]?.trim().toLowerCase() ?? "";
@@ -44,4 +46,9 @@ export function isSafeTrainingVideoFile(video: TrainingVideoPayload) {
   const actualMimeType = dataUrlMimeType(video.videoDataUrl);
   const mimeType = actualMimeType || declaredMimeType;
   return Boolean(mimeType && allowedTrainingVideoMimeTypes.has(mimeType) && (!declaredMimeType || declaredMimeType === mimeType));
+}
+
+export function isSafeMerchandiseImageDataUrl(value: string) {
+  const mimeType = dataUrlMimeType(value);
+  return Boolean(value.startsWith("data:image/") && mimeType && allowedMerchandiseImageMimeTypes.has(mimeType));
 }

@@ -135,7 +135,6 @@ function saveSupabaseAuthSession(response: SupabasePasswordResponse) {
   const expiresAt = response.expires_at ? response.expires_at * 1000 : Date.now() + Math.max(1, response.expires_in ?? 3600) * 1000;
   const storedSession: SupabaseStoredSession = {
     accessToken: response.access_token,
-    refreshToken: response.refresh_token,
     expiresAt,
     userId: response.user.id
   };

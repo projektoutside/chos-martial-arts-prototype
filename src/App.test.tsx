@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { buildOperationsBackupSnapshot, type OperationsBackupInput } from "./operationsBackup";
 import { AppStateProvider, useAppState } from "./state";
-import type { AccountSession } from "./types";
+import type { AccountSession, StudentRecord } from "./types";
 import { prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
 import serviceWorkerSource from "../public/cho-service-worker.js?raw";
 
@@ -370,6 +370,86 @@ const completeStudentSafetyFields = {
   smsConsentUpdatedAt: "2026-05-01T10:00:00.000Z"
 };
 
+function makeOutreachStudent(overrides: Partial<StudentRecord> & Pick<StudentRecord, "id" | "firstName" | "lastName">): StudentRecord {
+  return {
+    ...completeStudentSafetyFields,
+    phone: "(262) 555-0100",
+    email: `${overrides.firstName.toLowerCase()}.${overrides.lastName.toLowerCase()}@example.com`,
+    status: "Active",
+    beltRank: "White",
+    classesAttended: 0,
+    missedClassCount: 0,
+    joinedAt: "2026-01-01",
+    profileUpdatedAt: "2026-01-01",
+    ...overrides
+  };
+}
+
+function seedOperationsStudents(students: StudentRecord[]) {
+  window.localStorage.setItem("chos.operations.students.v1", JSON.stringify(students));
+}
+
+function missedClassFollowUpStudents() {
+  return [
+    makeOutreachStudent({
+      id: "student-maya",
+      firstName: "Maya",
+      lastName: "Robinson",
+      phone: "(262) 555-0101",
+      beltRank: "Yellow",
+      classesAttended: 12,
+      missedClassCount: 3,
+      lastContactedAt: dateKeyOffset(-10)
+    }),
+    makeOutreachStudent({
+      id: "student-serena",
+      firstName: "Serena",
+      lastName: "Park",
+      phone: "(262) 555-0102",
+      beltRank: "Green",
+      classesAttended: 18,
+      missedClassCount: 4,
+      lastContactedAt: dateKeyOffset(-8)
+    })
+  ];
+}
+
+function trialConversionStudents() {
+  return [
+    makeOutreachStudent({ id: "student-derek", firstName: "Derek", lastName: "Miles", phone: "(262) 555-0111", status: "Trial" }),
+    makeOutreachStudent({ id: "student-nia", firstName: "Nia", lastName: "Brooks", phone: "(262) 555-0112", status: "Trial" }),
+    makeOutreachStudent({ id: "student-owen-trial", firstName: "Owen", lastName: "Reed", phone: "(262) 555-0113", status: "Trial" }),
+    makeOutreachStudent({ id: "student-lena", firstName: "Lena", lastName: "Cho", phone: "(262) 555-0114", status: "Trial" })
+  ];
+}
+
+function pausedReactivationStudents() {
+  return [
+    makeOutreachStudent({ id: "student-victor", firstName: "Victor", lastName: "Lane", phone: "(262) 555-0121", status: "Paused" }),
+    makeOutreachStudent({ id: "student-ari-paused", firstName: "Ari", lastName: "Santos", phone: "(262) 555-0122", status: "Paused" }),
+    makeOutreachStudent({ id: "student-cora-paused", firstName: "Cora", lastName: "Miles", phone: "(262) 555-0123", status: "Paused" }),
+    makeOutreachStudent({ id: "student-noah-paused", firstName: "Noah", lastName: "Kim", phone: "(262) 555-0124", status: "Paused" })
+  ];
+}
+
+function beltTestingInviteStudents() {
+  const recentAttendance = dateKeyOffset(-7);
+  return [
+    makeOutreachStudent({ id: "student-gia", firstName: "Gia", lastName: "Patel", phone: "(262) 555-0131", beltRank: "Orange", classesAttended: 20, lastCheckIn: recentAttendance }),
+    makeOutreachStudent({ id: "student-iris", firstName: "Iris", lastName: "Morgan", phone: "(262) 555-0132", beltRank: "Blue", classesAttended: 44, missedClassCount: 1, lastCheckIn: recentAttendance }),
+    makeOutreachStudent({ id: "student-owen-belt", firstName: "Owen", lastName: "Carter", phone: "(262) 555-0133", beltRank: "Red", classesAttended: 78, lastCheckIn: recentAttendance })
+  ];
+}
+
+function reportsCommandCenterStudents() {
+  return [
+    ...missedClassFollowUpStudents(),
+    ...trialConversionStudents(),
+    ...pausedReactivationStudents(),
+    ...beltTestingInviteStudents()
+  ];
+}
+
 function dateKeyOffset(days: number) {
   const date = new Date();
   date.setDate(date.getDate() + days);
@@ -686,6 +766,43 @@ function MerchandiseDoubleAddHarness() {
       </button>
       <p>Harness duplicate merchandise returns: {returnMatch}</p>
       <p>Harness duplicate merchandise items: {merchandiseItems.length}</p>
+    </div>
+  );
+}
+
+function MerchandiseImageSafetyHarness() {
+  const { addMerchandiseItem, merchandiseItems } = useAppState();
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          addMerchandiseItem({
+            name: "Unsafe SVG Patch",
+            category: "Patches",
+            price: 5,
+            stock: 4,
+            reorderPoint: 1,
+            targetStock: 6,
+            description: "Should not retain active image content.",
+            imageDataUrl: "data:image/svg+xml,<svg><script>alert(1)</script></svg>"
+          });
+          addMerchandiseItem({
+            name: "Safe PNG Patch",
+            category: "Patches",
+            price: 6,
+            stock: 5,
+            reorderPoint: 1,
+            targetStock: 6,
+            description: "Safe image content.",
+            imageDataUrl: "data:image/png;base64,cGF0Y2g="
+          });
+        }}
+      >
+        Add merchandise images
+      </button>
+      <p>Harness merchandise image items: {merchandiseItems.length}</p>
     </div>
   );
 }
@@ -7286,7 +7403,8 @@ describe("post-login operations app", () => {
     expect(screen.queryByRole("heading", { name: "MANAGER PANEL" })).not.toBeInTheDocument();
   });
 
-  it.skip("opens an actionable reports command center from the manager launcher", () => {
+  it("opens an actionable reports command center from the manager launcher", () => {
+    seedOperationsStudents(reportsCommandCenterStudents());
     renderLoggedInApp("/reports");
 
     expect(screen.getByRole("link", { name: "Back to Manager Page" })).toHaveAttribute("href", "/manager");
@@ -7294,10 +7412,12 @@ describe("post-login operations app", () => {
     expect(screen.getByRole("button", { name: "Log Out" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Reports" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Workload Command Center" })).toBeInTheDocument();
-    expect(within(screen.getByLabelText("Current students report metric")).getByText("17")).toBeInTheDocument();
+    expect(within(screen.getByLabelText("Current students report metric")).getByText("13")).toBeInTheDocument();
     expect(within(screen.getByLabelText("Missed-class follow-ups report metric")).getByText("2")).toBeInTheDocument();
+    expect(within(screen.getByLabelText("Trial follow-ups report metric")).getByText("4")).toBeInTheDocument();
     expect(within(screen.getByLabelText("Low stock items report metric")).getByText("1")).toBeInTheDocument();
     expect(within(screen.getByLabelText("Test invites report metric")).getByText("3")).toBeInTheDocument();
+    expect(within(screen.getByLabelText("Paused follow-ups report metric")).getByText("4")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send missed-class follow-ups" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Invite belt test candidates" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Convert trial students" })).toBeInTheDocument();
@@ -7305,8 +7425,6 @@ describe("post-login operations app", () => {
     expect(screen.getByRole("button", { name: "Review paused students" })).toBeInTheDocument();
     expect(screen.getAllByText("Maya Robinson").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Serena Park").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Derek Miles").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Victor Lane").length).toBeGreaterThan(0);
     expect(screen.queryByText("Coming soon")).not.toBeInTheDocument();
   });
 
@@ -7731,7 +7849,8 @@ describe("post-login operations app", () => {
     expect(storedStudents.find((student) => student.id === "student-dane")?.lastContactedAt).toBeUndefined();
   });
 
-  it.skip("lets managers queue missed-class follow-ups directly from reports", async () => {
+  it("lets managers queue missed-class follow-ups directly from reports", async () => {
+    seedOperationsStudents(missedClassFollowUpStudents());
     renderLoggedInApp("/reports");
 
     fireEvent.click(screen.getByRole("button", { name: "Send missed-class follow-ups" }));
@@ -7743,6 +7862,11 @@ describe("post-login operations app", () => {
     expect(within(screen.getByLabelText("Queued messages report metric")).getByText("2")).toBeInTheDocument();
     expect(screen.getByText("No current students are above the missed-class follow-up threshold.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Send missed-class follow-ups" })).not.toBeInTheDocument();
+    const logs = JSON.parse(window.localStorage.getItem("chos.operations.messages.v1") ?? "[]") as Array<{ recipientName: string; body: string; status: string }>;
+    expect(logs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ recipientName: "Maya Robinson", status: "queued", body: expect.stringMatching(/missed you in class/i) }),
+      expect.objectContaining({ recipientName: "Serena Park", status: "queued", body: expect.stringMatching(/missed you in class/i) })
+    ]));
   });
 
   it("lets managers clear stale one-time schedule items directly from reports", async () => {
@@ -7831,7 +7955,8 @@ describe("post-login operations app", () => {
     ]);
   });
 
-  it.skip("lets managers send queued texts directly from reports", async () => {
+  it("lets managers send queued texts directly from reports", async () => {
+    seedOperationsStudents(missedClassFollowUpStudents());
     renderLoggedInApp("/reports");
 
     fireEvent.click(screen.getByRole("button", { name: "Send missed-class follow-ups" }));
@@ -7844,9 +7969,15 @@ describe("post-login operations app", () => {
       expect(within(screen.getByLabelText("Queued messages report metric")).getByText("0")).toBeInTheDocument();
     });
     expect(screen.queryByRole("button", { name: "Send queued texts" })).not.toBeInTheDocument();
+    const logs = JSON.parse(window.localStorage.getItem("chos.operations.messages.v1") ?? "[]") as Array<{ recipientName: string; status: string; sentAt?: string }>;
+    expect(logs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ recipientName: "Maya Robinson", status: "sent", sentAt: expect.any(String) }),
+      expect.objectContaining({ recipientName: "Serena Park", status: "sent", sentAt: expect.any(String) })
+    ]));
   });
 
-  it.skip("lets managers queue trial conversion outreach directly from reports", async () => {
+  it("lets managers queue trial conversion outreach directly from reports", async () => {
+    seedOperationsStudents(trialConversionStudents());
     renderLoggedInApp("/reports");
 
     fireEvent.click(screen.getByRole("button", { name: "Convert trial students" }));
@@ -7857,9 +7988,12 @@ describe("post-login operations app", () => {
     });
     expect(within(screen.getByLabelText("Queued messages report metric")).getByText("4")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Convert trial students" })).not.toBeInTheDocument();
+    const logs = JSON.parse(window.localStorage.getItem("chos.operations.messages.v1") ?? "[]") as Array<{ body: string; status: string }>;
+    expect(logs.filter((log) => /choose the best Cho's program after your trial/i.test(log.body))).toHaveLength(4);
   });
 
-  it.skip("lets managers queue paused-student reactivation outreach directly from reports", async () => {
+  it("lets managers queue paused-student reactivation outreach directly from reports", async () => {
+    seedOperationsStudents(pausedReactivationStudents());
     renderLoggedInApp("/reports");
 
     fireEvent.click(screen.getByRole("button", { name: "Review paused students" }));
@@ -7870,9 +8004,12 @@ describe("post-login operations app", () => {
     });
     expect(within(screen.getByLabelText("Queued messages report metric")).getByText("4")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Review paused students" })).not.toBeInTheDocument();
+    const logs = JSON.parse(window.localStorage.getItem("chos.operations.messages.v1") ?? "[]") as Array<{ body: string; status: string }>;
+    expect(logs.filter((log) => /get back on the mat/i.test(log.body))).toHaveLength(4);
   });
 
-  it.skip("lets managers queue belt testing invitations directly from reports", async () => {
+  it("lets managers queue belt testing invitations directly from reports", async () => {
+    seedOperationsStudents(beltTestingInviteStudents());
     renderLoggedInApp("/reports");
 
     fireEvent.click(screen.getByRole("button", { name: "Invite belt test candidates" }));
@@ -7884,6 +8021,8 @@ describe("post-login operations app", () => {
     expect(within(screen.getByLabelText("Queued messages report metric")).getByText("3")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Invite belt test candidates" })).not.toBeInTheDocument();
     expect(screen.getByText("No current students are ready for belt testing outreach.")).toBeInTheDocument();
+    const logs = JSON.parse(window.localStorage.getItem("chos.operations.messages.v1") ?? "[]") as Array<{ body: string; status: string }>;
+    expect(logs.filter((log) => /belt testing review/i.test(log.body))).toHaveLength(3);
   });
 
   it("lets managers queue near-testing milestone encouragement directly from reports", async () => {
@@ -11807,13 +11946,18 @@ describe("post-login operations app", () => {
     });
   });
 
-  it.skip("queues missed-class follow-up texts for students who missed three classes", () => {
+  it("queues missed-class follow-up texts for students who missed three classes", () => {
+    seedOperationsStudents(missedClassFollowUpStudents());
     renderLoggedInApp("/messages");
 
     fireEvent.click(screen.getByRole("button", { name: "Send Missed-Class Follow-Ups" }));
 
-    expect(screen.getAllByText(/missed you in class/i).length).toBeGreaterThan(1);
-    expect(screen.getAllByText(/missed 3 classes/i).length).toBeGreaterThan(0);
+    expect(screen.getByText("2 missed-class follow-up texts queued.")).toBeInTheDocument();
+    const logs = JSON.parse(window.localStorage.getItem("chos.operations.messages.v1") ?? "[]") as Array<{ recipientName: string; body: string; status: string }>;
+    expect(logs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ recipientName: "Maya Robinson", status: "queued", body: expect.stringMatching(/missed 3 classes/i) }),
+      expect.objectContaining({ recipientName: "Serena Park", status: "queued", body: expect.stringMatching(/missed 4 classes/i) })
+    ]));
   });
 
   it("does not queue missed-class follow-up texts without SMS consent evidence", async () => {
@@ -11844,7 +11988,8 @@ describe("post-login operations app", () => {
     expect(JSON.parse(window.localStorage.getItem("chos.operations.messages.v1") ?? "[]")).toEqual([]);
   });
 
-  it.skip("lets staff send every queued text from message settings", async () => {
+  it("lets staff send every queued text from message settings", async () => {
+    seedOperationsStudents(missedClassFollowUpStudents());
     renderLoggedInApp("/messages");
 
     fireEvent.click(screen.getByRole("button", { name: "Send Missed-Class Follow-Ups" }));
@@ -11987,7 +12132,7 @@ describe("post-login operations app", () => {
     }));
   });
 
-  it.skip("keeps operations notification settings scoped to the active staff account", async () => {
+  it("keeps operations notification settings scoped to the active staff account", async () => {
     window.localStorage.setItem("chos.operations.students.v1", JSON.stringify([
       {
         id: "student-ari",
@@ -12154,6 +12299,31 @@ describe("post-login operations app", () => {
         close,
         data: {
           url: "https://example.invalid/phishing"
+        }
+      },
+      waitUntil: (promise) => {
+        waitUntilPromises.push(promise);
+      }
+    });
+
+    await Promise.all(waitUntilPromises);
+
+    expect(close).toHaveBeenCalled();
+    expect(worker.clients.openWindow).toHaveBeenCalledWith("https://chos.example/chos-martial-arts-prototype/messages");
+  });
+
+  it("rejects same-prefix service-worker notification URLs outside the app scope", async () => {
+    const worker = loadChoServiceWorkerForTest("https://chos.example/chos-martial-arts-prototype");
+    const clickHandler = worker.listeners.get("notificationclick");
+    if (!clickHandler) throw new Error("Expected Cho service worker to register a notification click handler.");
+    const close = vi.fn();
+    const waitUntilPromises: Promise<unknown>[] = [];
+
+    clickHandler({
+      notification: {
+        close,
+        data: {
+          url: "https://chos.example/chos-martial-arts-prototype.evil/messages"
         }
       },
       waitUntil: (promise) => {
@@ -15741,6 +15911,28 @@ describe("post-login operations app", () => {
         })
       ]);
     });
+  });
+
+  it("drops unsafe merchandise image data URLs at the state boundary", async () => {
+    window.localStorage.setItem("chos.operations.merchandise.v1", JSON.stringify([]));
+
+    render(
+      <MemoryRouter initialEntries={["/merchandise"]}>
+        <AppStateProvider>
+          <MerchandiseImageSafetyHarness />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add merchandise images" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Harness merchandise image items: 2")).toBeInTheDocument();
+    });
+    const savedItems = JSON.parse(window.localStorage.getItem("chos.operations.merchandise.v1") ?? "[]") as Array<{ name: string; imageDataUrl?: string }>;
+    expect(savedItems.find((item) => item.name === "Unsafe SVG Patch")).not.toHaveProperty("imageDataUrl");
+    expect(savedItems.find((item) => item.name === "Safe PNG Patch")).toEqual(expect.objectContaining({ imageDataUrl: "data:image/png;base64,cGF0Y2g=" }));
+    expect(JSON.stringify(savedItems)).not.toMatch(/<script|image\/svg/i);
   });
 
   it("lets staff add, edit, upload an image, and delete merchandise", async () => {
