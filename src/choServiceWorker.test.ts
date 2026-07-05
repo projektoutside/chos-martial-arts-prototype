@@ -3,6 +3,7 @@ import serviceWorkerSource from "../public/cho-service-worker.js?raw";
 
 type FetchHandler = (event: {
   request: {
+    cache?: string;
     method: string;
     mode?: string;
     url: string;
@@ -83,5 +84,31 @@ describe("Cho service worker fetch handling", () => {
     expect(respondWith).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(cachesMock.match).not.toHaveBeenCalled();
+  });
+
+  it("bypasses the runtime cache for deployed version checks", async () => {
+    const versionResponse = new Response(JSON.stringify({ version: "new-version" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+    const fetchMock = vi.fn().mockResolvedValue(versionResponse);
+    const { cachesMock, listeners, scope } = loadChoServiceWorkerForFetchTest(fetchMock as unknown as typeof fetch);
+    const fetchHandler = listeners.get("fetch");
+    if (!fetchHandler) throw new Error("Expected service worker fetch handler.");
+    let versionCheckResponse: Promise<Response> | undefined;
+
+    fetchHandler({
+      request: { cache: "no-store", method: "GET", url: `${scope}app-version.json` },
+      respondWith: (response) => {
+        versionCheckResponse = response;
+      },
+      waitUntil: vi.fn()
+    });
+
+    if (!versionCheckResponse) throw new Error("Expected app-version request to be handled.");
+    await expect(versionCheckResponse.then((response) => response.json())).resolves.toEqual({ version: "new-version" });
+    expect(fetchMock).toHaveBeenCalledWith(expect.objectContaining({ cache: "no-store", url: `${scope}app-version.json` }));
+    expect(cachesMock.match).not.toHaveBeenCalled();
+    expect(cachesMock.open).not.toHaveBeenCalled();
   });
 });

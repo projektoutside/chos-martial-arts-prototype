@@ -2,6 +2,7 @@ const fallbackMessagePath = "messages";
 const logoAssetPath = "682e95109aa21_chos-logo.png";
 const appShellCacheName = "chos-operations-shell-v2";
 const appShellPaths = ["", "manifest.webmanifest", logoAssetPath, "icons/icon-192.png", "icons/icon-512.png"];
+const networkOnlyPaths = new Set(["app-version.json", "cho-service-worker.js"]);
 
 function workerScope() {
   const scope = self.registration?.scope || `${self.location?.origin || "/"}/`;
@@ -30,6 +31,13 @@ function safeScopedUrl(value, fallbackPath) {
 
 function safeNotificationUrl(value) {
   return safeScopedUrl(value, fallbackMessagePath);
+}
+
+function shouldBypassRuntimeCache(request, requestUrl) {
+  if (request.cache === "no-store" || request.cache === "reload") return true;
+  const scopePath = new URL(workerScope()).pathname;
+  const relativePath = requestUrl.pathname.startsWith(scopePath) ? requestUrl.pathname.slice(scopePath.length) : requestUrl.pathname.replace(/^\/+/, "");
+  return networkOnlyPaths.has(relativePath.replace(/^\/+/, ""));
 }
 
 function offlineFallbackResponse() {
@@ -89,6 +97,11 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(() => cachedAppShellResponse())
     );
+    return;
+  }
+
+  if (shouldBypassRuntimeCache(event.request, requestUrl)) {
+    event.respondWith(fetch(event.request).catch(() => Response.error()));
     return;
   }
 
