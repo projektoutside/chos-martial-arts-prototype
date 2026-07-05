@@ -1044,6 +1044,11 @@ function supabaseTwilioRelayAuthHeaders(endpoint: string): Record<string, string
   };
 }
 
+function twilioRelayFetchCredentials(endpoint: string): RequestCredentials {
+  const { url } = getSupabaseBrowserConfig();
+  return isSupabaseTwilioMessagingEndpoint(endpoint, url) ? "omit" : "include";
+}
+
 function isConfiguredSupabaseEndpoint(endpoint: string) {
   const { url } = getSupabaseBrowserConfig();
   if (!url) return false;
@@ -11871,7 +11876,7 @@ function MessagesPage() {
     try {
       const response = await window.fetch(endpoint, {
         method: "GET",
-        credentials: "include",
+        credentials: twilioRelayFetchCredentials(endpoint),
         headers: { Accept: "application/json", ...supabaseTwilioRelayAuthHeaders(endpoint) }
       });
       if (!response.ok) {
@@ -11962,7 +11967,7 @@ function MessagesPage() {
     try {
       const response = await window.fetch(endpoint, {
         method: "POST",
-        credentials: "include",
+        credentials: twilioRelayFetchCredentials(endpoint),
         headers: { "Content-Type": "application/json", ...supabaseTwilioRelayAuthHeaders(endpoint) },
         body: JSON.stringify(payload)
       });
@@ -12135,7 +12140,7 @@ function MessagesPage() {
     try {
       const response = await window.fetch(endpoint, {
         method: "POST",
-        credentials: "include",
+        credentials: twilioRelayFetchCredentials(endpoint),
         headers: { "Content-Type": "application/json", ...supabaseTwilioRelayAuthHeaders(endpoint) },
         body: JSON.stringify(payload)
       });

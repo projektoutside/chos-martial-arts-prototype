@@ -13132,6 +13132,49 @@ describe("post-login operations app", () => {
     expect(within(healthChecks).getAllByText("Ready")).toHaveLength(6);
   });
 
+  it("checks the Supabase Twilio relay health endpoint with bearer auth and no browser credentials", async () => {
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+      accessToken: "manager-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "manager-user-id"
+    }));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        status: "ready",
+        checkedAt: "2026-06-03T15:00:00.000Z",
+        readinessChecks: {
+          managerAuth: true,
+          twilioCredentials: true,
+          senderConfigured: true,
+          complianceReady: true,
+          webhookSignatureValidation: true,
+          relayCanSend: true
+        }
+      })
+    });
+    Object.defineProperty(window, "fetch", {
+      configurable: true,
+      value: fetchMock
+    });
+
+    renderLoggedInApp("/messages");
+    fireEvent.click(screen.getByRole("button", { name: "Check Relay Health" }));
+
+    expect(await screen.findByText("Twilio relay health verified.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/twilio-messaging/health", expect.objectContaining({
+      method: "GET",
+      credentials: "omit",
+      headers: {
+        Accept: "application/json",
+        apikey: "sb_publishable_test",
+        Authorization: "Bearer manager-access-token"
+      }
+    }));
+  });
+
   it("rejects Twilio relay health responses that leak credential-shaped fields", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -14635,6 +14678,7 @@ describe("post-login operations app", () => {
       "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/twilio-messaging/consent",
       "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/twilio-messaging/send"
     ]);
+    expect(fetchMock.mock.calls.map((call) => call[1]?.credentials)).toEqual(["omit", "omit", "omit"]);
     const consentPayload = JSON.parse(String(fetchMock.mock.calls[1][1]?.body ?? "{}"));
     expect(consentPayload.contacts).toEqual(expect.arrayContaining([
       expect.objectContaining({ contactId: "student-ari", role: "student", phone: "+12625550101", consentStatus: "opt-in" })
