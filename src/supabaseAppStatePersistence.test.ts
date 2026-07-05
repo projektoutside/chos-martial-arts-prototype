@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteSupabaseAppStateItem, fetchSupabaseAppStateItem, isSupabaseAppStateRemoteBacked, persistSupabaseAppStateItem } from "./supabaseAppStatePersistence";
+import { supabaseBackendInactiveMessage } from "./supabaseAccounts";
 
 const originalFetch = globalThis.fetch;
 const supabaseSessionStorageKey = "chos.supabase.auth.v1";
@@ -66,6 +67,17 @@ describe("supabase app state persistence adapter", () => {
     await expect(fetchSupabaseAppStateItem("chos.operations.students.v1")).resolves.toEqual({
       status: "ok",
       data: [{ id: "student-1" }]
+    });
+  });
+
+  it("reports paused Supabase app-state REST as unavailable", async () => {
+    storeSupabaseSession();
+    const fetchMock = vi.fn(async () => jsonResponse({ message: "Project is inactive" }, { status: 503 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(fetchSupabaseAppStateItem("chos.operations.students.v1")).resolves.toEqual({
+      status: "unavailable",
+      message: supabaseBackendInactiveMessage
     });
   });
 

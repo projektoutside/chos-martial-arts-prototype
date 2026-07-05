@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { buildOperationsBackupSnapshot, type OperationsBackupInput } from "./operationsBackup";
 import { AppStateProvider, useAppState } from "./state";
+import { supabaseBackendInactiveMessage } from "./supabaseAccounts";
 import type { AccountSession, StudentRecord } from "./types";
 import { prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
 import serviceWorkerSource from "../public/cho-service-worker.js?raw";
@@ -2712,6 +2713,33 @@ describe("login landing", () => {
         })
       );
       expect(await screen.findByRole("dialog", { name: "Login failed" })).toBeInTheDocument();
+      expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
+      expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("reports an inactive Supabase backend on login instead of blaming credentials", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    try {
+      renderLoggedOutApp("/");
+
+      fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "jordan.staff" } });
+      fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "StaffPass123!" } });
+      fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+      const dialog = await screen.findByRole("dialog", { name: "Login failed" });
+      expect(within(dialog).getByText(supabaseBackendInactiveMessage)).toBeInTheDocument();
+      expect(await screen.findAllByText(supabaseBackendInactiveMessage)).not.toHaveLength(0);
       expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
       expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
     } finally {

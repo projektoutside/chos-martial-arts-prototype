@@ -1,5 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
-import { getSupabaseBrowserConfig, isSupabaseAuthConfigured, readSupabaseAuthSession, type SupabaseStoredSession } from "./supabaseAccounts";
+import {
+  getSupabaseBrowserConfig,
+  isSupabaseAuthConfigured,
+  isSupabaseBackendInactiveError,
+  readSupabaseAuthSession,
+  supabaseBackendInactiveMessage,
+  type SupabaseStoredSession
+} from "./supabaseAccounts";
 
 export const liveChatRoomKey = "manager-global";
 export const liveChatMessageLimit = 80;
@@ -96,6 +103,20 @@ function nextLiveChatChannelName(roomKey: string) {
   return `live-chat:${roomKey}:${liveChatSubscriptionSequence}`;
 }
 
+function liveChatSupabaseErrorResult(message: string) {
+  if (isSupabaseBackendInactiveError(message)) {
+    return { status: "unavailable" as const, message: supabaseBackendInactiveMessage };
+  }
+  return { status: "error" as const, message };
+}
+
+function liveChatSupabaseCatchResult(error: unknown, fallback: string) {
+  if (isSupabaseBackendInactiveError(error)) {
+    return { status: "unavailable" as const, message: supabaseBackendInactiveMessage };
+  }
+  return { status: "error" as const, message: error instanceof Error ? error.message : fallback };
+}
+
 export function getSupabaseLiveChatClient() {
   if (!readSupabaseAuthSession()) return undefined;
   if (cachedClient) return cachedClient;
@@ -160,35 +181,43 @@ export async function fetchLiveChatMessages({
 } = {}): Promise<LiveChatResult<LiveChatMessage[]>> {
   if (!client) return { status: "unavailable", message: "Supabase sign-in required for live messages." };
 
-  const response = await client
-    .from("live_chat_messages")
-    .select(liveChatMessageColumns)
-    .eq("room_key", roomKey)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  try {
+    const response = await client
+      .from("live_chat_messages")
+      .select(liveChatMessageColumns)
+      .eq("room_key", roomKey)
+      .order("created_at", { ascending: false })
+      .limit(limit);
 
-  if (response.error) return { status: "error", message: response.error.message };
+    if (response.error) return liveChatSupabaseErrorResult(response.error.message);
 
-  return {
-    status: "ok",
-    data: [...(response.data ?? [])].reverse().map(mapLiveChatMessageRow)
-  };
+    return {
+      status: "ok",
+      data: [...(response.data ?? [])].reverse().map(mapLiveChatMessageRow)
+    };
+  } catch (error) {
+    return liveChatSupabaseCatchResult(error, "Live chat message fetch failed.");
+  }
 }
 
 async function fetchLiveChatProfile(client: LiveChatClient, session: SupabaseStoredSession) {
-  const response = await client
-    .from("profiles")
-    .select("id,display_name,role,status")
-    .eq("id", session.userId)
-    .maybeSingle();
+  try {
+    const response = await client
+      .from("profiles")
+      .select("id,display_name,role,status")
+      .eq("id", session.userId)
+      .maybeSingle();
 
-  if (response.error) return { status: "error" as const, message: response.error.message };
-  const profile = response.data;
-  if (!profile || profile.role !== "staff" || profile.status !== "active") {
-    return { status: "error" as const, message: "Only active staff accounts can send live chat messages." };
+    if (response.error) return liveChatSupabaseErrorResult(response.error.message);
+    const profile = response.data;
+    if (!profile || profile.role !== "staff" || profile.status !== "active") {
+      return { status: "error" as const, message: "Only active staff accounts can send live chat messages." };
+    }
+
+    return { status: "ok" as const, data: profile };
+  } catch (error) {
+    return liveChatSupabaseCatchResult(error, "Live chat profile fetch failed.");
   }
-
-  return { status: "ok" as const, data: profile };
 }
 
 export async function sendLiveChatMessage({
@@ -209,25 +238,29 @@ export async function sendLiveChatMessage({
   if (!client || !session) return { status: "unavailable", message: "Supabase sign-in required to send live chat messages." };
 
   const profileResult = await fetchLiveChatProfile(client, session);
-  if (profileResult.status !== "ok") return { status: "error", message: profileResult.message };
+  if (profileResult.status !== "ok") return profileResult;
 
-  const response = await client
-    .from("live_chat_messages")
-    .insert({
-      room_key: roomKey,
-      sender_user_id: session.userId,
-      sender_name: profileResult.data.display_name,
-      sender_role: "staff",
-      sender_avatar_path: senderAvatarPath ?? null,
-      message_kind: "user",
-      body: validation.body
-    })
-    .select(liveChatMessageColumns)
-    .single();
+  try {
+    const response = await client
+      .from("live_chat_messages")
+      .insert({
+        room_key: roomKey,
+        sender_user_id: session.userId,
+        sender_name: profileResult.data.display_name,
+        sender_role: "staff",
+        sender_avatar_path: senderAvatarPath ?? null,
+        message_kind: "user",
+        body: validation.body
+      })
+      .select(liveChatMessageColumns)
+      .single();
 
-  if (response.error) return { status: "error", message: response.error.message };
-  if (!response.data) return { status: "error", message: "Live chat message was not returned after sending." };
-  return { status: "ok", data: mapLiveChatMessageRow(response.data) };
+    if (response.error) return liveChatSupabaseErrorResult(response.error.message);
+    if (!response.data) return { status: "error", message: "Live chat message was not returned after sending." };
+    return { status: "ok", data: mapLiveChatMessageRow(response.data) };
+  } catch (error) {
+    return liveChatSupabaseCatchResult(error, "Live chat message send failed.");
+  }
 }
 
 export function subscribeToLiveChatInserts({
@@ -278,7 +311,7 @@ export function subscribeToLiveChatInserts({
       if (isCleanedUp) cleanupChannel();
     } catch (error) {
       cleanupChannel();
-      if (!isCleanedUp) onStatus?.("CHANNEL_ERROR", error instanceof Error ? error.message : "Live chat subscription failed.");
+      if (!isCleanedUp) onStatus?.("CHANNEL_ERROR", isSupabaseBackendInactiveError(error) ? supabaseBackendInactiveMessage : error instanceof Error ? error.message : "Live chat subscription failed.");
     }
   };
 

@@ -5,14 +5,18 @@ import {
   getSupabaseBrowserConfig,
   isSupabaseAuthConfigured,
   isChoSupabaseProjectUrlAllowed,
+  isSupabaseBackendInactiveError,
+  isSupabaseBackendInactiveResponse,
   isSupportedSupabaseLoginUsername,
   normalizeSupabaseUsername,
   signInSupabaseAccount,
+  supabaseBackendInactiveMessage,
   supabaseProjectRefFromUrl,
   supabaseAuthEmailForUsername
 } from "./supabaseAccounts";
 
 const originalFetch = globalThis.fetch;
+const supabaseSessionStorageKey = "chos.supabase.auth.v1";
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
@@ -170,6 +174,76 @@ describe("supabase account adapter", () => {
     );
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("staff-access-token");
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).not.toContain("staff-refresh-token");
+  });
+
+  it("classifies paused or unreachable Supabase auth as backend-inactive instead of invalid credentials", async () => {
+    expect(await isSupabaseBackendInactiveResponse(jsonResponse({ message: "Project is paused" }, { status: 404 }))).toBe(true);
+    expect(isSupabaseBackendInactiveError({ message: "Project is inactive", status: 503 })).toBe(true);
+
+    const pausedFetchMock = vi.fn(async () => jsonResponse({ message: "Project is paused" }, { status: 503 }));
+    globalThis.fetch = pausedFetchMock as typeof fetch;
+
+    await expect(signInSupabaseAccount({ username: "Manager123", password: "ManagerPass123!" })).resolves.toEqual({
+      status: "backend-inactive",
+      message: supabaseBackendInactiveMessage
+    });
+    expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
+
+    const dnsFetchMock = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    globalThis.fetch = dnsFetchMock as typeof fetch;
+
+    await expect(signInSupabaseAccount({ username: "jordan.staff", password: "StaffPass123!" })).resolves.toEqual({
+      status: "backend-inactive",
+      message: supabaseBackendInactiveMessage
+    });
+    expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
+  });
+
+  it("classifies paused profile fetches after Auth success as backend-inactive", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/auth/v1/token")) {
+        return jsonResponse({
+          access_token: "staff-access-token",
+          expires_in: 3600,
+          user: { id: "staff-user-id", email: "jordan.staff@accounts.chosmartialarts.app" }
+        });
+      }
+      if (requestUrl.includes("/rest/v1/profiles")) {
+        return jsonResponse({ message: "Project is inactive" }, { status: 503 });
+      }
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(signInSupabaseAccount({ username: "jordan.staff", password: "StaffPass123!" })).resolves.toEqual({
+      status: "backend-inactive",
+      message: supabaseBackendInactiveMessage
+    });
+    expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
+  });
+
+  it("returns the unpause message when live account creation reaches an inactive backend", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "manager-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "manager-user-id"
+    }));
+    const fetchMock = vi.fn(async () => jsonResponse({ message: "Project is inactive" }, { status: 503 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(createSupabaseManagedAccount({
+      displayName: "Jordan Lee",
+      username: "jordan.staff",
+      password: "StaffPass123!",
+      role: "staff",
+      email: "jordan@example.com"
+    })).resolves.toEqual({
+      status: "error",
+      message: supabaseBackendInactiveMessage
+    });
   });
 
   it("creates managed accounts through the Edge Function with the stored owner JWT", async () => {

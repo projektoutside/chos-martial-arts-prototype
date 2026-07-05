@@ -17,6 +17,7 @@ import {
 
 const LazyOperationsApp = lazy(() => import("./OperationsApp").then(({ OperationsApp }) => ({ default: OperationsApp })));
 const TestOperationsApp = import.meta.env.MODE === "test" ? (await import("./OperationsApp")).OperationsApp : undefined;
+const defaultLoginFailedMessage = "Please check your username and password and try again.";
 
 type FullscreenCapableDocument = Document & {
   webkitFullscreenElement?: Element | null;
@@ -305,6 +306,7 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [portraitVisible, setPortraitVisible] = useState(true);
   const [loginFailedOpen, setLoginFailedOpen] = useState(false);
+  const [loginFailedMessage, setLoginFailedMessage] = useState(defaultLoginFailedMessage);
   const [loginPending, setLoginPending] = useState(false);
   const supabaseConfigured = isSupabaseAuthConfigured();
   const loginLandingStyle = { "--login-bg-image": `url("${publicAsset("NewFinalBackground.png")}")` } as CSSProperties;
@@ -366,8 +368,9 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
     };
   }, [handoffActive, portraitVisible, visible]);
 
-  const failLogin = (message: string) => {
+  const failLogin = (message: string, dialogMessage = defaultLoginFailedMessage) => {
     showToast(message);
+    setLoginFailedMessage(dialogMessage);
     setLoginFailedOpen(true);
   };
 
@@ -400,7 +403,15 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
           navigate("/");
           return;
         }
-        failLogin(supabaseLogin.status === "inactive" ? "The account is inactive." : "Check the Supabase username and password.");
+        if (supabaseLogin.status === "inactive") {
+          failLogin("The account is inactive.");
+          return;
+        }
+        if (supabaseLogin.status === "backend-inactive") {
+          failLogin(supabaseLogin.message, supabaseLogin.message);
+          return;
+        }
+        failLogin("Check the Supabase username and password.");
         return;
       } finally {
         setLoginPending(false);
@@ -486,7 +497,7 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
               <AlertTriangle size={24} strokeWidth={2.4} />
             </span>
             <h2>Login failed</h2>
-            <p>Please check your username and password and try again.</p>
+            <p>{loginFailedMessage}</p>
             <button className="btn btn-red login-failed-action" type="button" onClick={() => setLoginFailedOpen(false)}>
               Try Again
             </button>

@@ -39,6 +39,7 @@ type SupabaseLoginResult =
   | { status: "not-configured" }
   | { status: "invalid" }
   | { status: "inactive" }
+  | { status: "backend-inactive"; message: string }
   | { status: "error"; message: string }
   | { status: "authenticated"; sessionEmail: string; role: AccountRole; profile: SupabaseProfileResponse };
 
@@ -66,6 +67,16 @@ const managerUsername = prototypeManagerLogin.username.toLowerCase();
 const supabaseAccountAuthDomain = "accounts.chosmartialarts.app";
 const mongTengSupabaseProjectRef = "jqvclzlvrhdcsfhhvekr";
 const forbiddenSupabaseProjectRefs = new Set([mongTengSupabaseProjectRef]);
+export const supabaseBackendInactiveMessage = "Cho staging Supabase is inactive or unreachable. Unpause the Supabase project, then try again.";
+const supabaseBackendInactivePattern = /(?:inactive|paused|suspended|project\s+(?:is\s+)?not\s+(?:active|found)|project.*does\s+not\s+exist|no\s+such\s+host|failed\s+to\s+fetch|networkerror|dns)/i;
+const supabaseUnavailableHttpStatuses = new Set([502, 503, 504, 521, 522, 523, 524]);
+
+class SupabaseBackendInactiveError extends Error {
+  constructor() {
+    super(supabaseBackendInactiveMessage);
+    this.name = "SupabaseBackendInactiveError";
+  }
+}
 
 function supabaseUrl() {
   return import.meta.env.VITE_SUPABASE_URL?.trim() ?? "";
@@ -73,6 +84,37 @@ function supabaseUrl() {
 
 function supabasePublicKey() {
   return (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY ?? "").trim();
+}
+
+async function readSupabaseResponseText(response: Response) {
+  try {
+    return await response.clone().text();
+  } catch {
+    return "";
+  }
+}
+
+export function isSupabaseBackendInactiveError(error: unknown) {
+  if (error instanceof SupabaseBackendInactiveError) return true;
+  const message = error instanceof Error ? error.message : supabaseErrorLikeText(error);
+  return supabaseBackendInactivePattern.test(message);
+}
+
+function supabaseErrorLikeText(error: unknown) {
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const errorLike = error as { code?: unknown; error?: unknown; message?: unknown; status?: unknown; statusText?: unknown };
+    return [errorLike.status, errorLike.statusText, errorLike.code, errorLike.error, errorLike.message]
+      .filter((value): value is number | string => typeof value === "number" || typeof value === "string")
+      .join(" ");
+  }
+  return String(error ?? "");
+}
+
+export async function isSupabaseBackendInactiveResponse(response: Response) {
+  const body = await readSupabaseResponseText(response);
+  const responseText = `${response.status} ${response.statusText} ${body}`;
+  return supabaseUnavailableHttpStatuses.has(response.status) || supabaseBackendInactivePattern.test(responseText);
 }
 
 export function supabaseProjectRefFromUrl(url: string) {
@@ -173,7 +215,10 @@ async function fetchSupabaseProfile(userId: string, accessToken: string) {
     }
   });
 
-  if (!response.ok) return undefined;
+  if (!response.ok) {
+    if (await isSupabaseBackendInactiveResponse(response)) throw new SupabaseBackendInactiveError();
+    return undefined;
+  }
   const profiles = (await response.json()) as SupabaseProfileResponse[];
   return profiles[0];
 }
@@ -204,7 +249,10 @@ export async function signInSupabaseAccount(credentials: { username: string; pas
       body: JSON.stringify({ email: authEmail, password })
     });
 
-    if (!tokenResponse.ok) return { status: "invalid" };
+    if (!tokenResponse.ok) {
+      if (await isSupabaseBackendInactiveResponse(tokenResponse)) return { status: "backend-inactive", message: supabaseBackendInactiveMessage };
+      return { status: "invalid" };
+    }
 
     const session = (await tokenResponse.json()) as SupabasePasswordResponse;
     if (!session.access_token || !session.user?.id) return { status: "invalid" };
@@ -222,6 +270,7 @@ export async function signInSupabaseAccount(credentials: { username: string; pas
       profile
     };
   } catch (error) {
+    if (isSupabaseBackendInactiveError(error)) return { status: "backend-inactive", message: supabaseBackendInactiveMessage };
     return { status: "error", message: error instanceof Error ? error.message : "Supabase sign-in failed." };
   }
 }
@@ -264,9 +313,11 @@ export async function createSupabaseManagedAccount(account: SupabaseCreateAccoun
     });
 
     if (response.ok) return { status: "ok" };
+    if (await isSupabaseBackendInactiveResponse(response)) return { status: "error", message: supabaseBackendInactiveMessage };
     const body = await response.json().catch(() => undefined) as { error?: string } | undefined;
     return { status: "error", message: body?.error ?? "Supabase account creation failed." };
   } catch (error) {
+    if (isSupabaseBackendInactiveError(error)) return { status: "error", message: supabaseBackendInactiveMessage };
     return { status: "error", message: error instanceof Error ? error.message : "Supabase account creation failed." };
   }
 }

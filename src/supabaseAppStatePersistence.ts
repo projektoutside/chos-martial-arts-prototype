@@ -1,4 +1,11 @@
-import { getSupabaseBrowserConfig, isSupabaseAuthConfigured, readSupabaseAuthSession } from "./supabaseAccounts";
+import {
+  getSupabaseBrowserConfig,
+  isSupabaseAuthConfigured,
+  isSupabaseBackendInactiveError,
+  isSupabaseBackendInactiveResponse,
+  readSupabaseAuthSession,
+  supabaseBackendInactiveMessage
+} from "./supabaseAccounts";
 
 type SupabaseAppStateResult<T = undefined> =
   | { status: "ok"; data: T }
@@ -39,6 +46,7 @@ function authHeaders(extraHeaders?: HeadersInit) {
 }
 
 async function readErrorMessage(response: Response) {
+  if (await isSupabaseBackendInactiveResponse(response)) return supabaseBackendInactiveMessage;
   try {
     const body = (await response.json()) as { message?: string; error?: string };
     return body.message ?? body.error ?? response.statusText;
@@ -56,10 +64,14 @@ async function restRequest<T>(query: Record<string, string>, init?: RequestInit)
 
   try {
     const response = await fetch(buildRestUrl(query), { ...init, headers });
-    if (!response.ok) return { status: "error", message: await readErrorMessage(response) };
+    if (!response.ok) {
+      const message = await readErrorMessage(response);
+      return { status: message === supabaseBackendInactiveMessage ? "unavailable" : "error", message };
+    }
     if (response.status === 204) return { status: "ok", data: undefined as T };
     return { status: "ok", data: (await response.json()) as T };
   } catch (error) {
+    if (isSupabaseBackendInactiveError(error)) return { status: "unavailable", message: supabaseBackendInactiveMessage };
     return { status: "error", message: error instanceof Error ? error.message : "Supabase app state persistence failed." };
   }
 }

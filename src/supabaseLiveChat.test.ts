@@ -10,7 +10,7 @@ import {
   type LiveChatMessage,
   type LiveChatMessageRow
 } from "./supabaseLiveChat";
-import type { SupabaseStoredSession } from "./supabaseAccounts";
+import { supabaseBackendInactiveMessage, type SupabaseStoredSession } from "./supabaseAccounts";
 
 function liveChatRow(overrides: Partial<LiveChatMessageRow> = {}): LiveChatMessageRow {
   return {
@@ -98,6 +98,21 @@ describe("supabase live chat adapter", () => {
     expect(messagesQuery.limit).toHaveBeenCalledWith(2);
   });
 
+  it("reports inactive Supabase live-chat fetches as unavailable", async () => {
+    const messagesQuery = liveChatQuery();
+    messagesQuery.limit = vi.fn(async () => ({ data: null, error: { message: "Failed to fetch" } }));
+    const client = {
+      from: vi.fn(() => messagesQuery),
+      channel: vi.fn(),
+      removeChannel: vi.fn()
+    } as unknown as LiveChatClient;
+
+    await expect(fetchLiveChatMessages({ client })).resolves.toEqual({
+      status: "unavailable",
+      message: supabaseBackendInactiveMessage
+    });
+  });
+
   it("sends trimmed staff messages and rejects empty or overlong bodies", async () => {
     const profileQuery = liveChatQuery({
       maybeSingleData: {
@@ -140,6 +155,23 @@ describe("supabase live chat adapter", () => {
       message_kind: "user",
       body: "Line up by 6:00."
     }));
+  });
+
+  it("reports inactive Supabase live-chat sends as unavailable", async () => {
+    const profileQuery = liveChatQuery();
+    profileQuery.maybeSingle = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const client = {
+      from: vi.fn(() => profileQuery),
+      channel: vi.fn(),
+      removeChannel: vi.fn()
+    } as unknown as LiveChatClient;
+
+    await expect(sendLiveChatMessage({ body: "Line up by 6:00.", client, session: testSession() })).resolves.toEqual({
+      status: "unavailable",
+      message: supabaseBackendInactiveMessage
+    });
   });
 
   it("subscribes to inserts after realtime auth and removes the realtime channel on cleanup", async () => {

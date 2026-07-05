@@ -71,7 +71,15 @@ import {
 } from "./beltCase";
 import { childUsernameFromName, normalizeChildUsername } from "./childAccountUtils";
 import { beltRanks } from "./data";
-import { createSupabaseManagedAccount, getSupabaseBrowserConfig, isSupabaseAuthConfigured, readSupabaseAuthSession } from "./supabaseAccounts";
+import {
+  createSupabaseManagedAccount,
+  getSupabaseBrowserConfig,
+  isSupabaseAuthConfigured,
+  isSupabaseBackendInactiveError,
+  isSupabaseBackendInactiveResponse,
+  readSupabaseAuthSession,
+  supabaseBackendInactiveMessage
+} from "./supabaseAccounts";
 import { deleteSupabaseAppStateItem, fetchSupabaseAppStateItem, isSupabaseAppStateRemoteBacked, persistSupabaseAppStateItem } from "./supabaseAppStatePersistence";
 import {
   readManagerProfile,
@@ -1034,6 +1042,26 @@ function supabaseTwilioRelayAuthHeaders(endpoint: string): Record<string, string
     apikey: publicKey,
     Authorization: `Bearer ${session.accessToken}`
   };
+}
+
+function isConfiguredSupabaseEndpoint(endpoint: string) {
+  const { url } = getSupabaseBrowserConfig();
+  if (!url) return false;
+  try {
+    return new URL(endpoint).origin === new URL(url).origin;
+  } catch {
+    return false;
+  }
+}
+
+async function supabaseBackendInactiveMessageForEndpointResponse(endpoint: string, response: Response) {
+  return isConfiguredSupabaseEndpoint(endpoint) && await isSupabaseBackendInactiveResponse(response)
+    ? supabaseBackendInactiveMessage
+    : "";
+}
+
+function isSupabaseBackendInactiveEndpointError(endpoint: string, error: unknown) {
+  return isConfiguredSupabaseEndpoint(endpoint) && isSupabaseBackendInactiveError(error);
 }
 
 function readPushServerEndpoint() {
@@ -11847,6 +11875,13 @@ function MessagesPage() {
         headers: { Accept: "application/json", ...supabaseTwilioRelayAuthHeaders(endpoint) }
       });
       if (!response.ok) {
+        const inactiveMessage = await supabaseBackendInactiveMessageForEndpointResponse(endpoint, response);
+        if (inactiveMessage) {
+          setTwilioRelayHealthStatus("backend inactive");
+          setTwilioRelayHealthChecks(undefined);
+          showToast(inactiveMessage);
+          return;
+        }
         setTwilioRelayHealthStatus(`HTTP ${response.status}`);
         setTwilioRelayHealthChecks(undefined);
         showToast(`Twilio relay health check failed with HTTP ${response.status}.`);
@@ -11887,10 +11922,11 @@ function MessagesPage() {
       setTwilioRelayHealthStatus("invalid response");
       setTwilioRelayHealthChecks(undefined);
       showToast("Twilio relay health response needs readiness checks.");
-    } catch {
-      setTwilioRelayHealthStatus("failed");
+    } catch (error) {
+      const inactiveMessage = isSupabaseBackendInactiveEndpointError(endpoint, error) ? supabaseBackendInactiveMessage : "";
+      setTwilioRelayHealthStatus(inactiveMessage ? "backend inactive" : "failed");
       setTwilioRelayHealthChecks(undefined);
-      showToast("Twilio relay health check failed.");
+      showToast(inactiveMessage || "Twilio relay health check failed.");
     } finally {
       setIsTwilioRelayHealthChecking(false);
     }
@@ -11931,6 +11967,11 @@ function MessagesPage() {
         body: JSON.stringify(payload)
       });
       if (!response.ok) {
+        const inactiveMessage = await supabaseBackendInactiveMessageForEndpointResponse(endpoint, response);
+        if (inactiveMessage) {
+          showToast(inactiveMessage);
+          return;
+        }
         showToast(`Twilio relay request failed with HTTP ${response.status}.`);
         return;
       }
@@ -11945,8 +11986,8 @@ function MessagesPage() {
         return;
       }
       showToast(`${result.applied} Twilio relay result${result.applied === 1 ? "" : "s"} applied.`);
-    } catch {
-      showToast("Twilio relay request failed.");
+    } catch (error) {
+      showToast(isSupabaseBackendInactiveEndpointError(endpoint, error) ? supabaseBackendInactiveMessage : "Twilio relay request failed.");
     } finally {
       setIsTwilioRelaySending(false);
     }
@@ -12099,6 +12140,11 @@ function MessagesPage() {
         body: JSON.stringify(payload)
       });
       if (!response.ok) {
+        const inactiveMessage = await supabaseBackendInactiveMessageForEndpointResponse(endpoint, response);
+        if (inactiveMessage) {
+          showToast(inactiveMessage);
+          return false;
+        }
         showToast(`SMS consent sync failed with HTTP ${response.status}.`);
         return false;
       }
@@ -12106,8 +12152,8 @@ function MessagesPage() {
       const synced = typeof result?.synced === "number" ? result.synced : payload.contacts.length;
       if (showSuccessToast) showToast(`${synced} SMS consent record${synced === 1 ? "" : "s"} synced to the Twilio relay.`);
       return true;
-    } catch {
-      showToast("SMS consent sync failed.");
+    } catch (error) {
+      showToast(isSupabaseBackendInactiveEndpointError(endpoint, error) ? supabaseBackendInactiveMessage : "SMS consent sync failed.");
       return false;
     } finally {
       setIsSmsConsentSyncing(false);
