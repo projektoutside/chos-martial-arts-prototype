@@ -2747,12 +2747,12 @@ describe("login landing", () => {
     }
   });
 
-  it("does not send the retired prototype manager password to Supabase when staging auth is configured", async () => {
+  it("sends Manager123 credentials to Supabase when staging auth is configured", async () => {
     vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
     vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
     vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
     const originalFetch = globalThis.fetch;
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: "Unexpected Supabase request" }), { status: 500, headers: { "Content-Type": "application/json" } }));
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: "Invalid login credentials" }), { status: 400, headers: { "Content-Type": "application/json" } }));
     globalThis.fetch = fetchMock as typeof fetch;
 
     try {
@@ -2762,9 +2762,15 @@ describe("login landing", () => {
       fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: prototypeManagerLogin.password } });
       fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
-      expect(await screen.findByText("Use the live Supabase password for Manager123.")).toBeInTheDocument();
-      expect(screen.getByRole("dialog", { name: "Login failed" })).toBeInTheDocument();
-      expect(fetchMock).not.toHaveBeenCalled();
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://zfuwbbepsnmmlpgfkmhz.supabase.co/auth/v1/token?grant_type=password",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ email: "manager123@accounts.chosmartialarts.app", password: prototypeManagerLogin.password })
+        })
+      );
+      expect(await screen.findByRole("dialog", { name: "Login failed" })).toBeInTheDocument();
       expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
       expect(window.localStorage.getItem("chos.accountRoles.v1")).toBeNull();
     } finally {
