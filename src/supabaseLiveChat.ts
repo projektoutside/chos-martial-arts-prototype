@@ -9,7 +9,7 @@ import {
 } from "./supabaseAccounts";
 import type { AccountRole } from "./types";
 
-export const liveChatRoomKey = "manager-global";
+export const liveChatRoomKey = "chos-room";
 export const liveChatMessageLimit = 80;
 export const liveChatMessageMaxLength = 500;
 

@@ -61,6 +61,10 @@ async function flushPromises() {
 }
 
 describe("supabase live chat adapter", () => {
+  it("uses the canonical Cho's Room key for the shared server chat", () => {
+    expect(liveChatRoomKey).toBe("chos-room");
+  });
+
   it("returns unavailable when no Supabase client or session exists", async () => {
     await expect(fetchLiveChatMessages({ client: undefined })).resolves.toMatchObject({
       status: "unavailable",
@@ -149,6 +153,7 @@ describe("supabase live chat adapter", () => {
 
     expect(result).toMatchObject({ status: "ok", data: { id: "message-3", body: "Line up by 6:00." } });
     expect(insertQuery.insert).toHaveBeenCalledWith(expect.objectContaining({
+      room_key: liveChatRoomKey,
       sender_user_id: "staff-user-id",
       sender_name: "Coach Jordan",
       sender_role: "staff",
@@ -193,6 +198,7 @@ describe("supabase live chat adapter", () => {
 
     expect(result).toMatchObject({ status: "ok", data: { id: "message-student-1", senderRole: "student" } });
     expect(insertQuery.insert).toHaveBeenCalledWith(expect.objectContaining({
+      room_key: liveChatRoomKey,
       sender_user_id: "student-user-id",
       sender_name: "Talia Brooks",
       sender_role: "student",

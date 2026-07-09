@@ -4321,7 +4321,7 @@ type LiveChatRoom = {
   isDefault?: boolean;
 };
 
-const liveChatDefaultRoomId = "chos-room";
+const liveChatDefaultRoomId = liveChatRoomKey;
 const liveChatMentionsRoomId = "mentions";
 
 const liveChatRoomColorOptions = [
