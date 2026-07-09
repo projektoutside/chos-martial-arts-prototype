@@ -102,6 +102,7 @@ function renderLoggedInApp(path = "/", role: "staff" | "student" | "guardian" = 
 }
 
 function renderDeveloperApp(path = "/") {
+  vi.stubEnv("VITE_ENABLE_DEVELOPER_ACCOUNT", "true");
   seedActiveSession({ email: prototypeDeveloperLogin.email, remembered: true, createdAt: "2026-05-10T00:00:00.000Z" });
   window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: prototypeDeveloperLogin.email, role: prototypeDeveloperLogin.role }]));
 
