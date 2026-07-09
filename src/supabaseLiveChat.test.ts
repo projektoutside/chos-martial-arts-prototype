@@ -207,6 +207,51 @@ describe("supabase live chat adapter", () => {
     }));
   });
 
+  it("sends active guardian messages with their profile role", async () => {
+    const profileQuery = liveChatQuery({
+      maybeSingleData: {
+        id: "guardian-user-id",
+        display_name: "Mina Cho Family",
+        role: "guardian",
+        status: "active"
+      }
+    });
+    const insertQuery = liveChatQuery({
+      singleData: liveChatRow({
+        id: "message-guardian-1",
+        sender_user_id: "guardian-user-id",
+        sender_name: "Mina Cho Family",
+        sender_role: "guardian",
+        body: "We will be there after school."
+      })
+    });
+    const client = {
+      from: vi.fn((table: string) => (table === "profiles" ? profileQuery : insertQuery)),
+      channel: vi.fn(),
+      removeChannel: vi.fn()
+    } as unknown as LiveChatClient;
+    const session = {
+      ...testSession(),
+      userId: "guardian-user-id"
+    };
+
+    const result = await sendLiveChatMessage({
+      body: "We will be there after school.",
+      client,
+      session
+    });
+
+    expect(result).toMatchObject({ status: "ok", data: { id: "message-guardian-1", senderRole: "guardian" } });
+    expect(insertQuery.insert).toHaveBeenCalledWith(expect.objectContaining({
+      room_key: liveChatRoomKey,
+      sender_user_id: "guardian-user-id",
+      sender_name: "Mina Cho Family",
+      sender_role: "guardian",
+      message_kind: "user",
+      body: "We will be there after school."
+    }));
+  });
+
   it("reports inactive Supabase live-chat sends as unavailable", async () => {
     const profileQuery = liveChatQuery();
     profileQuery.maybeSingle = vi.fn(async () => {

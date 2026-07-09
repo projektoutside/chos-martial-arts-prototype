@@ -8349,6 +8349,14 @@ select option { color: #111; }
   color: var(--parent-text);
 }
 
+.portrait-app-shell .parent-profile-shell {
+  grid-template-columns: 1fr;
+}
+
+.portrait-app-shell .parent-dashboard-grid {
+  grid-template-columns: 1fr;
+}
+
 .parent-profile-overview,
 .parent-selected-student {
   min-width: 0;
@@ -10155,6 +10163,269 @@ html[data-theme="light"] .parent-tutorial-actions .parent-tutorial-open-child {
     0 26px 68px rgba(5, 13, 26, 0.18);
   overflow: hidden;
   backdrop-filter: blur(14px);
+}
+
+.profile-communication-panel {
+  --profile-communication-tab-bg: rgba(255, 255, 255, 0.08);
+  --profile-communication-tab-border: rgba(235, 242, 255, 0.18);
+  --profile-communication-tab-active: linear-gradient(135deg, rgba(110, 231, 236, 0.88), rgba(120, 84, 230, 0.92));
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.manager-home-communication-panel {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.student-profile-communication-panel,
+.parent-profile-communication-panel {
+  width: 100%;
+  height: 100%;
+}
+
+.profile-communication-tabs {
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid var(--profile-communication-tab-border);
+  border-radius: 999px;
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 3px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
+    rgba(7, 18, 32, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 12px 24px rgba(5, 13, 26, 0.14);
+}
+
+.profile-communication-tab {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--home-muted, rgba(251, 247, 242, 0.72));
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 0.76rem;
+  font-weight: 950;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.profile-communication-tab:hover,
+.profile-communication-tab:focus-visible {
+  outline: none;
+  color: var(--home-text, #ffffff);
+  background: var(--profile-communication-tab-bg);
+}
+
+.profile-communication-tab[aria-selected="true"] {
+  color: #ffffff;
+  background: var(--profile-communication-tab-active);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 8px 18px rgba(62, 80, 180, 0.22);
+}
+
+.profile-communication-swipe-viewport {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  touch-action: pan-y;
+}
+
+.profile-communication-track {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  transform: translateX(calc(var(--profile-communication-translate) + var(--profile-communication-drag-offset)));
+  transition: transform 260ms cubic-bezier(0.2, 0.82, 0.2, 1);
+  will-change: transform;
+}
+
+.profile-communication-panel.is-dragging .profile-communication-track {
+  transition: none;
+}
+
+.profile-communication-panel.is-dragging,
+.profile-communication-panel.is-dragging * {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.profile-communication-pane {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex: 0 0 100%;
+  display: grid;
+  overflow: hidden;
+}
+
+.profile-communication-pane[data-active="false"] {
+  pointer-events: none;
+}
+
+.profile-communication-panel .manager-home-feed-panel {
+  grid-column: auto;
+  grid-row: auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: 16px;
+}
+
+.student-profile-communication-panel .profile-communication-pane--notifications {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: clamp(6px, 1vh, 10px);
+}
+
+.parent-profile-communication-panel .profile-communication-pane--notifications {
+  align-content: start;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.live-chat-profile-panel {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+}
+
+.live-chat-shell--profile.manager-launcher-body {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+}
+
+.live-chat-shell--profile .manager-launcher-workspace.live-chat-room-panel {
+  grid-column: 1;
+  min-height: 0;
+  height: 100%;
+  padding: clamp(10px, 1.4vw, 16px);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.live-chat-profile-panel .live-chat-heading-block h2 {
+  font-size: clamp(1.45rem, min(3.8vw, 4svh), 2.25rem);
+}
+
+.live-chat-profile-panel .live-chat-status-copy {
+  font-size: 0.72rem;
+}
+
+.live-chat-profile-panel .live-chat-feed {
+  min-height: 160px;
+}
+
+.live-chat-profile-panel .live-chat-composer {
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.live-chat-profile-panel .live-chat-emoji-button,
+.live-chat-profile-panel .live-chat-send-button,
+.live-chat-profile-panel .live-chat-input-shell {
+  min-height: 44px;
+}
+
+.live-chat-profile-panel .live-chat-emoji-button {
+  width: 44px;
+}
+
+.live-chat-profile-panel .live-chat-send-button {
+  min-width: 96px;
+  padding: 0 13px;
+}
+
+.live-chat-profile-panel .live-chat-guidelines,
+.live-chat-profile-panel .live-chat-error {
+  font-size: 0.72rem;
+}
+
+html[data-theme="light"] .profile-communication-tabs {
+  border-color: rgba(25, 40, 62, 0.14);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(247, 240, 255, 0.64)),
+    rgba(255, 255, 255, 0.7);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 10px 22px rgba(35, 42, 55, 0.1);
+}
+
+html[data-theme="light"] .profile-communication-tab {
+  color: rgba(35, 49, 72, 0.72);
+}
+
+html[data-theme="light"] .profile-communication-tab:hover,
+html[data-theme="light"] .profile-communication-tab:focus-visible {
+  color: #172033;
+  background: rgba(92, 62, 174, 0.08);
+}
+
+html[data-theme="light"] .profile-communication-tab[aria-selected="true"] {
+  color: #ffffff;
+  background: linear-gradient(135deg, #23979d, #5a3aae);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 8px 18px rgba(35, 151, 157, 0.2);
+}
+
+@media (max-width: 520px) {
+  .profile-communication-tabs {
+    width: 100%;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+
+  .profile-communication-tab {
+    flex: 1 1 0;
+    padding: 0 9px;
+    font-size: 0.72rem;
+  }
+
+  .live-chat-profile-panel .live-chat-composer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .live-chat-profile-panel .live-chat-emoji-button {
+    display: none;
+  }
+
+  .live-chat-profile-panel .live-chat-send-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .live-chat-profile-panel .live-chat-footer-line {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 .manager-home-feed-head {
@@ -23503,6 +23774,19 @@ html[data-theme="light"] {
 .portrait-app-frame .live-chat-send-button {
   min-width: 96px;
   padding: 0 12px;
+}
+
+.portrait-app-frame .live-chat-profile-panel .live-chat-composer {
+  grid-template-columns: minmax(0, 1fr) minmax(104px, auto);
+}
+
+.portrait-app-frame .live-chat-profile-panel .live-chat-emoji-button {
+  display: none;
+}
+
+.portrait-app-frame .live-chat-profile-panel .live-chat-send-button {
+  width: auto;
+  min-width: 104px;
 }
 
 .portrait-app-frame .live-chat-guidelines,

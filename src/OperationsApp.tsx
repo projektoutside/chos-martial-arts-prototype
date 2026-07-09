@@ -37,7 +37,7 @@ import {
   Video,
   X
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 import classesLauncherIcon from "./assets/manager-icons/Classes.webp";
 import dashboardLauncherIcon from "./assets/manager-icons/Dashboard.webp";
@@ -4357,6 +4357,249 @@ const liveChatPreviewMessages: LiveChatMessage[] = [
   }
 ];
 
+type ProfileCommunicationMode = "notifications" | "liveChat";
+
+const profileCommunicationSwipeThresholdPx = 52;
+const profileCommunicationSwipeMaxOffsetPx = 130;
+const profileCommunicationSwipeIgnoredTargetSelector = [
+  "input",
+  "textarea",
+  "select",
+  "a",
+  "[contenteditable='true']",
+  "[contenteditable='']",
+  "[role='textbox']"
+].join(", ");
+
+type ProfileCommunicationSwipePanelProps = {
+  activeMode: ProfileCommunicationMode;
+  className?: string;
+  idPrefix: string;
+  liveChatPanel: ReactNode;
+  notificationLabel?: string;
+  notificationPanel: ReactNode;
+  onModeChange: (mode: ProfileCommunicationMode) => void;
+};
+
+function clampProfileCommunicationSwipeOffset(value: number) {
+  return Math.max(-profileCommunicationSwipeMaxOffsetPx, Math.min(profileCommunicationSwipeMaxOffsetPx, value));
+}
+
+function isProfileCommunicationSwipeIgnoredTarget(target: EventTarget | null) {
+  const element = target instanceof Element ? target : null;
+  return Boolean(element?.closest(profileCommunicationSwipeIgnoredTargetSelector));
+}
+
+function clearProfileCommunicationTextSelection() {
+  const selection = window.getSelection?.();
+  if (!selection || selection.isCollapsed) return;
+  selection.removeAllRanges();
+}
+
+function ProfileCommunicationSwipePanel({
+  activeMode,
+  className,
+  idPrefix,
+  liveChatPanel,
+  notificationLabel = "Notifications",
+  notificationPanel,
+  onModeChange
+}: ProfileCommunicationSwipePanelProps) {
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const notificationsPaneRef = useRef<HTMLElement | null>(null);
+  const liveChatPaneRef = useRef<HTMLElement | null>(null);
+  const swipeStateRef = useRef({
+    ignoreNextClick: false,
+    isSwiping: false,
+    pointerId: null as number | null,
+    startX: 0,
+    startY: 0
+  });
+  const notificationsTabId = `${idPrefix}-notifications-tab`;
+  const liveChatTabId = `${idPrefix}-live-chat-tab`;
+  const notificationsPanelId = `${idPrefix}-notifications-panel`;
+  const liveChatPanelId = `${idPrefix}-live-chat-panel`;
+  const activeTranslate = activeMode === "notifications" ? "-100%" : "0%";
+
+  useEffect(() => {
+    const notificationsPane = notificationsPaneRef.current;
+    const liveChatPane = liveChatPaneRef.current;
+
+    if (notificationsPane) {
+      if (activeMode === "notifications") {
+        notificationsPane.removeAttribute("inert");
+      } else {
+        notificationsPane.setAttribute("inert", "");
+      }
+    }
+
+    if (liveChatPane) {
+      if (activeMode === "liveChat") {
+        liveChatPane.removeAttribute("inert");
+      } else {
+        liveChatPane.setAttribute("inert", "");
+      }
+    }
+  }, [activeMode]);
+
+  const finishSwipe = (event: ReactPointerEvent<HTMLElement>, shouldApplySwipe: boolean) => {
+    const swipeState = swipeStateRef.current;
+    if (swipeState.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - swipeState.startX;
+    const deltaY = event.clientY - swipeState.startY;
+    const isHorizontalSwipe = swipeState.isSwiping && Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) >= profileCommunicationSwipeThresholdPx;
+    const wasSwiping = swipeState.isSwiping;
+
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    swipeState.pointerId = null;
+    swipeState.isSwiping = false;
+    setDragOffset(0);
+    setIsDragging(false);
+    if (wasSwiping) clearProfileCommunicationTextSelection();
+
+    if (!shouldApplySwipe || !isHorizontalSwipe) return;
+
+    swipeState.ignoreNextClick = true;
+    window.setTimeout(() => {
+      swipeState.ignoreNextClick = false;
+    }, 0);
+
+    onModeChange(deltaX < 0 ? "notifications" : "liveChat");
+  };
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (isProfileCommunicationSwipeIgnoredTarget(event.target)) {
+      swipeStateRef.current.pointerId = null;
+      swipeStateRef.current.isSwiping = false;
+      setDragOffset(0);
+      setIsDragging(false);
+      return;
+    }
+
+    swipeStateRef.current.pointerId = event.pointerId;
+    swipeStateRef.current.startX = event.clientX;
+    swipeStateRef.current.startY = event.clientY;
+    swipeStateRef.current.isSwiping = false;
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const swipeState = swipeStateRef.current;
+    if (swipeState.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - swipeState.startX;
+    const deltaY = event.clientY - swipeState.startY;
+    if (!swipeState.isSwiping && Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) + 4) {
+      swipeState.isSwiping = true;
+      clearProfileCommunicationTextSelection();
+      setIsDragging(true);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    }
+
+    if (!swipeState.isSwiping) return;
+
+    event.preventDefault();
+    clearProfileCommunicationTextSelection();
+    setDragOffset(clampProfileCommunicationSwipeOffset(deltaX));
+  };
+
+  const handlePointerCancel = (event: ReactPointerEvent<HTMLElement>) => {
+    finishSwipe(event, false);
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLElement>) => {
+    finishSwipe(event, true);
+  };
+
+  const handleClickCapture = (event: ReactMouseEvent<HTMLElement>) => {
+    if (!swipeStateRef.current.ignoreNextClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+    swipeStateRef.current.ignoreNextClick = false;
+  };
+
+  const panelClassName = [
+    "profile-communication-panel",
+    activeMode === "liveChat" ? "is-live-chat-active" : "is-notifications-active",
+    isDragging ? "is-dragging" : "",
+    className ?? ""
+  ].filter(Boolean).join(" ");
+
+  return (
+    <section className={panelClassName} aria-label="Profile communication panel" data-active-mode={activeMode}>
+      <div className="profile-communication-tabs" role="tablist" aria-label="Profile communication views">
+        <button
+          aria-controls={liveChatPanelId}
+          aria-selected={activeMode === "liveChat"}
+          className="profile-communication-tab"
+          id={liveChatTabId}
+          onClick={() => onModeChange("liveChat")}
+          role="tab"
+          tabIndex={activeMode === "liveChat" ? 0 : -1}
+          type="button"
+        >
+          <MessagesSquare size={16} aria-hidden="true" />
+          <span>Live Chat</span>
+        </button>
+        <button
+          aria-controls={notificationsPanelId}
+          aria-selected={activeMode === "notifications"}
+          className="profile-communication-tab"
+          id={notificationsTabId}
+          onClick={() => onModeChange("notifications")}
+          role="tab"
+          tabIndex={activeMode === "notifications" ? 0 : -1}
+          type="button"
+        >
+          <Bell size={16} aria-hidden="true" />
+          <span>{notificationLabel}</span>
+        </button>
+      </div>
+      <div
+        className="profile-communication-swipe-viewport"
+        onClickCapture={handleClickCapture}
+        onPointerCancel={handlePointerCancel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+      >
+        <div
+          className="profile-communication-track"
+          style={{
+            "--profile-communication-translate": activeTranslate,
+            "--profile-communication-drag-offset": `${dragOffset}px`
+          } as CSSProperties}
+        >
+          <section
+            aria-hidden={activeMode !== "liveChat"}
+            aria-labelledby={liveChatTabId}
+            className="profile-communication-pane profile-communication-pane--live-chat"
+            data-active={activeMode === "liveChat"}
+            id={liveChatPanelId}
+            ref={liveChatPaneRef}
+            role="tabpanel"
+          >
+            {liveChatPanel}
+          </section>
+          <section
+            aria-hidden={activeMode !== "notifications"}
+            aria-labelledby={notificationsTabId}
+            className="profile-communication-pane profile-communication-pane--notifications"
+            data-active={activeMode === "notifications"}
+            id={notificationsPanelId}
+            ref={notificationsPaneRef}
+            role="tabpanel"
+          >
+            {notificationPanel}
+          </section>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 const HOME_OVERVIEW_DRAG_THRESHOLD = 6;
 const HOME_OVERVIEW_KEYBOARD_STEP = 0.12;
 const HOME_OVERVIEW_STAGE_VISUAL_BUFFER = 6;
@@ -4594,8 +4837,22 @@ function LiveChatMessageLine({ message }: { message: LiveChatMessage }) {
   );
 }
 
-function LiveChatPage() {
-  const { accountRole, currentChildAccount, logout, managerAccountAccess, messageNotificationSettings, session, students, updateMessageNotificationSettings } = useAppState();
+type LiveChatRoomFrameProps = {
+  className?: string;
+  frameLabel?: string;
+  idPrefix?: string;
+  showRoster?: boolean;
+  title?: string;
+};
+
+function LiveChatRoomFrame({
+  className,
+  frameLabel = "Live chat room frame",
+  idPrefix = "live-chat",
+  showRoster = true,
+  title = "Live Chat Rooms"
+}: LiveChatRoomFrameProps) {
+  const { accountRole, currentChildAccount, managerAccountAccess, messageNotificationSettings, session, students, updateMessageNotificationSettings } = useAppState();
   const isManagerOwner = managerAccountAccess.isManagerOwner;
   const isDeveloper = managerAccountAccess.isDeveloper;
   const sessionStudent = useMemo(() => liveChatSessionStudent(students, session?.email), [session?.email, students]);
@@ -4631,7 +4888,6 @@ function LiveChatPage() {
     () => buildLiveChatRoster(students, managerProfile, accountRole, isManagerOwner, isDeveloper, profileAvatarPath),
     [accountRole, isDeveloper, isManagerOwner, managerProfile, profileAvatarPath, students]
   );
-  const profileActionPhoto = managerProfile.photoDataUrl ?? publicAsset(profileAvatarPath);
   const sessionPreviewMessages = useMemo(() => {
     if (!isDeveloper) return liveChatPreviewMessages;
     return liveChatPreviewMessages.map((message) => ({
@@ -4652,7 +4908,17 @@ function LiveChatPage() {
     ? "No manager mentions yet."
     : "No live messages yet.";
   const onlineCount = Math.max(rosterMembers.length, 1);
-  const isComposerDisabled = isSending || !isLiveReady;
+  const isComposerInputDisabled = isSending;
+  const isSendDisabled = isSending || !isLiveReady;
+  const rosterId = `${idPrefix}-roster-members`;
+  const messageInputId = `${idPrefix}-message-input`;
+  const frameClassName = [
+    "manager-launcher-body",
+    "live-chat-shell",
+    !showRoster ? "live-chat-shell--profile" : "",
+    isRosterCollapsed && showRoster ? "is-sidebar-collapsed" : "",
+    className ?? ""
+  ].filter(Boolean).join(" ");
 
   useEffect(() => {
     setManagerProfile(readLiveChatProfileForSession({
@@ -4819,30 +5085,15 @@ function LiveChatPage() {
   };
 
   return (
-    <section className="manager-launcher-page live-chat-page" aria-label="Live chat room page">
-      <main className="manager-launcher-main live-chat-main">
-        <header className="manager-launcher-topbar manager-page-title-bar" aria-label="Live chat page header">
-          <ManagerPageTitleFrame title="Live Chats" className="manager-page-title-frame--manager-panel" />
-          <nav className="manager-home-top-actions" aria-label="Live chat quick actions">
-            <Link className="manager-home-top-action manager-launcher-profile-link" to="/profile" aria-label="Profile">
-              <img className="manager-home-profile-action-photo" src={profileActionPhoto} alt="" draggable="false" />
-              <span className="manager-home-top-action-label">Profile</span>
-            </Link>
-            <button className="manager-home-top-action manager-home-logout-button" type="button" aria-label="Log Out" onClick={logout}>
-              <img className="manager-home-logout-icon" src={managerLogoutIcon} alt="" draggable="false" />
-              <span className="manager-home-top-action-label">Log Out</span>
-            </button>
-          </nav>
-        </header>
-
-        <div className={`manager-launcher-body live-chat-shell${isRosterCollapsed ? " is-sidebar-collapsed" : ""}`} role="group" aria-label="Live chat room frame">
-          <aside
-            className="manager-launcher-grid manager-launcher-sidebar live-chat-roster"
-            id="live-chat-roster-members"
-            aria-label="Live chat members"
-            data-orientation="vertical"
-            hidden={isRosterCollapsed}
-          >
+    <div className={frameClassName} role="group" aria-label={frameLabel}>
+      {showRoster && (
+        <aside
+          className="manager-launcher-grid manager-launcher-sidebar live-chat-roster"
+          id={rosterId}
+          aria-label="Live chat members"
+          data-orientation="vertical"
+          hidden={isRosterCollapsed}
+        >
             {rosterMembers.map((member) => (
               <article className="manager-launcher-item live-chat-roster-member" key={member.id} aria-label={`${member.name}, ${member.detail}`}>
                 <span className="manager-launcher-graphic live-chat-roster-avatar">
@@ -4851,9 +5102,11 @@ function LiveChatPage() {
                 <span className="manager-launcher-label live-chat-roster-label">{member.name}</span>
               </article>
             ))}
-          </aside>
+        </aside>
+      )}
+      {showRoster && (
         <button
-          aria-controls="live-chat-roster-members"
+          aria-controls={rosterId}
           aria-expanded={!isRosterCollapsed}
           aria-label={isRosterCollapsed ? "Expand live chat member list" : "Collapse live chat member list"}
           className="manager-launcher-rail-toggle live-chat-roster-toggle"
@@ -4862,12 +5115,13 @@ function LiveChatPage() {
         >
           <span className="manager-launcher-rail-toggle-bar" aria-hidden="true" />
         </button>
+      )}
 
-        <section className="manager-launcher-workspace live-chat-room-panel" aria-label="Live chat room">
+      <section className="manager-launcher-workspace live-chat-room-panel" aria-label="Live chat room">
           <div className="live-chat-room-head" aria-label="Live chat room header">
             <div className="live-chat-heading-block">
               <div className="live-chat-heading-row">
-                <h2>Live Chat Rooms</h2>
+                <h2>{title}</h2>
                 <div className={`live-chat-online-count${isLiveReady ? " is-live" : ""}`} aria-label="Live chat online count">
                   <span aria-hidden="true" />
                   <strong>{onlineCount.toLocaleString()} Online</strong>
@@ -4923,18 +5177,18 @@ function LiveChatPage() {
             <button className="live-chat-emoji-button" type="button" aria-label="Emoji menu" disabled>
               <Smile size={24} />
             </button>
-            <label className="sr-only" htmlFor="live-chat-message-input">Enter message.</label>
+            <label className="sr-only" htmlFor={messageInputId}>Enter message.</label>
             <div className="live-chat-input-shell">
               <input
-                id="live-chat-message-input"
+                id={messageInputId}
                 value={messageText}
                 onChange={(event) => setMessageText(event.target.value)}
                 maxLength={liveChatMessageMaxLength}
                 placeholder="Enter message."
-                disabled={isComposerDisabled}
+                disabled={isComposerInputDisabled}
               />
             </div>
-            <button className="live-chat-send-button" type="submit" disabled={isComposerDisabled}>
+            <button className="live-chat-send-button" type="submit" disabled={isSendDisabled}>
               <Send size={22} />
               <span>{isSending ? "Sending" : "Send"}</span>
             </button>
@@ -4947,7 +5201,57 @@ function LiveChatPage() {
             </span>
           </div>
         </section>
-        </div>
+    </div>
+  );
+}
+
+function ProfileLiveChatPanel({ idPrefix }: { idPrefix: string }) {
+  return (
+    <div className="live-chat-page live-chat-profile-panel" aria-label="Profile live chat panel">
+      <LiveChatRoomFrame
+        className="live-chat-profile-frame"
+        frameLabel="Profile live chat frame"
+        idPrefix={idPrefix}
+        showRoster={false}
+        title="Live Chat"
+      />
+    </div>
+  );
+}
+
+function LiveChatPage() {
+  const { accountRole, currentChildAccount, logout, managerAccountAccess, session, students } = useAppState();
+  const isManagerOwner = managerAccountAccess.isManagerOwner;
+  const sessionStudent = useMemo(() => liveChatSessionStudent(students, session?.email), [session?.email, students]);
+  const profileAvatarPath = accountRole === "student" && sessionStudent?.profileImagePath
+    ? sessionStudent.profileImagePath
+    : profileAvatarPathForSession(session?.email);
+  const profile = readLiveChatProfileForSession({
+    accountRole,
+    childAccount: currentChildAccount,
+    isManagerOwner,
+    sessionEmail: session?.email,
+    student: sessionStudent
+  });
+  const profileActionPhoto = profile.photoDataUrl ?? publicAsset(profileAvatarPath);
+
+  return (
+    <section className="manager-launcher-page live-chat-page" aria-label="Live chat room page">
+      <main className="manager-launcher-main live-chat-main">
+        <header className="manager-launcher-topbar manager-page-title-bar" aria-label="Live chat page header">
+          <ManagerPageTitleFrame title="Live Chats" className="manager-page-title-frame--manager-panel" />
+          <nav className="manager-home-top-actions" aria-label="Live chat quick actions">
+            <Link className="manager-home-top-action manager-launcher-profile-link" to="/profile" aria-label="Profile">
+              <img className="manager-home-profile-action-photo" src={profileActionPhoto} alt="" draggable="false" />
+              <span className="manager-home-top-action-label">Profile</span>
+            </Link>
+            <button className="manager-home-top-action manager-home-logout-button" type="button" aria-label="Log Out" onClick={logout}>
+              <img className="manager-home-logout-icon" src={managerLogoutIcon} alt="" draggable="false" />
+              <span className="manager-home-top-action-label">Log Out</span>
+            </button>
+          </nav>
+        </header>
+        <LiveChatRoomFrame />
       </main>
     </section>
   );
@@ -5352,6 +5656,7 @@ function StudentProfilePage() {
   const [feedFilter, setFeedFilter] = useState<ManagerHomeFeedFilter>("all");
   const [replyText, setReplyText] = useState("");
   const [studentBottomPanel, setStudentBottomPanel] = useState<StudentProfileBottomPanel>("belt");
+  const [studentCommunicationMode, setStudentCommunicationMode] = useState<ProfileCommunicationMode>("liveChat");
   const feedSearchInputRef = useRef<HTMLInputElement>(null);
   const directFeedThreads = useMemo(
     () => buildStudentDirectMessageFeedThreads(directMessages, selectedStudent, readDirectThreadIds, hiddenDirectThreadIds),
@@ -5928,6 +6233,13 @@ function StudentProfilePage() {
               role="tabpanel"
               aria-label="Messages and event notifications"
             >
+              <ProfileCommunicationSwipePanel
+                activeMode={studentCommunicationMode}
+                className="student-profile-communication-panel"
+                idPrefix="student-profile-communication"
+                liveChatPanel={<ProfileLiveChatPanel idPrefix="student-profile-live-chat" />}
+                notificationPanel={(
+                  <>
               <div className="manager-home-feed-head student-reference-feed-head">
                 <div className="manager-home-feed-counts" aria-label="Feed totals">
                   <button
@@ -6101,6 +6413,10 @@ function StudentProfilePage() {
                   <p className="manager-home-empty">No messages or event notifications match your search.</p>
                 )}
               </div>
+                  </>
+                )}
+                onModeChange={setStudentCommunicationMode}
+              />
             </section>
           )}
         </section>
@@ -6256,6 +6572,7 @@ function ParentProfileTabContent({
   const childName = selectedChild?.name ?? "your child";
   const today = toDateKey(useLiveCalendarDate());
   const [selectedParentNoteId, setSelectedParentNoteId] = useState<string | null>(null);
+  const [parentCommunicationMode, setParentCommunicationMode] = useState<ProfileCommunicationMode>("liveChat");
   const nextClass = findNextStudentScheduledClass(scheduledClasses, selectedChild?.id, today);
   const nextEvent = findNextStudioEvent(studioEvents, today);
   const toggleParentNoteFocus = (noteId: string) => {
@@ -6267,6 +6584,7 @@ function ParentProfileTabContent({
 
   useEffect(() => {
     setSelectedParentNoteId(null);
+    setParentCommunicationMode("liveChat");
   }, [activeTab, selectedChild?.id]);
 
   if (activeTab === "classes") {
@@ -6345,45 +6663,57 @@ function ParentProfileTabContent({
           <h2>Messages</h2>
           <p>Review staff and studio messages connected to {childName}&apos;s account.</p>
         </header>
-        <div className="parent-device-alert-actions" aria-label="Parent device message notification controls">
-          <button type="button" className="student-device-alert-button" onClick={onEnableParentMessageNotifications}>
-            <Smartphone size={16} aria-hidden="true" /> Enable Parent Message Notifications
-          </button>
-          <button type="button" className="student-device-alert-button" onClick={onSendParentTestNotification} disabled={!parentDeviceNotificationsReady}>
-            <Bell size={16} aria-hidden="true" /> Send Parent Test Notification
-          </button>
-          <span className="student-device-alert-status">Permission: {parentNotificationPermissionLabel}</span>
-        </div>
-        <HomeProfilePushSubscriptionControls
-          accountLabel="Parent"
-          isPushSubscribing={isParentPushSubscribing}
-          isPushSubscriptionSyncing={isParentPushSubscriptionSyncing}
-          onConnectDevicePush={onConnectParentDevicePush}
-          onPushServerEndpointChange={onParentPushServerEndpointChange}
-          onSyncPushSubscription={onSyncParentPushSubscription}
-          onWebPushPublicKeyChange={onParentWebPushPublicKeyChange}
-          pushServerEndpoint={parentPushServerEndpoint}
-          pushSubscriptionReady={parentPushSubscriptionReady}
-          webPushPublicKey={parentWebPushPublicKey}
-        />
-        <div className={parentMessageListClassName}>
-          {visibleMessages.map((thread) => (
-            <button
-              aria-pressed={selectedParentNoteId === thread.id}
-              className={parentMessageRowClassName(thread.id)}
-              key={thread.id}
-              onClick={() => toggleParentNoteFocus(thread.id)}
-              type="button"
-            >
-              <img src={thread.avatar} alt="" draggable="false" />
-              <div>
-                <strong>{thread.title}</strong>
-                <span>{thread.sender} - {thread.sentDate} at {thread.sentTime}</span>
-                <p>{thread.preview}</p>
+        <ProfileCommunicationSwipePanel
+          activeMode={parentCommunicationMode}
+          className="parent-profile-communication-panel"
+          idPrefix="parent-profile-messages-communication"
+          liveChatPanel={<ProfileLiveChatPanel idPrefix="parent-profile-messages-live-chat" />}
+          notificationLabel="Messages"
+          notificationPanel={(
+            <>
+              <div className="parent-device-alert-actions" aria-label="Parent device message notification controls">
+                <button type="button" className="student-device-alert-button" onClick={onEnableParentMessageNotifications}>
+                  <Smartphone size={16} aria-hidden="true" /> Enable Parent Message Notifications
+                </button>
+                <button type="button" className="student-device-alert-button" onClick={onSendParentTestNotification} disabled={!parentDeviceNotificationsReady}>
+                  <Bell size={16} aria-hidden="true" /> Send Parent Test Notification
+                </button>
+                <span className="student-device-alert-status">Permission: {parentNotificationPermissionLabel}</span>
               </div>
-            </button>
-          ))}
-        </div>
+              <HomeProfilePushSubscriptionControls
+                accountLabel="Parent"
+                isPushSubscribing={isParentPushSubscribing}
+                isPushSubscriptionSyncing={isParentPushSubscriptionSyncing}
+                onConnectDevicePush={onConnectParentDevicePush}
+                onPushServerEndpointChange={onParentPushServerEndpointChange}
+                onSyncPushSubscription={onSyncParentPushSubscription}
+                onWebPushPublicKeyChange={onParentWebPushPublicKeyChange}
+                pushServerEndpoint={parentPushServerEndpoint}
+                pushSubscriptionReady={parentPushSubscriptionReady}
+                webPushPublicKey={parentWebPushPublicKey}
+              />
+              <div className={parentMessageListClassName}>
+                {visibleMessages.map((thread) => (
+                  <button
+                    aria-pressed={selectedParentNoteId === thread.id}
+                    className={parentMessageRowClassName(thread.id)}
+                    key={thread.id}
+                    onClick={() => toggleParentNoteFocus(thread.id)}
+                    type="button"
+                  >
+                    <img src={thread.avatar} alt="" draggable="false" />
+                    <div>
+                      <strong>{thread.title}</strong>
+                      <span>{thread.sender} - {thread.sentDate} at {thread.sentTime}</span>
+                      <p>{thread.preview}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          onModeChange={setParentCommunicationMode}
+        />
       </section>
     );
   }
@@ -6396,40 +6726,49 @@ function ParentProfileTabContent({
           <h2>Notifications</h2>
           <p>Event notices, parent reminders, and testing updates for the family.</p>
         </header>
-        <div className={parentMessageListClassName}>
-          {eventThreads.map((thread) => (
-            <button
-              aria-pressed={selectedParentNoteId === thread.id}
-              className={parentMessageRowClassName(thread.id)}
-              key={thread.id}
-              onClick={() => toggleParentNoteFocus(thread.id)}
-              type="button"
-            >
-              <img src={thread.avatar} alt="" draggable="false" />
-              <div>
-                <strong>{thread.title}</strong>
-                <span>{thread.sender} - {thread.sentDate} at {thread.sentTime}</span>
-                <p>{thread.preview}</p>
-              </div>
-            </button>
-          ))}
-          {studioEvents.slice(0, 3).map((event) => (
-            <button
-              aria-pressed={selectedParentNoteId === event.id}
-              className={parentMessageRowClassName(event.id)}
-              key={event.id}
-              onClick={() => toggleParentNoteFocus(event.id)}
-              type="button"
-            >
-              <span className="parent-card-icon" aria-hidden="true"><CalendarDays size={20} /></span>
-              <div>
-                <strong>{event.title}</strong>
-                <span>{event.date} at {event.time}</span>
-                <p>{event.details}</p>
-              </div>
-            </button>
-          ))}
-        </div>
+        <ProfileCommunicationSwipePanel
+          activeMode={parentCommunicationMode}
+          className="parent-profile-communication-panel"
+          idPrefix="parent-profile-notifications-communication"
+          liveChatPanel={<ProfileLiveChatPanel idPrefix="parent-profile-notifications-live-chat" />}
+          notificationPanel={(
+            <div className={parentMessageListClassName}>
+              {eventThreads.map((thread) => (
+                <button
+                  aria-pressed={selectedParentNoteId === thread.id}
+                  className={parentMessageRowClassName(thread.id)}
+                  key={thread.id}
+                  onClick={() => toggleParentNoteFocus(thread.id)}
+                  type="button"
+                >
+                  <img src={thread.avatar} alt="" draggable="false" />
+                  <div>
+                    <strong>{thread.title}</strong>
+                    <span>{thread.sender} - {thread.sentDate} at {thread.sentTime}</span>
+                    <p>{thread.preview}</p>
+                  </div>
+                </button>
+              ))}
+              {studioEvents.slice(0, 3).map((event) => (
+                <button
+                  aria-pressed={selectedParentNoteId === event.id}
+                  className={parentMessageRowClassName(event.id)}
+                  key={event.id}
+                  onClick={() => toggleParentNoteFocus(event.id)}
+                  type="button"
+                >
+                  <span className="parent-card-icon" aria-hidden="true"><CalendarDays size={20} /></span>
+                  <div>
+                    <strong>{event.title}</strong>
+                    <span>{event.date} at {event.time}</span>
+                    <p>{event.details}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          onModeChange={setParentCommunicationMode}
+        />
       </section>
     );
   }
@@ -7420,6 +7759,7 @@ function ManagerHomePage() {
   const [isFeedSearchOpen, setIsFeedSearchOpen] = useState(false);
   const [feedFilter, setFeedFilter] = useState<ManagerHomeFeedFilter>("all");
   const [replyText, setReplyText] = useState("");
+  const [managerCommunicationMode, setManagerCommunicationMode] = useState<ProfileCommunicationMode>("liveChat");
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeKind, setComposeKind] = useState<ManagerComposeKind>("message");
   const [composeSubject, setComposeSubject] = useState("");
@@ -8146,6 +8486,12 @@ function ManagerHomePage() {
         >
           <span className="manager-home-overview-handle-bar" aria-hidden="true" />
         </button>
+        <ProfileCommunicationSwipePanel
+          activeMode={managerCommunicationMode}
+          className="manager-home-communication-panel"
+          idPrefix="manager-home-communication"
+          liveChatPanel={<ProfileLiveChatPanel idPrefix="manager-profile-live-chat" />}
+          notificationPanel={(
         <section className="manager-home-feed-panel" aria-label="Messages and event notifications">
           <div className={`manager-home-feed-head${selectedFeedCount > 0 && !isFeedSearchOpen ? " is-selecting" : ""}`}>
             <div className="manager-home-feed-counts" aria-label="Feed totals">
@@ -8346,6 +8692,9 @@ function ManagerHomePage() {
             )}
           </div>
         </section>
+          )}
+          onModeChange={setManagerCommunicationMode}
+        />
         {isFeedDeleteConfirmOpen && selectedFeedCount > 0 && (
           <div
             className="modal-backdrop manager-calendar-action-backdrop"

@@ -374,6 +374,14 @@ function renderLoggedOutApp(path = "/") {
   );
 }
 
+function openProfileCommunicationNotifications(container: HTMLElement = document.body, tabName = "Notifications") {
+  const communicationPanel = within(container).getByLabelText("Profile communication panel");
+  const notificationTab = within(communicationPanel).getByRole("tab", { name: tabName });
+  fireEvent.click(notificationTab);
+  expect(notificationTab).toHaveAttribute("aria-selected", "true");
+  return communicationPanel;
+}
+
 const completeStudentSafetyFields = {
   dateOfBirth: "2012-09-01",
   guardianName: "Family Contact",
@@ -4286,7 +4294,7 @@ describe("post-login operations app", () => {
     expect(screen.queryByLabelText("Live chat preview")).not.toBeInTheDocument();
     expect(within(chatHeader).queryByText(/^Preview$/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("Live chat composer")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Enter message.")).toBeDisabled();
+    expect(screen.getByPlaceholderText("Enter message.")).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
     expect(screen.getByText(/Supabase/i)).toBeInTheDocument();
 
@@ -4301,6 +4309,139 @@ describe("post-login operations app", () => {
     expect(screen.getByRole("button", { name: "Collapse live chat member list" })).toHaveAttribute("aria-expanded", "true");
     expect(chatFrame).not.toHaveClass("is-sidebar-collapsed");
     expect(document.getElementById("live-chat-roster-members")).not.toHaveAttribute("hidden");
+  });
+
+  it("lets managers switch the Profile communication panel between Live Chat and notifications by tab or swipe", () => {
+    renderLoggedInApp("/profile");
+
+    const communicationPanel = screen.getByLabelText("Profile communication panel");
+    const communicationTabs = within(communicationPanel).getByRole("tablist", { name: "Profile communication views" });
+    const liveChatTab = within(communicationTabs).getByRole("tab", { name: "Live Chat" });
+    const notificationsTab = within(communicationTabs).getByRole("tab", { name: "Notifications" });
+    const liveChatPane = communicationPanel.querySelector(".profile-communication-pane--live-chat") as HTMLElement;
+    const notificationsPane = communicationPanel.querySelector(".profile-communication-pane--notifications") as HTMLElement;
+
+    expect(within(communicationTabs).getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["Live Chat", "Notifications"]);
+    expect(liveChatTab).toHaveAttribute("aria-selected", "true");
+    expect(notificationsTab).toHaveAttribute("aria-selected", "false");
+    expect(liveChatPane).toHaveAttribute("aria-hidden", "false");
+    expect(notificationsPane).toHaveAttribute("aria-hidden", "true");
+    expect(liveChatPane).not.toHaveAttribute("inert");
+    expect(notificationsPane).toHaveAttribute("inert");
+    expect(within(communicationPanel).getByLabelText("Profile live chat frame")).toHaveClass("live-chat-shell--profile");
+    expect(within(communicationPanel).getByRole("heading", { name: "Live Chat" })).toBeInTheDocument();
+    const profileMessageInput = within(communicationPanel).getByPlaceholderText("Enter message.");
+    expect(profileMessageInput).toBeEnabled();
+    fireEvent.change(profileMessageInput, { target: { value: "Profile live chat typing check." } });
+    expect(profileMessageInput).toHaveValue("Profile live chat typing check.");
+
+    fireEvent.click(notificationsTab);
+    expect(notificationsTab).toHaveAttribute("aria-selected", "true");
+    expect(within(communicationPanel).getByLabelText("Messages and event notifications")).toBeInTheDocument();
+
+    fireEvent.click(liveChatTab);
+    const swipeViewport = communicationPanel.querySelector(".profile-communication-swipe-viewport") as HTMLElement;
+    fireEvent.pointerDown(swipeViewport, { pointerId: 1, clientX: 220, clientY: 80 });
+    fireEvent.pointerMove(swipeViewport, { pointerId: 1, clientX: 120, clientY: 82 });
+    fireEvent.pointerUp(swipeViewport, { pointerId: 1, clientX: 120, clientY: 82 });
+
+    expect(notificationsTab).toHaveAttribute("aria-selected", "true");
+
+    const notificationSwipeStartButton = within(notificationsPane).getAllByRole("button")[0];
+    fireEvent.pointerDown(notificationSwipeStartButton, { pointerId: 2, clientX: 120, clientY: 80 });
+    fireEvent.pointerMove(swipeViewport, { pointerId: 2, clientX: 220, clientY: 82 });
+    fireEvent.pointerUp(swipeViewport, { pointerId: 2, clientX: 220, clientY: 82 });
+
+    expect(liveChatTab).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("prevents accidental text highlighting during profile communication swipes without hijacking text-entry drags", () => {
+    renderLoggedInApp("/profile");
+
+    const communicationPanel = screen.getByLabelText("Profile communication panel");
+    const communicationTabs = within(communicationPanel).getByRole("tablist", { name: "Profile communication views" });
+    const liveChatTab = within(communicationTabs).getByRole("tab", { name: "Live Chat" });
+    const notificationsTab = within(communicationTabs).getByRole("tab", { name: "Notifications" });
+    const swipeViewport = communicationPanel.querySelector(".profile-communication-swipe-viewport") as HTMLElement;
+    const removeAllRanges = vi.fn();
+    const originalGetSelection = window.getSelection;
+    Object.defineProperty(window, "getSelection", {
+      configurable: true,
+      value: () => ({ isCollapsed: false, removeAllRanges })
+    });
+
+    try {
+      fireEvent.pointerDown(swipeViewport, { pointerId: 1, clientX: 220, clientY: 80 });
+      fireEvent.pointerMove(swipeViewport, { pointerId: 1, clientX: 120, clientY: 82 });
+
+      expect(communicationPanel).toHaveClass("is-dragging");
+      expect(removeAllRanges).toHaveBeenCalled();
+
+      fireEvent.pointerUp(swipeViewport, { pointerId: 1, clientX: 120, clientY: 82 });
+      expect(notificationsTab).toHaveAttribute("aria-selected", "true");
+      expect(communicationPanel).not.toHaveClass("is-dragging");
+
+      fireEvent.click(liveChatTab);
+      removeAllRanges.mockClear();
+
+      const messageInput = within(communicationPanel).getByPlaceholderText("Enter message.");
+      fireEvent.pointerDown(messageInput, { pointerId: 2, clientX: 220, clientY: 80 });
+      fireEvent.pointerMove(swipeViewport, { pointerId: 2, clientX: 80, clientY: 82 });
+      fireEvent.pointerUp(swipeViewport, { pointerId: 2, clientX: 80, clientY: 82 });
+
+      expect(liveChatTab).toHaveAttribute("aria-selected", "true");
+      expect(removeAllRanges).not.toHaveBeenCalled();
+      expect(communicationPanel).not.toHaveClass("is-dragging");
+    } finally {
+      Object.defineProperty(window, "getSelection", {
+        configurable: true,
+        value: originalGetSelection
+      });
+    }
+  });
+
+  it("adds Live Chat access inside the student Profile messages bottom panel", async () => {
+    renderBootstrappedSessionApp("/profile", "student");
+
+    const actionRow = await screen.findByLabelText("Student reference action row");
+    fireEvent.click(within(actionRow).getByRole("tab", { name: "Messages" }));
+
+    const bottomPanel = screen.getByLabelText("Student profile bottom panel");
+    const communicationPanel = within(bottomPanel).getByLabelText("Profile communication panel");
+    const communicationTabs = within(communicationPanel).getByRole("tablist", { name: "Profile communication views" });
+    const liveChatTab = within(communicationPanel).getByRole("tab", { name: "Live Chat" });
+    const notificationsTab = within(communicationPanel).getByRole("tab", { name: "Notifications" });
+
+    expect(within(communicationTabs).getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["Live Chat", "Notifications"]);
+    expect(liveChatTab).toHaveAttribute("aria-selected", "true");
+    expect(notificationsTab).toHaveAttribute("aria-selected", "false");
+    expect(within(communicationPanel).getByLabelText("Profile live chat frame")).toHaveClass("live-chat-shell--profile");
+    expect(within(communicationPanel).getByRole("heading", { name: "Live Chat" })).toBeInTheDocument();
+
+    fireEvent.click(notificationsTab);
+    expect(notificationsTab).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("adds Live Chat access inside parent Profile communication tabs", async () => {
+    renderBootstrappedSessionApp("/profile", "guardian");
+
+    const parentTools = await screen.findByLabelText("Parent student tools");
+    fireEvent.click(within(parentTools).getByRole("button", { name: "Messages" }));
+
+    const messagesView = screen.getByLabelText("Parent messages view");
+    const communicationPanel = within(messagesView).getByLabelText("Profile communication panel");
+    const communicationTabs = within(communicationPanel).getByRole("tablist", { name: "Profile communication views" });
+    const liveChatTab = within(communicationPanel).getByRole("tab", { name: "Live Chat" });
+    const messagesTab = within(communicationPanel).getByRole("tab", { name: "Messages" });
+
+    expect(within(communicationTabs).getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["Live Chat", "Messages"]);
+    expect(liveChatTab).toHaveAttribute("aria-selected", "true");
+    expect(messagesTab).toHaveAttribute("aria-selected", "false");
+    expect(within(communicationPanel).getByLabelText("Profile live chat frame")).toHaveClass("live-chat-shell--profile");
+    expect(within(communicationPanel).getByRole("heading", { name: "Live Chat" })).toBeInTheDocument();
+
+    fireEvent.click(messagesTab);
+    expect(messagesTab).toHaveAttribute("aria-selected", "true");
   });
 
   it("does not expose local-only custom live chat room creation", () => {
@@ -4319,13 +4460,14 @@ describe("post-login operations app", () => {
 
     const input = screen.getByPlaceholderText("Enter message.");
     const sendButton = screen.getByRole("button", { name: "Send" });
-    expect(input).toBeDisabled();
+    expect(input).toBeEnabled();
     expect(sendButton).toBeDisabled();
+    fireEvent.change(input, { target: { value: "Test live chat submission." } });
 
     expect(screen.queryByText("Test live chat submission.")).not.toBeInTheDocument();
     expect(screen.queryByText("Test message added locally. Supabase sign-in required for live delivery.")).not.toBeInTheDocument();
     expect(screen.getByText(/Supabase/i)).toBeInTheDocument();
-    expect(input).toHaveValue("");
+    expect(input).toHaveValue("Test live chat submission.");
   });
 
   it("keeps live chat timestamps grouped under the sender name to avoid wasted message row space", () => {
@@ -5071,6 +5213,7 @@ describe("post-login operations app", () => {
     fireEvent.click(messagesTab);
     expect(messagesTab).toHaveAttribute("aria-selected", "true");
     const feedPanel = within(bottomPanel).getByRole("tabpanel", { name: "Messages and event notifications" });
+    openProfileCommunicationNotifications(feedPanel);
     expect(within(feedPanel).getByText("5 Messages")).toBeInTheDocument();
     expect(within(feedPanel).getByText("2 Event Notifications")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Compose" })).not.toBeInTheDocument();
@@ -5162,6 +5305,7 @@ describe("post-login operations app", () => {
     const actionRow = await screen.findByLabelText("Student reference action row");
     fireEvent.click(within(actionRow).getByRole("tab", { name: "Messages" }));
     const feedPanel = await screen.findByRole("tabpanel", { name: "Messages and event notifications" });
+    openProfileCommunicationNotifications(feedPanel);
 
     fireEvent.click(within(feedPanel).getByRole("button", { name: "Enable Message Notifications" }));
 
@@ -5229,6 +5373,7 @@ describe("post-login operations app", () => {
     const actionRow = await screen.findByLabelText("Student reference action row");
     fireEvent.click(within(actionRow).getByRole("tab", { name: "Messages" }));
     const feedPanel = await screen.findByRole("tabpanel", { name: "Messages and event notifications" });
+    openProfileCommunicationNotifications(feedPanel);
 
     fireEvent.change(within(feedPanel).getByLabelText("Student Web Push public key"), {
       target: { value: "BEl6PDiRfYyIRLr1YWkN2v6k3cGv2GvZcK2nXrjZ4g6rPQu4xNfQb3-V6X0c0fPKHM8xojN6F0fJgQI3PNe7RDs" }
@@ -5483,6 +5628,7 @@ describe("post-login operations app", () => {
     const parentTools = await screen.findByLabelText("Parent student tools");
     fireEvent.click(within(parentTools).getByRole("button", { name: "Messages" }));
     const messagesView = screen.getByLabelText("Parent messages view");
+    openProfileCommunicationNotifications(messagesView, "Messages");
 
     fireEvent.click(within(messagesView).getByRole("button", { name: "Enable Parent Message Notifications" }));
 
@@ -5563,6 +5709,7 @@ describe("post-login operations app", () => {
     const parentTools = await screen.findByLabelText("Parent student tools");
     fireEvent.click(within(parentTools).getByRole("button", { name: "Messages" }));
     const messagesView = screen.getByLabelText("Parent messages view");
+    openProfileCommunicationNotifications(messagesView, "Messages");
 
     fireEvent.change(within(messagesView).getByLabelText("Parent Web Push public key"), {
       target: { value: "BEl6PDiRfYyIRLr1YWkN2v6k3cGv2GvZcK2nXrjZ4g6rPQu4xNfQb3-V6X0c0fPKHM8xojN6F0fJgQI3PNe7RDs" }
@@ -5970,6 +6117,7 @@ describe("post-login operations app", () => {
     ]));
     renderLoggedInApp("/profile");
 
+    openProfileCommunicationNotifications();
     const feedPanel = screen.getByLabelText("Messages and event notifications");
     fireEvent.click(within(feedPanel).getByRole("button", { name: "Compose" }));
 
@@ -6056,6 +6204,7 @@ describe("post-login operations app", () => {
   it("auto-maximizes the Home feed when a message opens", () => {
     stubResizeObserver(360);
     renderLoggedInApp("/profile");
+    openProfileCommunicationNotifications();
 
     const homeOverview = screen.getByLabelText("Manager home overview");
     const overviewStage = homeOverview.closest(".manager-home-overview-stage");
@@ -6437,6 +6586,7 @@ describe("post-login operations app", () => {
 
   it("hides the Home feed compose button while feed items are selected", () => {
     renderLoggedInApp("/profile");
+    openProfileCommunicationNotifications();
 
     expect(screen.getByRole("button", { name: "Compose" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete selected" })).not.toBeInTheDocument();
@@ -6469,6 +6619,7 @@ describe("post-login operations app", () => {
 
   it("confirms before deleting selected Home feed items", () => {
     renderLoggedInApp("/profile");
+    openProfileCommunicationNotifications();
 
     const attendanceCheckbox = screen.getByRole("checkbox", { name: "Select Attendance Confirmation" });
     fireEvent.click(attendanceCheckbox);
@@ -6635,6 +6786,7 @@ describe("post-login operations app", () => {
 
   it("dims surrounding developer Home notes when one message is selected", () => {
     renderLoggedInDeveloperApp("/profile");
+    openProfileCommunicationNotifications();
 
     const feed = screen.getByLabelText("Home message and notification feed");
     const attendanceRow = screen.getByRole("button", { name: /John Doe.*Attendance Confirmation/i });
@@ -15952,6 +16104,7 @@ describe("post-login operations app", () => {
 
   it("expands selected messages inside the single Home feed panel", () => {
     renderLoggedInApp("/profile");
+    openProfileCommunicationNotifications();
 
     const feed = screen.getByLabelText("Home message and notification feed");
     const attendanceRow = screen.getByRole("button", { name: /John Doe.*Attendance Confirmation/i });
@@ -16010,6 +16163,7 @@ describe("post-login operations app", () => {
 
   it("marks Home feed messages and event notifications as read when opened", () => {
     renderLoggedInApp("/profile");
+    openProfileCommunicationNotifications();
 
     const summerEventRow = screen.getByRole("button", { name: /System Admin.*Event Update: Summer Championship/i });
     const summerEventItem = summerEventRow.closest(".manager-home-feed-item") as HTMLElement;
@@ -16027,6 +16181,7 @@ describe("post-login operations app", () => {
 
   it("filters messages and event notifications in the single Home feed panel", () => {
     renderLoggedInApp("/profile");
+    openProfileCommunicationNotifications();
 
     fireEvent.click(screen.getByRole("button", { name: "Open search messages and event notifications" }));
     const feedSearch = screen.getByRole("searchbox", { name: "Search messages and event notifications" });
