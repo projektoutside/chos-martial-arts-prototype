@@ -5,7 +5,7 @@ import { getProduct, studio } from "./data";
 import { parseOperationsBackupSnapshot, type OperationsBackupData } from "./operationsBackup";
 import { getClassReminderCandidates, getLeadCandidates, getMerchandiseTargetStock, getStudentCelebrationEvents, getStudentProfileIssues, hasGuardianSmsConsent, hasStaffSmsConsent, hasStudentSmsConsent, isAttendanceGapFollowUpDue, isBeltTestInviteDue, isLowStockMerchandiseItem, isMilestoneEncouragementDue, isMissedClassFollowUpDue, isNewStudentCheckInDue, isPausedStudentReviewDue, isProfileUpdateRequestDue, isQueuedMessageDeliverable, isStaleOneTimeScheduledClass, isTrialConversionDue } from "./operationsReports";
 import { buildStudentBeltProgress } from "./studentProgress";
-import { clearSupabaseAuthSession, isSupabaseAuthConfigured } from "./supabaseAccounts";
+import { clearSupabaseAuthSession, isSupabaseAuthConfigured, readSupabaseAuthSession, supabaseAuthEmailForUsername } from "./supabaseAccounts";
 import { deleteSupabaseAppStateItem, fetchSupabaseAppStateItem, isSupabaseAppStateRemoteBacked, persistSupabaseAppStateItem } from "./supabaseAppStatePersistence";
 import { deleteSupabaseDirectMessages, deleteSupabaseMessageLogs, fetchSupabaseDirectMessages, fetchSupabaseMessageLogs, persistSupabaseDirectMessages, persistSupabaseMessageLogs } from "./supabaseMessagePersistence";
 import { normalizeTwilioInboundSmsWebhookForServer, normalizeTwilioStatusCallbackForServer, type TwilioInboundSmsWebhook } from "./twilioRelayContract";
@@ -743,9 +743,21 @@ function hasValidManagedStudentLink(account: Pick<ManagedAccount, "role" | "stud
   return Boolean(studentId && students.some((student) => student.id === studentId && isCurrentStudentEnrollment(student)));
 }
 
+function hasSupabaseAuthSessionForAppSession(normalizedEmail: string) {
+  const session = readSupabaseAuthSession();
+  if (!session?.authEmail) return false;
+  const expectedUsername = normalizedEmail === prototypeManagerLogin.email.toLowerCase() ? prototypeManagerLogin.username : normalizedEmail;
+  if (session.authEmail === supabaseAuthEmailForUsername(expectedUsername)) return true;
+  clearSupabaseAuthSession();
+  return false;
+}
+
 function validatePrototypeSession(session: AccountSession | undefined) {
   if (!session?.email) return undefined;
   const normalizedEmail = session.email.toLowerCase();
+  if (isSupabaseAuthConfigured() && !isPrototypeDeveloperEmail(normalizedEmail) && !hasSupabaseAuthSessionForAppSession(normalizedEmail)) {
+    return undefined;
+  }
   if (normalizedEmail === prototypeManagerLogin.email.toLowerCase()) return session;
   if (isPrototypeDeveloperEmail(normalizedEmail)) return session;
   const managedAccounts = readStoredArray<ManagedAccount>(keys.managedAccounts);
@@ -1854,6 +1866,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const scheduledClassesRef = useRef(scheduledClasses);
   const studioEventsRef = useRef(studioEvents);
   const studentsRef = useRef(students);
+  studentsRef.current = students;
   const checkInsRef = useRef(checkIns);
   const scheduledTextCampaignsRef = useRef(scheduledTextCampaigns);
   const messageLogsRef = useRef(messageLogs);

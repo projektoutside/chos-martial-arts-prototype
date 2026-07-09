@@ -1,4 +1,7 @@
 project_id = "zfuwbbepsnmmlpgfkmhz"
 
+[functions.manager-create-account]
+verify_jwt = false
+
 [functions.twilio-messaging]
 verify_jwt = false

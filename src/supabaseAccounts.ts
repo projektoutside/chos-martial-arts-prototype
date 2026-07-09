@@ -33,6 +33,8 @@ export type SupabaseStoredSession = {
   refreshToken?: string;
   expiresAt: number;
   userId: string;
+  projectRef?: string;
+  authEmail?: string;
 };
 
 type SupabaseLoginResult =
@@ -65,6 +67,7 @@ type SupabaseCreateAccountResult =
 const supabaseSessionStorageKey = "chos.supabase.auth.v1";
 const managerUsername = prototypeManagerLogin.username.toLowerCase();
 const supabaseAccountAuthDomain = "accounts.chosmartialarts.app";
+const managerSessionRequiredMessage = "Sign into the Supabase Manager123 owner account before syncing created accounts.";
 const mongTengSupabaseProjectRef = "jqvclzlvrhdcsfhhvekr";
 const forbiddenSupabaseProjectRefs = new Set([mongTengSupabaseProjectRef]);
 export const supabaseBackendInactiveMessage = "Cho staging Supabase is inactive or unreachable. Unpause the Supabase project, then try again.";
@@ -126,6 +129,11 @@ export function supabaseProjectRefFromUrl(url: string) {
   }
 }
 
+function supabaseSessionProjectScope() {
+  const url = supabaseUrl().replace(/\/+$/, "");
+  return supabaseProjectRefFromUrl(url) ?? url.toLowerCase();
+}
+
 export function isChoSupabaseProjectUrlAllowed(url: string) {
   const projectRef = supabaseProjectRefFromUrl(url);
   return !projectRef || !forbiddenSupabaseProjectRefs.has(projectRef);
@@ -178,7 +186,9 @@ function saveSupabaseAuthSession(response: SupabasePasswordResponse) {
   const storedSession: SupabaseStoredSession = {
     accessToken: response.access_token,
     expiresAt,
-    userId: response.user.id
+    userId: response.user.id,
+    projectRef: supabaseSessionProjectScope(),
+    authEmail: response.user.email?.trim().toLowerCase()
   };
   window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify(storedSession));
 }
@@ -192,7 +202,7 @@ export function readSupabaseAuthSession() {
   if (!rawSession) return undefined;
   try {
     const parsed = JSON.parse(rawSession) as SupabaseStoredSession;
-    if (!parsed.accessToken || parsed.expiresAt <= Date.now() + 10000) {
+    if (!parsed.accessToken || parsed.expiresAt <= Date.now() + 10000 || parsed.projectRef !== supabaseSessionProjectScope()) {
       clearSupabaseAuthSession();
       return undefined;
     }
@@ -278,7 +288,10 @@ export async function signInSupabaseAccount(credentials: { username: string; pas
 export async function createSupabaseManagedAccount(account: SupabaseCreateAccountInput): Promise<SupabaseCreateAccountResult> {
   if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
   const session = readSupabaseAuthSession();
-  if (!session) return { status: "error", message: "Sign into the Supabase Manager123 owner account before syncing created accounts." };
+  if (!session || session.authEmail !== supabaseAuthEmailForUsername(managerUsername)) {
+    if (session) clearSupabaseAuthSession();
+    return { status: "error", message: managerSessionRequiredMessage };
+  }
 
   const username = normalizeSupabaseUsername(account.username);
   const password = account.password.trim();
@@ -315,6 +328,10 @@ export async function createSupabaseManagedAccount(account: SupabaseCreateAccoun
     if (response.ok) return { status: "ok" };
     if (await isSupabaseBackendInactiveResponse(response)) return { status: "error", message: supabaseBackendInactiveMessage };
     const body = await response.json().catch(() => undefined) as { error?: string } | undefined;
+    if (response.status === 401 && /manager session/i.test(body?.error ?? "")) {
+      clearSupabaseAuthSession();
+      return { status: "error", message: managerSessionRequiredMessage };
+    }
     return { status: "error", message: body?.error ?? "Supabase account creation failed." };
   } catch (error) {
     if (isSupabaseBackendInactiveError(error)) return { status: "error", message: supabaseBackendInactiveMessage };

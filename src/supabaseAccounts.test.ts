@@ -9,6 +9,7 @@ import {
   isSupabaseBackendInactiveResponse,
   isSupportedSupabaseLoginUsername,
   normalizeSupabaseUsername,
+  readSupabaseAuthSession,
   signInSupabaseAccount,
   supabaseBackendInactiveMessage,
   supabaseProjectRefFromUrl,
@@ -121,6 +122,8 @@ describe("supabase account adapter", () => {
       })
     );
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("manager-access-token");
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("\"projectRef\":\"project\"");
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("manager123@accounts.chosmartialarts.app");
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).not.toContain("manager-refresh-token");
   });
 
@@ -173,7 +176,29 @@ describe("supabase account adapter", () => {
       })
     );
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("staff-access-token");
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("\"projectRef\":\"project\"");
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("jordan.staff@accounts.chosmartialarts.app");
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).not.toContain("staff-refresh-token");
+  });
+
+  it("clears unscoped or wrong-project stored sessions before they can be reused", () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "old-manager-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "manager-user-id"
+    }));
+    expect(readSupabaseAuthSession()).toBeUndefined();
+    expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
+
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "other-project-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "manager-user-id",
+      projectRef: "other-project",
+      authEmail: "manager123@accounts.chosmartialarts.app"
+    }));
+    expect(readSupabaseAuthSession()).toBeUndefined();
+    expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
   });
 
   it("classifies paused or unreachable Supabase auth as backend-inactive instead of invalid credentials", async () => {
@@ -229,7 +254,9 @@ describe("supabase account adapter", () => {
     window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
       accessToken: "manager-access-token",
       expiresAt: Date.now() + 60 * 60 * 1000,
-      userId: "manager-user-id"
+      userId: "manager-user-id",
+      projectRef: "project",
+      authEmail: "manager123@accounts.chosmartialarts.app"
     }));
     const fetchMock = vi.fn(async () => jsonResponse({ message: "Project is inactive" }, { status: 503 }));
     globalThis.fetch = fetchMock as typeof fetch;
@@ -330,5 +357,29 @@ describe("supabase account adapter", () => {
       status: "error",
       message: "Sign into the Supabase Manager123 owner account before syncing created accounts."
     });
+  });
+
+  it("clears a rejected manager session when the Edge Function returns 401", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "stale-manager-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "manager-user-id",
+      projectRef: "project",
+      authEmail: "manager123@accounts.chosmartialarts.app"
+    }));
+    const fetchMock = vi.fn(async () => jsonResponse({ error: "Invalid manager session." }, { status: 401 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(createSupabaseManagedAccount({
+      displayName: "Jordan Lee",
+      username: "jordan.staff",
+      password: "StaffPass123!",
+      role: "staff",
+      email: "jordan@example.com"
+    })).resolves.toEqual({
+      status: "error",
+      message: "Sign into the Supabase Manager123 owner account before syncing created accounts."
+    });
+    expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
   });
 });

@@ -101,6 +101,19 @@ function renderLoggedInApp(path = "/", role: "staff" | "student" | "guardian" = 
   );
 }
 
+function renderDeveloperApp(path = "/") {
+  seedActiveSession({ email: prototypeDeveloperLogin.email, remembered: true, createdAt: "2026-05-10T00:00:00.000Z" });
+  window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: prototypeDeveloperLogin.email, role: prototypeDeveloperLogin.role }]));
+
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <AppStateProvider>
+        <App />
+      </AppStateProvider>
+    </MemoryRouter>
+  );
+}
+
 function SessionBootstrap({ email, role }: { email: string; role: "staff" | "student" | "guardian" }) {
   const { login } = useAppState();
   const loggedInRef = useRef(false);
@@ -3020,6 +3033,42 @@ describe("login landing", () => {
     expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toMatchObject({ email: "manager123@chos.prototype", remembered: true });
   });
 
+  it("clears a refreshed Manager123 session when staging auth is configured but the Supabase session is missing", () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: "manager123@chos.prototype", remembered: true, createdAt: "2026-05-16T00:00:00.000Z" });
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "manager123@chos.prototype", role: "staff" }]));
+
+    renderLoggedOutApp("/reports");
+
+    expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
+    expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
+    expect(window.sessionStorage.getItem("chos.session.v1")).toBeNull();
+  });
+
+  it("clears a refreshed Manager123 session when the stored Supabase session belongs to another account", () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: "manager123@chos.prototype", remembered: true, createdAt: "2026-05-16T00:00:00.000Z" });
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "manager123@chos.prototype", role: "staff" }]));
+    window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+      accessToken: "staff-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "staff-user-id",
+      projectRef: "zfuwbbepsnmmlpgfkmhz",
+      authEmail: "jordan.staff@accounts.chosmartialarts.app"
+    }));
+
+    renderLoggedOutApp("/reports");
+
+    expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
+    expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
+    expect(window.sessionStorage.getItem("chos.session.v1")).toBeNull();
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).toBeNull();
+  });
+
   it("keeps the portrait available on the reduced-motion login screen", () => {
     stubMatchMedia(true);
     const { container } = renderLoggedOutApp("/");
@@ -4787,7 +4836,7 @@ describe("post-login operations app", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     try {
-      renderLoggedInApp("/manager?tool=create");
+      renderDeveloperApp("/manager?tool=create");
 
       fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Remote Staff" } });
       fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "remote.staff" } });
@@ -4812,7 +4861,9 @@ describe("post-login operations app", () => {
     window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
       accessToken: "owner-token",
       expiresAt: Date.now() + 3600000,
-      userId: "manager-user-id"
+      userId: "manager-user-id",
+      projectRef: "zfuwbbepsnmmlpgfkmhz",
+      authEmail: "manager123@accounts.chosmartialarts.app"
     }));
     const originalFetch = globalThis.fetch;
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -13000,7 +13051,9 @@ describe("post-login operations app", () => {
     window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
       accessToken: "manager-access-token",
       expiresAt: Date.now() + 60 * 60 * 1000,
-      userId: "manager-user-id"
+      userId: "manager-user-id",
+      projectRef: "zfuwbbepsnmmlpgfkmhz",
+      authEmail: "manager123@accounts.chosmartialarts.app"
     }));
     window.localStorage.setItem("chos.operations.twilioRelayEndpoint.v1", "https://local.example.test/relay");
     window.localStorage.setItem("chos.operations.pushServerEndpoint.v1", "https://local.example.test/push");
@@ -13144,7 +13197,9 @@ describe("post-login operations app", () => {
     window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
       accessToken: "manager-access-token",
       expiresAt: Date.now() + 60 * 60 * 1000,
-      userId: "manager-user-id"
+      userId: "manager-user-id",
+      projectRef: "zfuwbbepsnmmlpgfkmhz",
+      authEmail: "manager123@accounts.chosmartialarts.app"
     }));
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

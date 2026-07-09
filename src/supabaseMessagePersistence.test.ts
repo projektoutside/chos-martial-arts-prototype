@@ -21,7 +21,9 @@ function storeSupabaseSession() {
   window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
     accessToken: "manager-access-token",
     expiresAt: Date.now() + 60 * 60 * 1000,
-    userId: "manager-user-id"
+    userId: "manager-user-id",
+    projectRef: "project",
+    authEmail: "manager123@accounts.chosmartialarts.app"
   }));
 }
 
