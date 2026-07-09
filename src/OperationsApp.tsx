@@ -37,7 +37,7 @@ import {
   Video,
   X
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type TouchEvent as ReactTouchEvent } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 import classesLauncherIcon from "./assets/manager-icons/Classes.webp";
 import dashboardLauncherIcon from "./assets/manager-icons/Dashboard.webp";
@@ -4413,6 +4413,7 @@ function ProfileCommunicationSwipePanel({
     ignoreNextClick: false,
     isSwiping: false,
     pointerId: null as number | null,
+    touchIdentifier: null as number | null,
     startX: 0,
     startY: 0
   });
@@ -4443,17 +4444,41 @@ function ProfileCommunicationSwipePanel({
     }
   }, [activeMode]);
 
-  const finishSwipe = (event: ReactPointerEvent<HTMLElement>, shouldApplySwipe: boolean) => {
-    const swipeState = swipeStateRef.current;
-    if (swipeState.pointerId !== event.pointerId) return;
+  const beginSwipe = (clientX: number, clientY: number) => {
+    swipeStateRef.current.startX = clientX;
+    swipeStateRef.current.startY = clientY;
+    swipeStateRef.current.isSwiping = false;
+    setDragOffset(0);
+    setIsDragging(false);
+  };
 
-    const deltaX = event.clientX - swipeState.startX;
-    const deltaY = event.clientY - swipeState.startY;
+  const updateSwipe = (clientX: number, clientY: number, preventDefault: () => void) => {
+    const swipeState = swipeStateRef.current;
+    const deltaX = clientX - swipeState.startX;
+    const deltaY = clientY - swipeState.startY;
+
+    if (!swipeState.isSwiping && Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) + 4) {
+      swipeState.isSwiping = true;
+      clearProfileCommunicationTextSelection();
+      setIsDragging(true);
+    }
+
+    if (!swipeState.isSwiping) return;
+
+    preventDefault();
+    clearProfileCommunicationTextSelection();
+    setDragOffset(clampProfileCommunicationSwipeOffset(deltaX));
+  };
+
+  const finishSwipeAt = (clientX: number, clientY: number, shouldApplySwipe: boolean) => {
+    const swipeState = swipeStateRef.current;
+    const deltaX = clientX - swipeState.startX;
+    const deltaY = clientY - swipeState.startY;
     const isHorizontalSwipe = swipeState.isSwiping && Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) >= profileCommunicationSwipeThresholdPx;
     const wasSwiping = swipeState.isSwiping;
 
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
     swipeState.pointerId = null;
+    swipeState.touchIdentifier = null;
     swipeState.isSwiping = false;
     setDragOffset(0);
     setIsDragging(false);
@@ -4469,10 +4494,19 @@ function ProfileCommunicationSwipePanel({
     onModeChange(deltaX < 0 ? "notifications" : "liveChat");
   };
 
+  const finishSwipe = (event: ReactPointerEvent<HTMLElement>, shouldApplySwipe: boolean) => {
+    const swipeState = swipeStateRef.current;
+    if (swipeState.pointerId !== event.pointerId) return;
+
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    finishSwipeAt(event.clientX, event.clientY, shouldApplySwipe);
+  };
+
   const handlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if (isProfileCommunicationSwipeIgnoredTarget(event.target)) {
       swipeStateRef.current.pointerId = null;
+      swipeStateRef.current.touchIdentifier = null;
       swipeStateRef.current.isSwiping = false;
       setDragOffset(0);
       setIsDragging(false);
@@ -4480,29 +4514,68 @@ function ProfileCommunicationSwipePanel({
     }
 
     swipeStateRef.current.pointerId = event.pointerId;
-    swipeStateRef.current.startX = event.clientX;
-    swipeStateRef.current.startY = event.clientY;
-    swipeStateRef.current.isSwiping = false;
+    swipeStateRef.current.touchIdentifier = null;
+    beginSwipe(event.clientX, event.clientY);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     const swipeState = swipeStateRef.current;
     if (swipeState.pointerId !== event.pointerId) return;
 
-    const deltaX = event.clientX - swipeState.startX;
-    const deltaY = event.clientY - swipeState.startY;
-    if (!swipeState.isSwiping && Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) + 4) {
-      swipeState.isSwiping = true;
-      clearProfileCommunicationTextSelection();
-      setIsDragging(true);
+    const wasSwiping = swipeState.isSwiping;
+    updateSwipe(event.clientX, event.clientY, () => event.preventDefault());
+    if (!wasSwiping && swipeState.isSwiping) {
       event.currentTarget.setPointerCapture?.(event.pointerId);
     }
+  };
 
-    if (!swipeState.isSwiping) return;
+  const resetTouchSwipe = () => {
+    swipeStateRef.current.pointerId = null;
+    swipeStateRef.current.touchIdentifier = null;
+    swipeStateRef.current.isSwiping = false;
+    setDragOffset(0);
+    setIsDragging(false);
+  };
 
-    event.preventDefault();
-    clearProfileCommunicationTextSelection();
-    setDragOffset(clampProfileCommunicationSwipeOffset(deltaX));
+  const touchByIdentifier = (touchList: React.TouchList, identifier: number | null) => {
+    if (identifier === null) return touchList[0];
+    return Array.from(touchList).find((touch) => touch.identifier === identifier);
+  };
+
+  const handleTouchStart = (event: ReactTouchEvent<HTMLElement>) => {
+    if (event.touches.length !== 1 || isProfileCommunicationSwipeIgnoredTarget(event.target)) {
+      resetTouchSwipe();
+      return;
+    }
+
+    const touch = event.touches[0];
+    swipeStateRef.current.pointerId = null;
+    swipeStateRef.current.touchIdentifier = touch.identifier;
+    beginSwipe(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchMove = (event: ReactTouchEvent<HTMLElement>) => {
+    const swipeState = swipeStateRef.current;
+    if (swipeState.touchIdentifier === null) return;
+    const touch = touchByIdentifier(event.touches, swipeState.touchIdentifier);
+    if (!touch) return;
+    updateSwipe(touch.clientX, touch.clientY, () => undefined);
+  };
+
+  const handleTouchEnd = (event: ReactTouchEvent<HTMLElement>) => {
+    const swipeState = swipeStateRef.current;
+    if (swipeState.touchIdentifier === null) return;
+    const touch = touchByIdentifier(event.changedTouches, swipeState.touchIdentifier);
+    if (!touch) return;
+    finishSwipeAt(touch.clientX, touch.clientY, true);
+  };
+
+  const handleTouchCancel = (event: ReactTouchEvent<HTMLElement>) => {
+    const swipeState = swipeStateRef.current;
+    if (swipeState.touchIdentifier === null) return;
+    const touch = touchByIdentifier(event.changedTouches, swipeState.touchIdentifier);
+    if (!touch) return;
+    finishSwipeAt(touch.clientX, touch.clientY, false);
   };
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLElement>) => {
@@ -4564,6 +4637,10 @@ function ProfileCommunicationSwipePanel({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onTouchCancel={handleTouchCancel}
+        onTouchEnd={handleTouchEnd}
+        onTouchMove={handleTouchMove}
+        onTouchStart={handleTouchStart}
       >
         <div
           className="profile-communication-track"

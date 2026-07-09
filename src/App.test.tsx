@@ -4353,6 +4353,18 @@ describe("post-login operations app", () => {
     fireEvent.pointerUp(swipeViewport, { pointerId: 2, clientX: 220, clientY: 82 });
 
     expect(liveChatTab).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.touchStart(swipeViewport, { touches: [{ identifier: 3, clientX: 220, clientY: 80 }] });
+    fireEvent.touchMove(swipeViewport, { touches: [{ identifier: 3, clientX: 120, clientY: 82 }] });
+    fireEvent.touchEnd(swipeViewport, { changedTouches: [{ identifier: 3, clientX: 120, clientY: 82 }] });
+
+    expect(notificationsTab).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.touchStart(swipeViewport, { touches: [{ identifier: 4, clientX: 120, clientY: 80 }] });
+    fireEvent.touchMove(swipeViewport, { touches: [{ identifier: 4, clientX: 220, clientY: 82 }] });
+    fireEvent.touchEnd(swipeViewport, { changedTouches: [{ identifier: 4, clientX: 220, clientY: 82 }] });
+
+    expect(liveChatTab).toHaveAttribute("aria-selected", "true");
   });
 
   it("prevents accidental text highlighting during profile communication swipes without hijacking text-entry drags", () => {
@@ -4388,6 +4400,14 @@ describe("post-login operations app", () => {
       fireEvent.pointerDown(messageInput, { pointerId: 2, clientX: 220, clientY: 80 });
       fireEvent.pointerMove(swipeViewport, { pointerId: 2, clientX: 80, clientY: 82 });
       fireEvent.pointerUp(swipeViewport, { pointerId: 2, clientX: 80, clientY: 82 });
+
+      expect(liveChatTab).toHaveAttribute("aria-selected", "true");
+      expect(removeAllRanges).not.toHaveBeenCalled();
+      expect(communicationPanel).not.toHaveClass("is-dragging");
+
+      fireEvent.touchStart(messageInput, { touches: [{ identifier: 3, clientX: 220, clientY: 80 }] });
+      fireEvent.touchMove(swipeViewport, { touches: [{ identifier: 3, clientX: 80, clientY: 82 }] });
+      fireEvent.touchEnd(swipeViewport, { changedTouches: [{ identifier: 3, clientX: 80, clientY: 82 }] });
 
       expect(liveChatTab).toHaveAttribute("aria-selected", "true");
       expect(removeAllRanges).not.toHaveBeenCalled();
