@@ -9,6 +9,10 @@ const nonTextInputTypes = new Set([
   "radio", "range", "reset", "submit"
 ]);
 
+type KeyboardFocusModality = "keyboard" | "mouse" | "pen" | "programmatic" | "touch";
+
+const KEYBOARD_FOCUS_MODALITY_WINDOW_MS = 1000;
+
 export type SoftKeyboardViewportInput = {
   stableHeight: number;
   visibleHeight: number;
@@ -110,6 +114,9 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   let lastOpen = false;
   let lastFocused: HTMLElement | null = null;
   let awaitingViewportRestore = false;
+  let pendingFocusModality: KeyboardFocusModality = "programmatic";
+  let focusModalityVersion = 0;
+  let softKeyboardFocusTarget: HTMLElement | null = null;
 
   const setTimer = (callback: () => void, delay: number) => {
     const timer = win.setTimeout(() => {
@@ -123,11 +130,36 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
     doc.dispatchEvent(new CustomEvent(SOFT_KEYBOARD_CHANGE_EVENT, { detail: { state } }));
   };
 
+  const markFocusModality = (modality: KeyboardFocusModality) => {
+    pendingFocusModality = modality;
+    const version = ++focusModalityVersion;
+    setTimer(() => {
+      if (focusModalityVersion === version) pendingFocusModality = "programmatic";
+    }, KEYBOARD_FOCUS_MODALITY_WINDOW_MS);
+  };
+
+  const consumeFocusModality = () => {
+    const modality = pendingFocusModality;
+    pendingFocusModality = "programmatic";
+    focusModalityVersion += 1;
+    return modality;
+  };
+
   const measure = () => {
     animationFrame = 0;
     const focused = isKeyboardEditableTarget(doc.activeElement) ? doc.activeElement : null;
     const viewport = visualMetrics(win);
     const layoutCandidate = Math.max(win.innerHeight, viewport.height + Math.max(0, viewport.offsetTop));
+    const hasVisualOnlyOcclusion = touchInputCapable && Boolean(win.visualViewport) && Boolean(focused)
+      && classifySoftKeyboardViewport({
+        stableHeight: win.innerHeight,
+        visibleHeight: viewport.height,
+        offsetTop: viewport.offsetTop,
+        scale: viewport.scale,
+        hasEditableFocus: true
+      }).isOpen;
+    const hasSoftKeyboardFocus = Boolean(focused)
+      && (focused === softKeyboardFocusTarget || hasVisualOnlyOcclusion);
     if (!stableHeight) {
       stableHeight = layoutCandidate;
       awaitingViewportRestore = false;
@@ -135,11 +167,8 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
       stableHeight = layoutCandidate;
       awaitingViewportRestore = false;
     } else if (awaitingViewportRestore) {
-      if (layoutCandidate >= stableHeight - 1) {
-        stableHeight = Math.max(stableHeight, layoutCandidate);
-        awaitingViewportRestore = false;
-      }
-    } else if (!focused && !lastOpen) {
+      if (Math.abs(layoutCandidate - stableHeight) <= 1) awaitingViewportRestore = false;
+    } else if (!hasSoftKeyboardFocus && !lastOpen) {
       stableHeight = layoutCandidate;
     }
 
@@ -148,7 +177,7 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
       visibleHeight: viewport.height,
       offsetTop: viewport.offsetTop,
       scale: viewport.scale,
-      hasEditableFocus: touchInputCapable && Boolean(focused)
+      hasEditableFocus: touchInputCapable && hasSoftKeyboardFocus
     });
 
     root.style.setProperty("--app-stable-viewport-height", `${stableHeight}px`);
@@ -165,7 +194,7 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
         setTimer(() => focused && revealFocusedElement(focused, win), 180);
       }
     } else {
-      if (lastOpen) awaitingViewportRestore = touchInputCapable && layoutCandidate < stableHeight - 1;
+      if (lastOpen) awaitingViewportRestore = touchInputCapable && Math.abs(layoutCandidate - stableHeight) > 1;
       if (root.dataset.softKeyboard === "open") {
         delete root.dataset.softKeyboard;
         dispatchState("closed");
@@ -183,18 +212,41 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
     animationFrame = win.requestAnimationFrame(measure);
   };
 
+  const handlePointerDown = (event: PointerEvent) => {
+    markFocusModality(event.pointerType === "touch" || event.pointerType === "pen" ? event.pointerType : "mouse");
+  };
+
+  const handleTouchStart = () => {
+    markFocusModality("touch");
+  };
+
+  const handleMouseDown = () => {
+    if (pendingFocusModality === "touch" || pendingFocusModality === "pen") return;
+    markFocusModality("mouse");
+  };
+
+  const handleKeyDown = () => {
+    markFocusModality("keyboard");
+  };
+
   const handleFocusIn = (event: FocusEvent) => {
-    if (!touchInputCapable || !isKeyboardEditableTarget(event.target)) return;
-    root.dataset.softKeyboard = "opening";
+    const modality = consumeFocusModality();
+    if (!isKeyboardEditableTarget(event.target)) return;
+    const mayOpenSoftKeyboard = touchInputCapable && (modality === "touch" || modality === "pen");
+    softKeyboardFocusTarget = mayOpenSoftKeyboard ? event.target : null;
+    if (mayOpenSoftKeyboard) root.dataset.softKeyboard = "opening";
     scheduleMeasure();
-    setTimer(scheduleMeasure, 80);
-    setTimer(scheduleMeasure, 240);
-    setTimer(() => {
-      if (root.dataset.softKeyboard === "opening") delete root.dataset.softKeyboard;
-    }, 420);
+    if (mayOpenSoftKeyboard) {
+      setTimer(scheduleMeasure, 80);
+      setTimer(scheduleMeasure, 240);
+      setTimer(() => {
+        if (root.dataset.softKeyboard === "opening") delete root.dataset.softKeyboard;
+      }, 420);
+    }
   };
 
   const handleFocusOut = () => {
+    softKeyboardFocusTarget = null;
     scheduleMeasure();
     setTimer(scheduleMeasure, 80);
     setTimer(scheduleMeasure, 240);
@@ -213,6 +265,10 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
     root.dataset.touchInput = "true";
   }
 
+  doc.addEventListener("pointerdown", handlePointerDown);
+  doc.addEventListener("touchstart", handleTouchStart, { passive: true });
+  doc.addEventListener("mousedown", handleMouseDown);
+  doc.addEventListener("keydown", handleKeyDown);
   doc.addEventListener("focusin", handleFocusIn);
   doc.addEventListener("focusout", handleFocusOut);
   win.addEventListener("resize", scheduleMeasure);
@@ -222,6 +278,10 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   measure();
 
   return () => {
+    doc.removeEventListener("pointerdown", handlePointerDown);
+    doc.removeEventListener("touchstart", handleTouchStart);
+    doc.removeEventListener("mousedown", handleMouseDown);
+    doc.removeEventListener("keydown", handleKeyDown);
     doc.removeEventListener("focusin", handleFocusIn);
     doc.removeEventListener("focusout", handleFocusOut);
     win.removeEventListener("resize", scheduleMeasure);

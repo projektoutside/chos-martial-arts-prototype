@@ -13,6 +13,12 @@ class VisualViewportStub extends EventTarget {
   width = 390;
 }
 
+function dispatchPointerDown(target: EventTarget, pointerType: "mouse" | "pen" | "touch") {
+  const event = new Event("pointerdown", { bubbles: true });
+  Object.defineProperty(event, "pointerType", { value: pointerType });
+  target.dispatchEvent(event);
+}
+
 describe("soft keyboard viewport", () => {
   let cleanup: (() => void) | undefined;
   let viewport: VisualViewportStub;
@@ -91,6 +97,7 @@ describe("soft keyboard viewport", () => {
     document.body.append(input);
     cleanup = installSoftKeyboardViewportController(window, document);
 
+    dispatchPointerDown(input, "touch");
     input.focus();
     expect(document.documentElement.dataset.softKeyboard).toBe("opening");
     viewport.height = 500;
@@ -154,11 +161,93 @@ describe("soft keyboard viewport", () => {
     expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("0px");
   });
 
+  it("keeps keyboard and Tab focus unchanged on a touch-capable hybrid", () => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    cleanup = installSoftKeyboardViewportController(window, document);
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    input.focus();
+
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard");
+    viewport.height = 700;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 700 });
+    window.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard");
+    expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("0px");
+  });
+
+  it("keeps mouse focus and ordinary resize unchanged on a touch-capable hybrid", () => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    cleanup = installSoftKeyboardViewportController(window, document);
+
+    dispatchPointerDown(input, "mouse");
+    input.focus();
+
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard");
+    viewport.height = 700;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 700 });
+    window.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard");
+    expect(document.documentElement.style.getPropertyValue("--app-stable-viewport-height")).toBe("700px");
+    expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("0px");
+  });
+
+  it.each(["touch", "pen"] as const)("opens after %s focus and qualifying layout viewport loss", (pointerType) => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    cleanup = installSoftKeyboardViewportController(window, document);
+
+    dispatchPointerDown(input, pointerType);
+    input.focus();
+    expect(document.documentElement.dataset.softKeyboard).toBe("opening");
+
+    viewport.height = 500;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 500 });
+    viewport.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+
+    expect(document.documentElement.dataset.softKeyboard).toBe("open");
+    expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("344px");
+  });
+
+  it("retains touch modality through delayed native focus sequencing", () => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    cleanup = installSoftKeyboardViewportController(window, document);
+
+    dispatchPointerDown(input, "touch");
+    vi.advanceTimersByTime(50);
+    input.focus();
+
+    expect(document.documentElement.dataset.softKeyboard).toBe("opening");
+  });
+
+  it("uses visual-only occlusion as a software-keyboard fallback after programmatic focus", () => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    cleanup = installSoftKeyboardViewportController(window, document);
+
+    input.focus();
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard");
+
+    viewport.height = 500;
+    viewport.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+
+    expect(document.documentElement.dataset.softKeyboard).toBe("open");
+    expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("344px");
+  });
+
   it("retains the pre-keyboard baseline while the IME close animation is still compressed", () => {
     const input = document.createElement("input");
     document.body.append(input);
     cleanup = installSoftKeyboardViewportController(window, document);
 
+    dispatchPointerDown(input, "touch");
     input.focus();
     viewport.height = 500;
     Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 500 });
@@ -179,6 +268,31 @@ describe("soft keyboard viewport", () => {
     viewport.dispatchEvent(new Event("resize"));
     vi.runAllTimers();
     expect(document.documentElement.style.getPropertyValue("--app-stable-viewport-height")).toBe("844px");
+  });
+
+  it("preserves the exact pre-keyboard frame when close restoration overshoots", () => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    cleanup = installSoftKeyboardViewportController(window, document);
+
+    dispatchPointerDown(input, "touch");
+    input.focus();
+    viewport.height = 500;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 500 });
+    viewport.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+    expect(document.documentElement.dataset.softKeyboard).toBe("open");
+
+    input.blur();
+    viewport.height = 860;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 860 });
+    viewport.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard");
+    expect(document.documentElement.style.getPropertyValue("--app-stable-viewport-height")).toBe("844px");
+    expect(document.documentElement.style.getPropertyValue("--app-stable-frame-width")).toBe("474.75px");
+    expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("0px");
   });
 
   it("uses the document scrolling element when no nested scroll container can reveal the field", () => {
