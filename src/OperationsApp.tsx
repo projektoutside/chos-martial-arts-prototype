@@ -192,12 +192,14 @@ const managerAccessLandingPageOptions: Partial<Record<ManagerAccessKey, LandingP
 };
 
 const studentLandingPageOptions: LandingPageOption[] = [
+  { value: "live-chat", label: "Live Chat" },
   { value: "profile", label: "Profile" },
   { value: "student-panel", label: "Student Panel" },
   { value: "check-ins", label: "Check-Ins" }
 ];
 
 const parentLandingPageOptions: LandingPageOption[] = [
+  { value: "live-chat", label: "Live Chat" },
   { value: "profile", label: "Parent Profile" },
   { value: "parent-dashboard", label: "Dashboard" },
   { value: "parent-classes", label: "Classes" },
@@ -2970,6 +2972,8 @@ function staffLandingPath(preference: LandingPagePreference) {
 
 function studentLandingPath(preference: LandingPagePreference) {
   switch (preference) {
+    case "live-chat":
+      return "/live-chat";
     case "student-panel":
       return "/manager";
     case "check-ins":
@@ -4175,6 +4179,7 @@ function parentTabFromLandingPage(preference: LandingPagePreference): ParentProf
 }
 
 function parentLandingPath(preference: LandingPagePreference) {
+  if (preference === "live-chat") return "/live-chat";
   if (preference === "profile") return "/profile";
   return `/profile?tab=${parentTabFromLandingPage(preference)}`;
 }
@@ -4347,7 +4352,7 @@ const liveChatPreviewMessages: LiveChatMessage[] = [
     senderRole: "system",
     senderAvatarPath: null,
     messageKind: "notice",
-    body: "Welcome, Manager. Live chat is clean, connected, and ready for testing.",
+    body: "Welcome to Cho's Room. Live chat is connected and ready for the Cho's community.",
     createdAt: "2026-06-17T01:10:24.823Z"
   }
 ];
@@ -4465,11 +4470,54 @@ function studentToParentComposeRecipient(student: StudentRecord): ManagerCompose
   };
 }
 
-function managerProfileNameFallback(isDeveloper: boolean, isManagerOwner: boolean) {
+function liveChatProfileNameFallback(accountRole: AccountRole | undefined, isDeveloper: boolean, isManagerOwner: boolean) {
+  if (accountRole === "student") return "Cho's Student";
+  if (accountRole === "guardian") return "Family Profile";
   return isDeveloper ? "Developer" : isManagerOwner ? "Cho's Manager" : "Cho's Staff";
 }
 
-function buildLiveChatRoster(students: StudentRecord[], managerProfile: ManagerProfileSettings, isManagerOwner: boolean, isDeveloper: boolean, staffAvatarPath: string): LiveChatRosterMember[] {
+function managerProfileNameFallback(isDeveloper: boolean, isManagerOwner: boolean) {
+  return liveChatProfileNameFallback("staff", isDeveloper, isManagerOwner);
+}
+
+function liveChatRoleLabel(accountRole: AccountRole | undefined, isDeveloper: boolean, isManagerOwner: boolean) {
+  if (accountRole === "student") return "Student";
+  if (accountRole === "guardian") return "Parent/Guardian";
+  return isDeveloper ? "Developer" : isManagerOwner ? "Manager" : "Staff";
+}
+
+function liveChatSessionStudent(students: StudentRecord[], sessionEmail?: string) {
+  const normalizedEmail = sessionEmail?.trim().toLowerCase();
+  if (!normalizedEmail) return undefined;
+  return students.find((student) => student.email.trim().toLowerCase() === normalizedEmail);
+}
+
+function readLiveChatProfileForSession({
+  accountRole,
+  childAccount,
+  isManagerOwner,
+  sessionEmail,
+  student
+}: {
+  accountRole?: AccountRole;
+  childAccount?: ChildAccount;
+  isManagerOwner: boolean;
+  sessionEmail?: string;
+  student?: StudentRecord;
+}) {
+  if (accountRole === "student") return readStudentProfile(sessionEmail, student, childAccount);
+  if (accountRole === "guardian") return readGuardianProfile(sessionEmail);
+  return isManagerOwner ? readManagerProfile(sessionEmail) : readStaffProfile(sessionEmail);
+}
+
+function buildLiveChatRoster(
+  students: StudentRecord[],
+  managerProfile: ManagerProfileSettings,
+  accountRole: AccountRole | undefined,
+  isManagerOwner: boolean,
+  isDeveloper: boolean,
+  staffAvatarPath: string
+): LiveChatRosterMember[] {
   const activeStudents = students
     .filter(isCurrentOperationsStudent)
     .slice(0, 17)
@@ -4482,37 +4530,13 @@ function buildLiveChatRoster(students: StudentRecord[], managerProfile: ManagerP
 
   return [
     {
-      id: "current-staff",
-      name: managerProfile.name.trim() || (isDeveloper ? "Developer" : isManagerOwner ? "Cho's Manager" : "Cho's Staff"),
-      detail: isDeveloper ? "Developer" : isManagerOwner ? "Manager" : "Staff",
+      id: "current-live-chat-user",
+      name: managerProfile.name.trim() || liveChatProfileNameFallback(accountRole, isDeveloper, isManagerOwner),
+      detail: liveChatRoleLabel(accountRole, isDeveloper, isManagerOwner),
       avatarSrc: managerProfile.photoDataUrl ?? publicAsset(staffAvatarPath)
     },
     ...activeStudents
   ];
-}
-
-function makeLiveChatRoomId(name: string, rooms: LiveChatRoom[]) {
-  const baseId = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "") || "room";
-  let candidateId = `room-${baseId}`;
-  let suffix = 2;
-
-  while (rooms.some((room) => room.id === candidateId)) {
-    candidateId = `room-${baseId}-${suffix}`;
-    suffix += 1;
-  }
-
-  return candidateId;
-}
-
-function getLiveChatRoomInviteNames(room: LiveChatRoom | undefined, rosterMembers: LiveChatRosterMember[]) {
-  if (!room || room.isDefault) return [];
-  return room.invitedMemberIds
-    .map((memberId) => rosterMembers.find((member) => member.id === memberId)?.name)
-    .filter((name): name is string => Boolean(name));
 }
 
 function liveChatMessageMentionsManager(message: LiveChatMessage, managerProfile: ManagerProfileSettings) {
@@ -4571,15 +4595,22 @@ function LiveChatMessageLine({ message }: { message: LiveChatMessage }) {
 }
 
 function LiveChatPage() {
-  const { logout, managerAccountAccess, messageNotificationSettings, session, students, updateMessageNotificationSettings } = useAppState();
+  const { accountRole, currentChildAccount, logout, managerAccountAccess, messageNotificationSettings, session, students, updateMessageNotificationSettings } = useAppState();
   const isManagerOwner = managerAccountAccess.isManagerOwner;
   const isDeveloper = managerAccountAccess.isDeveloper;
-  const profileAvatarPath = profileAvatarPathForSession(session?.email);
-  const staffSenderName = managerProfileNameFallback(isDeveloper, isManagerOwner);
-  const readChatProfile = isManagerOwner ? readManagerProfile : readStaffProfile;
-  const [managerProfile, setManagerProfile] = useState(() => readChatProfile(session?.email));
+  const sessionStudent = useMemo(() => liveChatSessionStudent(students, session?.email), [session?.email, students]);
+  const profileAvatarPath = accountRole === "student" && sessionStudent?.profileImagePath
+    ? sessionStudent.profileImagePath
+    : profileAvatarPathForSession(session?.email);
+  const [managerProfile, setManagerProfile] = useState(() => readLiveChatProfileForSession({
+    accountRole,
+    childAccount: currentChildAccount,
+    isManagerOwner,
+    sessionEmail: session?.email,
+    student: sessionStudent
+  }));
   const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
-  const [chatRooms, setChatRooms] = useState<LiveChatRoom[]>(() => liveChatDefaultRooms);
+  const chatRooms = liveChatDefaultRooms;
   const [activeRoomId, setActiveRoomId] = useState(liveChatDefaultRoomId);
   const [messageText, setMessageText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -4589,13 +4620,6 @@ function LiveChatPage() {
   const [liveChatNotificationPermission, setLiveChatNotificationPermission] = useState(() => getBrowserNotificationPermission());
   const [sendError, setSendError] = useState("");
   const [isRosterCollapsed, setIsRosterCollapsed] = useState(false);
-  const [localPreviewMessages, setLocalPreviewMessages] = useState<LiveChatMessage[]>([]);
-  const [customRoomMessages, setCustomRoomMessages] = useState<Record<string, LiveChatMessage[]>>({});
-  const [isCreateRoomOpen, setIsCreateRoomOpen] = useState(false);
-  const [newRoomName, setNewRoomName] = useState("");
-  const [newRoomColor, setNewRoomColor] = useState(liveChatRoomColorOptions[0].value);
-  const [newRoomInviteIds, setNewRoomInviteIds] = useState<Set<string>>(() => new Set());
-  const [areNewRoomInvitesConfirmed, setAreNewRoomInvitesConfirmed] = useState(false);
   const [timestampDate] = useState(() => new Date());
   const messageFeedRef = useRef<HTMLOListElement | null>(null);
   const roomTabsScrollRef = useRef<HTMLDivElement | null>(null);
@@ -4603,7 +4627,10 @@ function LiveChatPage() {
   const liveChatNotificationSettingsRef = useRef(messageNotificationSettings);
   const liveChatNotificationPermissionRef = useRef(liveChatNotificationPermission);
   const liveChatProfileNameRef = useRef(managerProfile.name);
-  const rosterMembers = useMemo(() => buildLiveChatRoster(students, managerProfile, isManagerOwner, isDeveloper, profileAvatarPath), [isDeveloper, isManagerOwner, managerProfile, profileAvatarPath, students]);
+  const rosterMembers = useMemo(
+    () => buildLiveChatRoster(students, managerProfile, accountRole, isManagerOwner, isDeveloper, profileAvatarPath),
+    [accountRole, isDeveloper, isManagerOwner, managerProfile, profileAvatarPath, students]
+  );
   const profileActionPhoto = managerProfile.photoDataUrl ?? publicAsset(profileAvatarPath);
   const sessionPreviewMessages = useMemo(() => {
     if (!isDeveloper) return liveChatPreviewMessages;
@@ -4614,38 +4641,28 @@ function LiveChatPage() {
       body: message.body.replace(/@Cho's Manager/g, "@Developer")
     }));
   }, [isDeveloper, profileAvatarPath]);
-  const previewMessages = isLiveReady ? sessionPreviewMessages : [...sessionPreviewMessages, ...localPreviewMessages];
+  const previewMessages = sessionPreviewMessages;
   const defaultRoomMessages = chatMessages.length ? chatMessages : previewMessages;
   const mentionMessages = defaultRoomMessages.filter((message) => liveChatMessageMentionsManager(message, managerProfile));
   const isMentionsView = activeRoomId === liveChatMentionsRoomId;
   const activeRoom = chatRooms.find((room) => room.id === activeRoomId) ?? chatRooms[0];
-  const activeRoomMessages = activeRoom?.isDefault ? defaultRoomMessages : customRoomMessages[activeRoom?.id ?? ""] ?? [];
+  const activeRoomMessages = activeRoom?.isDefault ? defaultRoomMessages : [];
   const filteredMessages = isMentionsView ? mentionMessages : activeRoomMessages;
-  const activeRoomInviteNames = getLiveChatRoomInviteNames(activeRoom, rosterMembers);
-  const activeRoomInviteSummary = activeRoomInviteNames.length ? activeRoomInviteNames.join(", ") : "No invited members yet.";
   const activeRoomEmptyMessage = isMentionsView
     ? "No manager mentions yet."
-    : activeRoom?.isDefault
-      ? "No live messages yet."
-      : `${activeRoom.name} is ready for ${activeRoom.invitedMemberIds.length} invited member${activeRoom.invitedMemberIds.length === 1 ? "" : "s"}.`;
+    : "No live messages yet.";
   const onlineCount = Math.max(rosterMembers.length, 1);
-  const newRoomInviteCount = newRoomInviteIds.size;
-  const newRoomInviteNoun = newRoomInviteCount === 1 ? "Invite" : "Invites";
-  const confirmInvitesButtonLabel = areNewRoomInvitesConfirmed
-    ? "Invites Confirmed"
-    : newRoomInviteCount
-      ? `Confirm ${newRoomInviteCount} ${newRoomInviteNoun}`
-      : "Confirm Invites";
-  const newRoomInviteStatus = areNewRoomInvitesConfirmed
-    ? `${newRoomInviteCount} invite${newRoomInviteCount === 1 ? "" : "s"} confirmed`
-    : newRoomInviteCount
-      ? `${newRoomInviteCount} invite${newRoomInviteCount === 1 ? "" : "s"} selected`
-      : "Select users, then confirm invites.";
-  const canCreateLiveChatRoom = Boolean(newRoomName.trim()) && (!newRoomInviteCount || areNewRoomInvitesConfirmed);
+  const isComposerDisabled = isSending || !isLiveReady;
 
   useEffect(() => {
-    setManagerProfile(readChatProfile(session?.email));
-  }, [readChatProfile, session?.email]);
+    setManagerProfile(readLiveChatProfileForSession({
+      accountRole,
+      childAccount: currentChildAccount,
+      isManagerOwner,
+      sessionEmail: session?.email,
+      student: sessionStudent
+    }));
+  }, [accountRole, currentChildAccount, isManagerOwner, session?.email, sessionStudent]);
 
   useEffect(() => {
     liveChatNotificationSettingsRef.current = messageNotificationSettings;
@@ -4762,47 +4779,6 @@ function LiveChatPage() {
     isMessageFeedPinnedToBottomRef.current = isLiveChatFeedNearBottom(feed);
   };
 
-  const openCreateRoomDialog = () => {
-    setNewRoomName("");
-    setNewRoomColor(liveChatRoomColorOptions[0].value);
-    setNewRoomInviteIds(new Set());
-    setAreNewRoomInvitesConfirmed(false);
-    setIsCreateRoomOpen(true);
-  };
-
-  const toggleNewRoomInvite = (memberId: string) => {
-    setAreNewRoomInvitesConfirmed(false);
-    setNewRoomInviteIds((currentInviteIds) => {
-      const nextInviteIds = new Set(currentInviteIds);
-      if (nextInviteIds.has(memberId)) {
-        nextInviteIds.delete(memberId);
-      } else {
-        nextInviteIds.add(memberId);
-      }
-      return nextInviteIds;
-    });
-  };
-
-  const createLiveChatRoom = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmedRoomName = newRoomName.trim();
-    if (!trimmedRoomName) return;
-    if (newRoomInviteIds.size && !areNewRoomInvitesConfirmed) return;
-
-    const newRoom: LiveChatRoom = {
-      id: makeLiveChatRoomId(trimmedRoomName, chatRooms),
-      name: trimmedRoomName,
-      color: newRoomColor,
-      invitedMemberIds: Array.from(newRoomInviteIds)
-    };
-
-    setChatRooms((currentRooms) => [...currentRooms, newRoom]);
-    setCustomRoomMessages((currentMessages) => ({ ...currentMessages, [newRoom.id]: currentMessages[newRoom.id] ?? [] }));
-    setActiveRoomId(newRoom.id);
-    setIsCreateRoomOpen(false);
-    setLiveStatusMessage(`${newRoom.name} created with ${newRoom.invitedMemberIds.length} invited member${newRoom.invitedMemberIds.length === 1 ? "" : "s"}.`);
-  };
-
   const sendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSendError("");
@@ -4816,47 +4792,12 @@ function LiveChatPage() {
     const targetRoom = isMentionsView ? chatRooms[0] : activeRoom;
 
     if (targetRoom && !targetRoom.isDefault) {
-      const createdAt = new Date().toISOString();
-      const senderName = managerProfile.name.trim() || staffSenderName;
-      const roomMessage: LiveChatMessage = {
-        id: `custom-room-${targetRoom.id}-${createdAt}-${Math.random().toString(36).slice(2)}`,
-        roomKey: targetRoom.id,
-        senderUserId: null,
-        senderName,
-        senderRole: "staff",
-        senderAvatarPath: managerProfile.photoDataUrl ? null : profileAvatarPath,
-        messageKind: "user",
-        body: validation.body,
-        createdAt
-      };
-
-      setCustomRoomMessages((currentMessages) => ({
-        ...currentMessages,
-        [targetRoom.id]: appendUniqueLiveChatMessage(currentMessages[targetRoom.id] ?? [], roomMessage)
-      }));
-      setLiveStatusMessage(`${targetRoom.name} message added locally.`);
-      setMessageText("");
+      setSendError("Only Cho's Room is available until additional rooms can save to Supabase.");
       return;
     }
 
     if (!isLiveReady) {
-      const createdAt = new Date().toISOString();
-      const senderName = managerProfile.name.trim() || staffSenderName;
-      const previewMessage: LiveChatMessage = {
-        id: `preview-local-${createdAt}-${Math.random().toString(36).slice(2)}`,
-        roomKey: liveChatRoomKey,
-        senderUserId: null,
-        senderName,
-        senderRole: "staff",
-        senderAvatarPath: managerProfile.photoDataUrl ? null : profileAvatarPath,
-        messageKind: "user",
-        body: validation.body,
-        createdAt
-      };
-
-      setLocalPreviewMessages((currentMessages) => appendUniqueLiveChatMessage(currentMessages, previewMessage));
-      setLiveStatusMessage("Test message added locally. Supabase sign-in required for live delivery.");
-      setMessageText("");
+      setSendError("Live chat storage is unavailable. Messages are only sent when Supabase live chat is connected.");
       return;
     }
 
@@ -4952,10 +4893,6 @@ function LiveChatPage() {
                       {room.name}
                     </button>
                   ))}
-                  <button className="live-chat-create-room-button" type="button" onClick={openCreateRoomDialog}>
-                    <Plus size={15} />
-                    <span>Create Room</span>
-                  </button>
                   <button
                     className="live-chat-room-tab live-chat-room-tab--mentions"
                     data-live-chat-room-tab
@@ -4971,12 +4908,6 @@ function LiveChatPage() {
                 </div>
               </div>
             </div>
-            {!isMentionsView && activeRoom && !activeRoom.isDefault && (
-              <p className="live-chat-room-invite-summary" aria-label="Live chat room invite summary">
-                <Users size={14} aria-hidden="true" />
-                <span>{activeRoomInviteSummary}</span>
-              </p>
-            )}
           </div>
 
           <ol className="live-chat-feed" aria-label="Live chat messages" ref={messageFeedRef} onScroll={handleMessageFeedScroll}>
@@ -5000,10 +4931,10 @@ function LiveChatPage() {
                 onChange={(event) => setMessageText(event.target.value)}
                 maxLength={liveChatMessageMaxLength}
                 placeholder="Enter message."
-                disabled={isSending}
+                disabled={isComposerDisabled}
               />
             </div>
-            <button className="live-chat-send-button" type="submit" disabled={isSending}>
+            <button className="live-chat-send-button" type="submit" disabled={isComposerDisabled}>
               <Send size={22} />
               <span>{isSending ? "Sending" : "Send"}</span>
             </button>
@@ -5016,116 +4947,6 @@ function LiveChatPage() {
             </span>
           </div>
         </section>
-        {isCreateRoomOpen && (
-          <div
-            className="manager-compose-backdrop live-chat-create-room-backdrop"
-            role="presentation"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) setIsCreateRoomOpen(false);
-            }}
-          >
-            <form
-              className="manager-compose-modal live-chat-create-room-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Create chat room"
-              onSubmit={createLiveChatRoom}
-            >
-              <header className="manager-compose-head">
-                <div>
-                  <p>Live chat rooms</p>
-                  <h2 id="live-chat-create-room-title">Create Room</h2>
-                </div>
-                <button className="manager-compose-close" type="button" aria-label="Close create room" onClick={() => setIsCreateRoomOpen(false)}>
-                  <X size={20} />
-                </button>
-              </header>
-
-              <div className="live-chat-create-room-layout">
-                <section className="live-chat-create-room-settings" aria-label="Room settings">
-                  <label className="manager-compose-field live-chat-create-room-name">
-                    <span>Room name</span>
-                    <input
-                      aria-label="Room name"
-                      value={newRoomName}
-                      onChange={(event) => setNewRoomName(event.target.value)}
-                      placeholder="Leadership Team"
-                      maxLength={42}
-                    />
-                  </label>
-
-                  <section className="live-chat-room-color-panel" aria-label="Room color">
-                    <div className="live-chat-room-modal-section-head">
-                      <Palette size={16} aria-hidden="true" />
-                      <span>Room Tab Color</span>
-                    </div>
-                    <div className="live-chat-room-color-options">
-                      {liveChatRoomColorOptions.map((option) => (
-                        <label className={`live-chat-room-color-option${newRoomColor === option.value ? " is-selected" : ""}`} key={option.name}>
-                          <input
-                            aria-label={`Room color ${option.name}`}
-                            type="radio"
-                            name="live-chat-room-color"
-                            checked={newRoomColor === option.value}
-                            onChange={() => setNewRoomColor(option.value)}
-                          />
-                          <span style={{ "--live-chat-room-tab-color": option.value } as CSSProperties} aria-hidden="true" />
-                          <strong>{option.name}</strong>
-                        </label>
-                      ))}
-                    </div>
-                  </section>
-                </section>
-
-                <section className="live-chat-room-invite-panel" aria-label="Invite users">
-                  <header className="live-chat-room-modal-section-head">
-                    <UserPlus size={16} aria-hidden="true" />
-                    <span>Invite Users</span>
-                    <strong aria-label="Live chat invite count">{newRoomInviteCount} invited</strong>
-                  </header>
-                  <div className="live-chat-room-invite-list">
-                    {rosterMembers.map((member) => (
-                      <label className={`live-chat-room-invite-option${newRoomInviteIds.has(member.id) ? " is-selected" : ""}`} key={member.id}>
-                        <input
-                          type="checkbox"
-                          aria-label={`Invite ${member.name}`}
-                          checked={newRoomInviteIds.has(member.id)}
-                          onChange={() => toggleNewRoomInvite(member.id)}
-                        />
-                        <img src={member.avatarSrc} alt="" draggable="false" />
-                        <span>
-                          <strong>{member.name}</strong>
-                          <small>{member.detail}</small>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                  <footer className={`live-chat-room-invite-confirm${areNewRoomInvitesConfirmed ? " is-confirmed" : ""}`}>
-                    <p aria-live="polite">{newRoomInviteStatus}</p>
-                    <button
-                      className="live-chat-confirm-invites-button"
-                      type="button"
-                      aria-pressed={areNewRoomInvitesConfirmed}
-                      disabled={!newRoomInviteCount}
-                      onClick={() => setAreNewRoomInvitesConfirmed(true)}
-                    >
-                      <CheckCircle2 size={17} aria-hidden="true" />
-                      <span>{confirmInvitesButtonLabel}</span>
-                    </button>
-                  </footer>
-                </section>
-              </div>
-
-              <footer className="manager-compose-actions">
-                <button type="button" className="manager-compose-secondary" onClick={() => setIsCreateRoomOpen(false)}>Cancel</button>
-                <button type="submit" className="manager-compose-submit" disabled={!canCreateLiveChatRoom}>
-                  <FolderPlus size={18} />
-                  <span>Create Room</span>
-                </button>
-              </footer>
-            </form>
-          </div>
-        )}
         </div>
       </main>
     </section>
@@ -13714,13 +13535,13 @@ function OperationsLandingRedirect() {
 
   if (accountRole === "student") {
     const studentProfile = readStudentProfile(session?.email);
-    const landingPage = landingPageValueOrDefault(studentProfile.landingPage, studentLandingPageOptions, "profile");
+    const landingPage = landingPageValueOrDefault(studentProfile.landingPage, studentLandingPageOptions, "live-chat");
     return <Navigate to={studentLandingPath(landingPage)} replace />;
   }
 
   if (accountRole === "guardian") {
     const parentProfile = readGuardianProfile(session?.email);
-    const landingPage = landingPageValueOrDefault(parentProfile.landingPage, parentLandingPageOptions, "profile");
+    const landingPage = landingPageValueOrDefault(parentProfile.landingPage, parentLandingPageOptions, "live-chat");
     return <Navigate to={parentLandingPath(landingPage)} replace />;
   }
 
@@ -13759,7 +13580,7 @@ export function OperationsApp() {
         <Route path="/classes" element={<StaffOnlyRoute><ClassesPage /></StaffOnlyRoute>} />
         <Route path="/study-guide" element={<StaffOnlyRoute><ManagerStudyGuidePage /></StaffOnlyRoute>} />
         <Route path="/schedule" element={<StaffOnlyRoute><SchedulePage /></StaffOnlyRoute>} />
-        <Route path="/live-chat" element={<StaffOnlyRoute><LiveChatPage /></StaffOnlyRoute>} />
+        <Route path="/live-chat" element={<LiveChatPage />} />
         <Route path="/messages" element={<StaffOnlyRoute><MessagesPage /></StaffOnlyRoute>} />
         <Route path="/check-ins" element={<StaffOrStudentRoute><CheckInsPage /></StaffOrStudentRoute>} />
         <Route path="/events" element={<StaffOnlyRoute><EventsPage /></StaffOnlyRoute>} />

@@ -7,6 +7,7 @@ import {
   supabaseBackendInactiveMessage,
   type SupabaseStoredSession
 } from "./supabaseAccounts";
+import type { AccountRole } from "./types";
 
 export const liveChatRoomKey = "manager-global";
 export const liveChatMessageLimit = 80;
@@ -19,7 +20,7 @@ export type LiveChatMessage = {
   roomKey: string;
   senderUserId: string | null;
   senderName: string;
-  senderRole: "staff" | "system";
+  senderRole: AccountRole | "system";
   senderAvatarPath: string | null;
   messageKind: LiveChatMessageKind;
   body: string;
@@ -31,7 +32,7 @@ export type LiveChatMessageRow = {
   room_key: string;
   sender_user_id: string | null;
   sender_name: string;
-  sender_role: "staff" | "system";
+  sender_role: AccountRole | "system";
   sender_avatar_path: string | null;
   message_kind: LiveChatMessageKind;
   body: string;
@@ -41,7 +42,7 @@ export type LiveChatMessageRow = {
 type LiveChatProfileRow = {
   id: string;
   display_name: string;
-  role: "staff" | "student" | "guardian";
+  role: AccountRole;
   status: "active" | "inactive";
 };
 
@@ -210,8 +211,8 @@ async function fetchLiveChatProfile(client: LiveChatClient, session: SupabaseSto
 
     if (response.error) return liveChatSupabaseErrorResult(response.error.message);
     const profile = response.data;
-    if (!profile || profile.role !== "staff" || profile.status !== "active") {
-      return { status: "error" as const, message: "Only active staff accounts can send live chat messages." };
+    if (!profile || profile.status !== "active") {
+      return { status: "error" as const, message: "Only active Cho's accounts can send live chat messages." };
     }
 
     return { status: "ok" as const, data: profile };
@@ -247,7 +248,7 @@ export async function sendLiveChatMessage({
         room_key: roomKey,
         sender_user_id: session.userId,
         sender_name: profileResult.data.display_name,
-        sender_role: "staff",
+        sender_role: profileResult.data.role,
         sender_avatar_path: senderAvatarPath ?? null,
         message_kind: "user",
         body: validation.body

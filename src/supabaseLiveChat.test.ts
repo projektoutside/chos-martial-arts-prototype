@@ -157,6 +157,50 @@ describe("supabase live chat adapter", () => {
     }));
   });
 
+  it("sends active student messages with their profile role", async () => {
+    const profileQuery = liveChatQuery({
+      maybeSingleData: {
+        id: "student-user-id",
+        display_name: "Talia Brooks",
+        role: "student",
+        status: "active"
+      }
+    });
+    const insertQuery = liveChatQuery({
+      singleData: liveChatRow({
+        id: "message-student-1",
+        sender_user_id: "student-user-id",
+        sender_name: "Talia Brooks",
+        sender_role: "student",
+        body: "See everyone at class."
+      })
+    });
+    const client = {
+      from: vi.fn((table: string) => (table === "profiles" ? profileQuery : insertQuery)),
+      channel: vi.fn(),
+      removeChannel: vi.fn()
+    } as unknown as LiveChatClient;
+    const session = {
+      ...testSession(),
+      userId: "student-user-id"
+    };
+
+    const result = await sendLiveChatMessage({
+      body: "See everyone at class.",
+      client,
+      session
+    });
+
+    expect(result).toMatchObject({ status: "ok", data: { id: "message-student-1", senderRole: "student" } });
+    expect(insertQuery.insert).toHaveBeenCalledWith(expect.objectContaining({
+      sender_user_id: "student-user-id",
+      sender_name: "Talia Brooks",
+      sender_role: "student",
+      message_kind: "user",
+      body: "See everyone at class."
+    }));
+  });
+
   it("reports inactive Supabase live-chat sends as unavailable", async () => {
     const profileQuery = liveChatQuery();
     profileQuery.maybeSingle = vi.fn(async () => {

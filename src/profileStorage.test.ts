@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  fallbackGuardianProfile,
   fallbackManagerProfile,
   fallbackStaffProfile,
   fallbackStudentProfile,
@@ -37,8 +38,10 @@ describe("profile storage helpers", () => {
     expect(JSON.parse(window.localStorage.getItem(legacyProfileStorageKey) ?? "{}")).toMatchObject({ name: "Scoped Manager" });
   });
 
-  it("defaults manager startup to live chat and keeps saved startup pages normalized", () => {
+  it("defaults shared account startup to live chat and keeps saved startup pages normalized", () => {
     expect(fallbackManagerProfile("manager123@chos.prototype").landingPage).toBe("live-chat");
+    expect(fallbackStudentProfile("student123@chos.prototype").landingPage).toBe("live-chat");
+    expect(fallbackGuardianProfile("parent123@chos.prototype").landingPage).toBe("live-chat");
 
     writeManagerProfile({ ...fallbackManagerProfile("manager123@chos.prototype"), landingPage: "profile" }, "manager123@chos.prototype");
     expect(readManagerProfile("manager123@chos.prototype").landingPage).toBe("profile");

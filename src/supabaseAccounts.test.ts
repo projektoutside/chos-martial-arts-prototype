@@ -49,7 +49,10 @@ describe("supabase account adapter", () => {
     expect(isSupportedSupabaseLoginUsername("Manager123")).toBe(true);
     expect(isSupportedSupabaseLoginUsername(" manager123 ")).toBe(true);
     expect(isSupportedSupabaseLoginUsername("Manager123!")).toBe(true);
+    vi.stubEnv("VITE_ENABLE_DEVELOPER_ACCOUNT", "");
     expect(isSupportedSupabaseLoginUsername("Dev123")).toBe(false);
+    vi.stubEnv("VITE_ENABLE_DEVELOPER_ACCOUNT", "true");
+    expect(isSupportedSupabaseLoginUsername("Dev123")).toBe(true);
     expect(isSupportedSupabaseLoginUsername("jordan.staff")).toBe(true);
     expect(isSupportedSupabaseLoginUsername("kai.child")).toBe(false);
   });
@@ -179,6 +182,59 @@ describe("supabase account adapter", () => {
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("\"projectRef\":\"project\"");
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("jordan.staff@accounts.chosmartialarts.app");
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).not.toContain("staff-refresh-token");
+  });
+
+  it("signs in the gated developer username through Supabase Auth and keeps the developer session identity", async () => {
+    vi.stubEnv("VITE_ENABLE_DEVELOPER_ACCOUNT", "true");
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/auth/v1/token")) {
+        return jsonResponse({
+          access_token: "developer-access-token",
+          refresh_token: "developer-refresh-token",
+          expires_in: 3600,
+          user: { id: "developer-user-id", email: "dev123@accounts.chosmartialarts.app" }
+        });
+      }
+      if (requestUrl.includes("/rest/v1/profiles")) {
+        return jsonResponse([
+          {
+            id: "developer-user-id",
+            username: "dev123",
+            contact_email: "dev123@chos.prototype",
+            display_name: "Developer",
+            role: "staff",
+            status: "active",
+            phone: null,
+            title: "Developer",
+            notes: null,
+            access: ["dashboard"],
+            student_id: null,
+            created_by: "manager-user-id",
+            created_at: "2026-06-09T00:00:00.000Z"
+          }
+        ]);
+      }
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const result = await signInSupabaseAccount({ username: "Dev123", password: "Xatori#123" });
+
+    expect(result).toMatchObject({
+      status: "authenticated",
+      sessionEmail: "dev123@chos.prototype",
+      role: "staff"
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/auth/v1/token?grant_type=password",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ email: "dev123@accounts.chosmartialarts.app", password: "Xatori#123" })
+      })
+    );
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("developer-access-token");
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("dev123@accounts.chosmartialarts.app");
   });
 
   it("clears unscoped or wrong-project stored sessions before they can be reused", () => {

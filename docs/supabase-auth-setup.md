@@ -30,10 +30,10 @@ For an existing staging project, rotate any legacy seeded owner password by reru
 ## Runtime behavior
 
 - `Manager123` signs in through Supabase when `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are configured.
+- The public-staging `Dev123` diagnostic login signs in through Supabase when `VITE_ENABLE_DEVELOPER_ACCOUNT=true`; its internal Auth email is `dev123@accounts.chosmartialarts.app`.
 - Manager-created staff, student, and parent accounts are supported when the function is deployed and the manager has a valid `Manager123` Supabase session.
-- The public-staging `Dev123` diagnostic login is local only and cannot create live Supabase accounts because it has no Supabase Auth session.
 - `live_chat_messages`, `direct_messages`, `message_logs`, and `app_state_items` persist in Supabase when the user is signed in with a valid Supabase session.
-- When Supabase env vars are configured but a Supabase auth session is unavailable, operations records do not fall back to localStorage. Device-local preferences and public `Dev123` diagnostics can still use browser storage.
+- When Supabase env vars are configured but a Supabase auth session is unavailable, operations records do not fall back to localStorage. Device-local preferences can still use browser storage.
 - The local prototype fallback for credential and operations records is only used when Supabase env vars are absent.
 
 ## Hosted Auth hardening

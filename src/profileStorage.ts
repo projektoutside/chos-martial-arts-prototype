@@ -156,7 +156,7 @@ export function fallbackStudentProfile(sessionEmail?: string, student?: StudentR
     phone: student?.phone ?? "(262) 555-0100",
     updates: true,
     theme: readStoredAppTheme(),
-    landingPage: "profile"
+    landingPage: "live-chat"
   };
 }
 
@@ -170,7 +170,7 @@ export function fallbackGuardianProfile(sessionEmail?: string): ProfileSettings 
     phone: "(262) 555-0100",
     updates: true,
     theme: readStoredAppTheme(),
-    landingPage: "profile"
+    landingPage: "live-chat"
   };
 }
 

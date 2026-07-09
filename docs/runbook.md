@@ -29,7 +29,7 @@ git diff --check
 - Workflow: `.github/workflows/deploy-pages.yml`
 - Status: Xatori GitHub Pages is the real staging pilot target. It is not production hosting.
 - Staging build requirements: repo variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and `VITE_ENABLE_DEVELOPER_ACCOUNT=true` must be present before the workflow builds the Pages artifact. `VITE_SUPABASE_URL` must point to Cho's staging Supabase project `zfuwbbepsnmmlpgfkmhz`.
-- Public staging account model: `Manager123` validates real Supabase manager auth when the approved password is supplied from the secret store. `Dev123` is intentionally enabled on public staging for developer diagnostics during this pilot.
+- Public staging account model: `Manager123` validates real Supabase manager auth when the approved password is supplied from the secret store. `Dev123` is intentionally enabled on public staging for developer diagnostics and validates through Supabase Auth when `VITE_ENABLE_DEVELOPER_ACCOUNT=true`.
 
 ## Xatori Deployment Workflow
 
@@ -49,7 +49,7 @@ git diff --check
 - Twilio Messaging Service `Cho's Martial Arts Broadcasts` / `MG3f346aee214d3fef62064a1350bd556e` exists with inbound/status callbacks pointed at the Supabase relay and SMS/MMS local sender `+12625003283` attached.
 - Live US mass texting remains blocked until Twilio Console submits and approves the `Xatori Dev` Trust Hub Customer Profile, A2P Brand and Campaign are approved, and the required Twilio secrets are available in Supabase for sending and webhook signature validation. The Trust Hub `business_registration_identifier` mismatch was corrected on 2026-06-17 and evaluation `EL7b9b87c9707c1bcb2168131d7f8b3959` is `compliant`; submitting the Primary Customer Profile through the API returned `400` / `This operation is restricted via API for Primary Customer Profiles.Use Twilio Console instead.`
 - Server implementation must enforce manager auth, server-held credentials, consent evidence, opt-out handling, rate limits, idempotency, audit logs, and Twilio webhook signatures.
-- Individual staff Supabase login is not part of this staging pilot. The current app accepts `Manager123` and the gated `Dev123` diagnostic account; non-owner staff profiles are rejected by the client until a staff-account release is approved.
+- Active Supabase-backed profiles can open shared Cho's Room live chat. Account creation remains Manager123-owned through the manager account function; public `Dev123` is a gated diagnostic account, not an owner account.
 
 ## Rollback
 

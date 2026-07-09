@@ -383,12 +383,6 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
       return;
     }
 
-    if (isPrototypeDeveloperLogin(loginForm)) {
-      login(prototypeDeveloperLogin.email, true, prototypeDeveloperLogin.role);
-      navigate("/");
-      return;
-    }
-
     if (supabaseConfigured && isSupportedSupabaseLoginUsername(loginForm.username)) {
       setLoginPending(true);
       try {
@@ -411,6 +405,12 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
       } finally {
         setLoginPending(false);
       }
+    }
+
+    if (isPrototypeDeveloperLogin(loginForm)) {
+      login(prototypeDeveloperLogin.email, true, prototypeDeveloperLogin.role);
+      navigate("/");
+      return;
     }
 
     if (!supabaseConfigured) {

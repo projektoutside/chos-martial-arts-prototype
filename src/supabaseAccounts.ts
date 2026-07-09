@@ -1,5 +1,5 @@
 import type { AccountRole, ManagedAccount, ManagerAccessKey } from "./types";
-import { prototypeManagerLogin } from "./utils";
+import { isDeveloperAccountEnabled, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
 
 type SupabasePasswordResponse = {
   access_token: string;
@@ -177,7 +177,9 @@ export function supabaseAuthEmailForUsername(username: string) {
 
 export function isSupportedSupabaseLoginUsername(username: string) {
   const normalizedUsername = normalizeSupabaseUsername(username);
-  return Boolean(normalizedUsername && normalizedUsername !== "dev123" && !normalizedUsername.endsWith(".child"));
+  if (!normalizedUsername || normalizedUsername.endsWith(".child")) return false;
+  if (normalizedUsername === prototypeDeveloperLogin.username.toLowerCase()) return isDeveloperAccountEnabled();
+  return true;
 }
 
 function saveSupabaseAuthSession(response: SupabasePasswordResponse) {
@@ -234,7 +236,10 @@ async function fetchSupabaseProfile(userId: string, accessToken: string) {
 }
 
 function sessionEmailForProfile(profile: SupabaseProfileResponse) {
-  return profile.username === managerUsername ? prototypeManagerLogin.email : profile.username;
+  const normalizedUsername = normalizeSupabaseUsername(profile.username);
+  if (normalizedUsername === managerUsername) return prototypeManagerLogin.email;
+  if (normalizedUsername === prototypeDeveloperLogin.username.toLowerCase()) return prototypeDeveloperLogin.email;
+  return profile.username;
 }
 
 export async function signInSupabaseAccount(credentials: { username: string; password: string }): Promise<SupabaseLoginResult> {
