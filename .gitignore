@@ -17,4 +17,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.jks
+android/key.properties
 .DS_Store

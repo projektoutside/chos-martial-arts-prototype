@@ -1,0 +1,10 @@
+{
+  "appId": "com.xatoridev.chosmartialarts",
+  "appName": "Cho's Martial Arts",
+  "webDir": "dist",
+  "backgroundColor": "#080809",
+  "loggingBehavior": "none",
+  "server": {
+    "androidScheme": "https"
+  }
+}
