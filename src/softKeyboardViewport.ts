@@ -26,6 +26,10 @@ function isHTMLElement(target: EventTarget | null): target is HTMLElement {
   return target instanceof HTMLElement;
 }
 
+function isTouchInputCapable(win: Window) {
+  return win.navigator.maxTouchPoints > 0 || Boolean(win.matchMedia?.("(pointer: coarse)")?.matches);
+}
+
 export function isKeyboardEditableTarget(target: EventTarget | null): target is HTMLElement {
   if (!isHTMLElement(target)) return false;
   if (target.matches(":disabled, [aria-disabled='true']")) return false;
@@ -65,6 +69,23 @@ function nearestScrollContainer(element: HTMLElement, win: Window) {
   return undefined;
 }
 
+function scrollByViewportDelta(element: HTMLElement, win: Window, delta: number) {
+  const options: ScrollToOptions = { top: delta, behavior: "auto" };
+  const nestedScrollContainer = nearestScrollContainer(element, win);
+  if (nestedScrollContainer) {
+    nestedScrollContainer.scrollBy(options);
+    return;
+  }
+
+  const scrollingElement = element.ownerDocument.scrollingElement;
+  if (scrollingElement && typeof scrollingElement.scrollBy === "function") {
+    scrollingElement.scrollBy(options);
+    return;
+  }
+
+  win.scrollBy(options);
+}
+
 function revealFocusedElement(element: HTMLElement, win: Window) {
   element.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   const viewport = visualMetrics(win);
@@ -77,16 +98,18 @@ function revealFocusedElement(element: HTMLElement, win: Window) {
       ? rect.top - topBoundary
       : 0;
   if (!delta) return;
-  nearestScrollContainer(element, win)?.scrollBy({ top: delta, behavior: "auto" });
+  scrollByViewportDelta(element, win, delta);
 }
 
 export function installSoftKeyboardViewportController(win: Window = window, doc: Document = document) {
   const root = doc.documentElement;
   const timers = new Set<number>();
+  const touchInputCapable = isTouchInputCapable(win);
   let animationFrame = 0;
   let stableHeight = Math.max(win.innerHeight, visualMetrics(win).height);
   let lastOpen = false;
   let lastFocused: HTMLElement | null = null;
+  let awaitingViewportRestore = false;
 
   const setTimer = (callback: () => void, delay: number) => {
     const timer = win.setTimeout(() => {
@@ -105,15 +128,27 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
     const focused = isKeyboardEditableTarget(doc.activeElement) ? doc.activeElement : null;
     const viewport = visualMetrics(win);
     const layoutCandidate = Math.max(win.innerHeight, viewport.height + Math.max(0, viewport.offsetTop));
-    if (!focused && !lastOpen) stableHeight = layoutCandidate;
-    if (!stableHeight) stableHeight = layoutCandidate;
+    if (!stableHeight) {
+      stableHeight = layoutCandidate;
+      awaitingViewportRestore = false;
+    } else if (!touchInputCapable) {
+      stableHeight = layoutCandidate;
+      awaitingViewportRestore = false;
+    } else if (awaitingViewportRestore) {
+      if (layoutCandidate >= stableHeight - 1) {
+        stableHeight = Math.max(stableHeight, layoutCandidate);
+        awaitingViewportRestore = false;
+      }
+    } else if (!focused && !lastOpen) {
+      stableHeight = layoutCandidate;
+    }
 
     const state = classifySoftKeyboardViewport({
       stableHeight,
       visibleHeight: viewport.height,
       offsetTop: viewport.offsetTop,
       scale: viewport.scale,
-      hasEditableFocus: Boolean(focused)
+      hasEditableFocus: touchInputCapable && Boolean(focused)
     });
 
     root.style.setProperty("--app-stable-viewport-height", `${stableHeight}px`);
@@ -122,17 +157,21 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
     root.style.setProperty("--app-keyboard-inset", `${state.keyboardInset}px`);
 
     if (state.isOpen) {
+      awaitingViewportRestore = false;
       root.dataset.softKeyboard = "open";
       if (!lastOpen) dispatchState("open");
       if (!lastOpen || focused !== lastFocused) {
         setTimer(() => focused && revealFocusedElement(focused, win), 0);
         setTimer(() => focused && revealFocusedElement(focused, win), 180);
       }
-    } else if (root.dataset.softKeyboard === "open") {
-      delete root.dataset.softKeyboard;
-      dispatchState("closed");
-    } else if (!focused) {
-      delete root.dataset.softKeyboard;
+    } else {
+      if (lastOpen) awaitingViewportRestore = touchInputCapable && layoutCandidate < stableHeight - 1;
+      if (root.dataset.softKeyboard === "open") {
+        delete root.dataset.softKeyboard;
+        dispatchState("closed");
+      } else if (!focused) {
+        delete root.dataset.softKeyboard;
+      }
     }
 
     lastOpen = state.isOpen;
@@ -145,7 +184,7 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   };
 
   const handleFocusIn = (event: FocusEvent) => {
-    if (!isKeyboardEditableTarget(event.target)) return;
+    if (!touchInputCapable || !isKeyboardEditableTarget(event.target)) return;
     root.dataset.softKeyboard = "opening";
     scheduleMeasure();
     setTimer(scheduleMeasure, 80);
@@ -164,12 +203,13 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   const handleOrientationChange = () => {
     stableHeight = 0;
     lastOpen = false;
+    awaitingViewportRestore = false;
     delete root.dataset.softKeyboard;
     setTimer(scheduleMeasure, 220);
     setTimer(scheduleMeasure, 520);
   };
 
-  if (win.navigator.maxTouchPoints > 0 || win.matchMedia?.("(pointer: coarse)").matches) {
+  if (touchInputCapable) {
     root.dataset.touchInput = "true";
   }
 
