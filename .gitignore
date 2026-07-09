@@ -19,4 +19,5 @@ yarn-error.log*
 pnpm-debug.log*
 *.jks
 android/key.properties
+.worktrees/
 .DS_Store
