@@ -208,4 +208,30 @@ describe("soft keyboard editor helpers", () => {
     expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard-editor");
     expect(document.querySelector(".soft-keyboard-editor-layer")).toHaveAttribute("hidden");
   });
+
+  it("forwards composition, before-input, and Enter form behavior to the source", () => {
+    const form = document.createElement("form");
+    const source = document.createElement("input");
+    source.value = "member";
+    form.append(source);
+    document.body.append(form);
+    const observed: string[] = [];
+    source.addEventListener("compositionstart", () => observed.push("compositionstart"));
+    source.addEventListener("beforeinput", () => observed.push("beforeinput"));
+    source.addEventListener("keydown", (event) => observed.push(`keydown:${event.key}`));
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      observed.push("submit");
+    });
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+    const editor = document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]")!;
+
+    editor.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "m" }));
+    editor.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, data: "m", inputType: "insertCompositionText" }));
+    editor.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", code: "Enter" }));
+
+    expect(observed).toEqual(["compositionstart", "beforeinput", "keydown:Enter", "submit"]);
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard-editor");
+  });
 });

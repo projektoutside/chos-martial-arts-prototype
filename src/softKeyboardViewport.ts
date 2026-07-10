@@ -4,12 +4,15 @@ export const SOFT_KEYBOARD_CHANGE_EVENT = "cho:soft-keyboard-change";
 export const SOFT_KEYBOARD_MIN_INSET_PX = 120;
 export const SOFT_KEYBOARD_MIN_INSET_RATIO = 0.15;
 
-const nonTextInputTypes = new Set([
-  "button", "checkbox", "color", "file", "hidden", "image",
-  "radio", "range", "reset", "submit"
+const textKeyboardInputTypes = new Set([
+  "email", "number", "password", "search", "tel", "text", "url"
 ]);
 
 type KeyboardFocusModality = "keyboard" | "mouse" | "pen" | "programmatic" | "touch";
+
+type OverlayKeyboardNavigator = Navigator & {
+  virtualKeyboard?: { overlaysContent: boolean };
+};
 
 const KEYBOARD_FOCUS_MODALITY_WINDOW_MS = 1000;
 const SOFT_KEYBOARD_CLOSE_SETTLE_MS = 420;
@@ -39,7 +42,7 @@ export function isKeyboardEditableTarget(target: EventTarget | null): target is 
   if (!isHTMLElement(target)) return false;
   if (target.matches(":disabled, [aria-disabled='true'], [aria-readonly='true']")) return false;
   if (target instanceof HTMLTextAreaElement) return !target.readOnly;
-  if (target instanceof HTMLInputElement) return !target.readOnly && !nonTextInputTypes.has(target.type.toLowerCase());
+  if (target instanceof HTMLInputElement) return !target.readOnly && textKeyboardInputTypes.has(target.type.toLowerCase());
   const contentEditable = target.getAttribute("contenteditable");
   return target.isContentEditable || target.contentEditable?.toLowerCase() === "true" || contentEditable === "" || contentEditable?.toLowerCase() === "true" || target.getAttribute("role") === "textbox";
 }
@@ -53,7 +56,9 @@ export function classifySoftKeyboardViewport(input: SoftKeyboardViewportInput): 
 }
 
 export function isSoftKeyboardLayoutActive(doc: Document = document) {
-  return doc.documentElement.dataset.softKeyboard === "opening" || doc.documentElement.dataset.softKeyboard === "open";
+  return doc.documentElement.dataset.softKeyboardEditor === "open"
+    || doc.documentElement.dataset.softKeyboard === "opening"
+    || doc.documentElement.dataset.softKeyboard === "open";
 }
 
 function visualMetrics(win: Window) {
@@ -65,48 +70,6 @@ function visualMetrics(win: Window) {
   };
 }
 
-function nearestScrollContainer(element: HTMLElement, win: Window) {
-  let current = element.parentElement;
-  while (current && current !== element.ownerDocument.body) {
-    const overflowY = win.getComputedStyle(current).overflowY;
-    if (/(auto|scroll|overlay)/.test(overflowY) && current.scrollHeight > current.clientHeight) return current;
-    current = current.parentElement;
-  }
-  return undefined;
-}
-
-function scrollByViewportDelta(element: HTMLElement, win: Window, delta: number) {
-  const options: ScrollToOptions = { top: delta, behavior: "auto" };
-  const nestedScrollContainer = nearestScrollContainer(element, win);
-  if (nestedScrollContainer) {
-    nestedScrollContainer.scrollBy(options);
-    return;
-  }
-
-  const scrollingElement = element.ownerDocument.scrollingElement;
-  if (scrollingElement && typeof scrollingElement.scrollBy === "function") {
-    scrollingElement.scrollBy(options);
-    return;
-  }
-
-  win.scrollBy(options);
-}
-
-function revealFocusedElement(element: HTMLElement, win: Window) {
-  element.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  const viewport = visualMetrics(win);
-  const rect = element.getBoundingClientRect();
-  const topBoundary = viewport.offsetTop + 12;
-  const bottomBoundary = viewport.offsetTop + viewport.height - 12;
-  const delta = rect.bottom > bottomBoundary
-    ? rect.bottom - bottomBoundary
-    : rect.top < topBoundary
-      ? rect.top - topBoundary
-      : 0;
-  if (!delta) return;
-  scrollByViewportDelta(element, win, delta);
-}
-
 export function installSoftKeyboardViewportController(win: Window = window, doc: Document = document) {
   const root = doc.documentElement;
   const timers = new Set<number>();
@@ -114,7 +77,6 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   let animationFrame = 0;
   let stableHeight = Math.max(win.innerHeight, visualMetrics(win).height);
   let lastOpen = false;
-  let lastFocused: HTMLElement | null = null;
   let awaitingViewportRestore = false;
   let baselineUpdateRequiresOrdinaryResize = false;
   let closeSettleVersion = 0;
@@ -124,6 +86,10 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   let openingVersion = 0;
   let softKeyboardSessionActive = false;
   let softKeyboardFocusTarget: HTMLElement | null = null;
+  const virtualKeyboard = (win.navigator as OverlayKeyboardNavigator).virtualKeyboard;
+  const previousOverlaySetting = virtualKeyboard?.overlaysContent;
+
+  if (touchInputCapable && virtualKeyboard) virtualKeyboard.overlaysContent = true;
 
   const setTimer = (callback: () => void, delay: number) => {
     const timer = win.setTimeout(() => {
@@ -224,10 +190,6 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
       if (focused) softKeyboardFocusTarget = focused;
       root.dataset.softKeyboard = "open";
       if (!lastOpen) dispatchState("open");
-      if (!lastOpen || focused !== lastFocused) {
-        setTimer(() => focused && revealFocusedElement(focused, win), 0);
-        setTimer(() => focused && revealFocusedElement(focused, win), 180);
-      }
     } else {
       if (lastOpen) {
         softKeyboardSessionActive = false;
@@ -244,7 +206,6 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
     }
 
     lastOpen = state.isOpen;
-    lastFocused = focused;
   };
 
   const scheduleMeasure = () => {
@@ -362,6 +323,7 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
     win.visualViewport?.removeEventListener("scroll", scheduleMeasure);
     if (animationFrame) win.cancelAnimationFrame(animationFrame);
     timers.forEach((timer) => win.clearTimeout(timer));
+    if (virtualKeyboard && previousOverlaySetting !== undefined) virtualKeyboard.overlaysContent = previousOverlaySetting;
     delete root.dataset.softKeyboard;
     delete root.dataset.touchInput;
     for (const property of [

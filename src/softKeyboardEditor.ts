@@ -1,3 +1,6 @@
+import { useEffect } from "react";
+import { isKeyboardEditableTarget } from "./softKeyboardViewport";
+
 export type KeyboardEditableElement = HTMLInputElement | HTMLTextAreaElement | HTMLElement;
 export type KeyboardEditorControl = HTMLInputElement | HTMLTextAreaElement;
 export type KeyboardEditorKind = "input" | "textarea";
@@ -246,18 +249,62 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     dirty = true;
   };
 
+  const forwardKeyboardEvent = (event: KeyboardEvent) => {
+    if (!source) return true;
+    return source.dispatchEvent(new KeyboardEvent(event.type, {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      key: event.key,
+      code: event.code,
+      location: event.location,
+      repeat: event.repeat,
+      isComposing: event.isComposing,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      metaKey: event.metaKey
+    }));
+  };
+
   const handleEditorKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
+      forwardKeyboardEvent(event);
       event.preventDefault();
       close();
       done.focus({ preventScroll: true });
       return;
     }
-    if (event.key === "Enter" && editor === input && input.enterKeyHint === "done") {
+    if (!forwardKeyboardEvent(event)) {
+      event.preventDefault();
+      return;
+    }
+    if (event.key !== "Enter" || editor !== input) return;
+    if ((source instanceof HTMLInputElement || source instanceof HTMLTextAreaElement) && source.form) {
+      event.preventDefault();
+      source.form.requestSubmit();
+    } else if (input.enterKeyHint === "done") {
       event.preventDefault();
       close();
       done.focus({ preventScroll: true });
     }
+  };
+
+  const handleEditorKeyUp = (event: KeyboardEvent) => {
+    if (!forwardKeyboardEvent(event)) event.preventDefault();
+  };
+
+  const handleEditorBeforeInput = (event: InputEvent) => {
+    if (!source) return;
+    const forwarded = new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      data: event.data,
+      inputType: event.inputType,
+      isComposing: event.isComposing
+    });
+    if (!source.dispatchEvent(forwarded)) event.preventDefault();
   };
 
   const open = (nextSource: KeyboardEditableElement, event: PointerEvent) => {
@@ -288,8 +335,24 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     open(event.target, event);
   };
 
-  const handleCompositionStart = () => { composing = true; };
-  const handleCompositionEnd = () => { composing = false; };
+  const forwardCompositionEvent = (event: CompositionEvent) => {
+    if (!source) return;
+    source.dispatchEvent(new CompositionEvent(event.type, {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      data: event.data
+    }));
+  };
+  const handleCompositionStart = (event: CompositionEvent) => {
+    composing = true;
+    forwardCompositionEvent(event);
+  };
+  const handleCompositionUpdate = (event: CompositionEvent) => forwardCompositionEvent(event);
+  const handleCompositionEnd = (event: CompositionEvent) => {
+    composing = false;
+    forwardCompositionEvent(event);
+  };
   const handleSubmit = (event: Event) => {
     if (!(source instanceof HTMLInputElement || source instanceof HTMLTextAreaElement)) return;
     if (source.form && event.target === source.form) close();
@@ -304,10 +367,16 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
 
   input.addEventListener("input", handleEditorInput);
   textarea.addEventListener("input", handleEditorInput);
+  input.addEventListener("beforeinput", handleEditorBeforeInput);
+  textarea.addEventListener("beforeinput", handleEditorBeforeInput);
   input.addEventListener("keydown", handleEditorKeyDown);
   textarea.addEventListener("keydown", handleEditorKeyDown);
+  input.addEventListener("keyup", handleEditorKeyUp);
+  textarea.addEventListener("keyup", handleEditorKeyUp);
   input.addEventListener("compositionstart", handleCompositionStart);
   textarea.addEventListener("compositionstart", handleCompositionStart);
+  input.addEventListener("compositionupdate", handleCompositionUpdate);
+  textarea.addEventListener("compositionupdate", handleCompositionUpdate);
   input.addEventListener("compositionend", handleCompositionEnd);
   textarea.addEventListener("compositionend", handleCompositionEnd);
   done.addEventListener("click", close);
@@ -331,4 +400,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     root.style.removeProperty("--soft-keyboard-editor-top");
   };
 }
-import { isKeyboardEditableTarget } from "./softKeyboardViewport";
+
+export function useSoftKeyboardEditor() {
+  useEffect(() => installSoftKeyboardEditor(), []);
+}

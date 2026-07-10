@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   classifySoftKeyboardViewport,
   installSoftKeyboardViewportController,
-  isKeyboardEditableTarget
+  isKeyboardEditableTarget,
+  isSoftKeyboardLayoutActive
 } from "./softKeyboardViewport";
 
 class VisualViewportStub extends EventTarget {
@@ -73,6 +74,10 @@ describe("soft keyboard viewport", () => {
     readonly.readOnly = true;
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
+    const date = document.createElement("input");
+    date.type = "date";
+    const number = document.createElement("input");
+    number.type = "number";
     const textarea = document.createElement("textarea");
     const select = document.createElement("select");
     const textbox = document.createElement("div");
@@ -88,6 +93,14 @@ describe("soft keyboard viewport", () => {
     expect(isKeyboardEditableTarget(readonly)).toBe(false);
     expect(isKeyboardEditableTarget(ariaReadonlyTextbox)).toBe(false);
     expect(isKeyboardEditableTarget(checkbox)).toBe(false);
+    expect(isKeyboardEditableTarget(date)).toBe(false);
+    expect(isKeyboardEditableTarget(number)).toBe(true);
+  });
+
+  it("treats the mirrored editor as active keyboard layout state", () => {
+    document.documentElement.dataset.softKeyboardEditor = "open";
+    expect(isSoftKeyboardLayoutActive(document)).toBe(true);
+    delete document.documentElement.dataset.softKeyboardEditor;
   });
 
   it("requires focused text entry, a meaningful height loss, and normal scale", () => {
@@ -101,7 +114,22 @@ describe("soft keyboard viewport", () => {
       .toBe(false);
   });
 
-  it("freezes frame geometry, exposes keyboard state, and reveals the focused field", () => {
+  it("requests virtual-keyboard overlay mode and restores the previous setting on cleanup", () => {
+    const virtualKeyboard = { overlaysContent: false };
+    Object.defineProperty(window.navigator, "virtualKeyboard", {
+      configurable: true,
+      value: virtualKeyboard
+    });
+
+    cleanup = installSoftKeyboardViewportController(window, document);
+    expect(virtualKeyboard.overlaysContent).toBe(true);
+
+    cleanup();
+    cleanup = undefined;
+    expect(virtualKeyboard.overlaysContent).toBe(false);
+  });
+
+  it("freezes frame geometry and exposes keyboard state without moving the focused field", () => {
     const input = document.createElement("input");
     document.body.append(input);
     cleanup = installSoftKeyboardViewportController(window, document);
@@ -118,7 +146,8 @@ describe("soft keyboard viewport", () => {
     expect(document.documentElement.style.getPropertyValue("--app-stable-viewport-height")).toBe("844px");
     expect(document.documentElement.style.getPropertyValue("--app-stable-frame-width")).toBe("474.75px");
     expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("344px");
-    expect(input.scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+    expect(input.scrollIntoView).not.toHaveBeenCalled();
+    expect(window.scrollBy).not.toHaveBeenCalled();
 
     input.blur();
     viewport.height = 844;
@@ -428,7 +457,7 @@ describe("soft keyboard viewport", () => {
     expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("0px");
   });
 
-  it("uses the document scrolling element when no nested scroll container can reveal the field", () => {
+  it("never scrolls the document or window to reveal a keyboard-focused field", () => {
     const input = document.createElement("input");
     document.body.append(input);
     const rootScrollBy = document.documentElement.scrollBy as ReturnType<typeof vi.fn>;
@@ -454,41 +483,8 @@ describe("soft keyboard viewport", () => {
     viewport.dispatchEvent(new Event("resize"));
     vi.runAllTimers();
 
-    expect(rootScrollBy).toHaveBeenCalledWith({ top: 32, behavior: "auto" });
+    expect(rootScrollBy).not.toHaveBeenCalled();
     expect(window.scrollBy).not.toHaveBeenCalled();
-  });
-
-  it("finishes with 12px of visible-viewport clearance through the window fallback", () => {
-    const input = document.createElement("input");
-    document.body.append(input);
-    let documentScrollTop = 0;
-    vi.spyOn(input, "getBoundingClientRect").mockImplementation(() => ({
-      top: 480 - documentScrollTop,
-      bottom: 510 - documentScrollTop,
-      left: 0,
-      right: 100,
-      width: 100,
-      height: 30,
-      x: 0,
-      y: 480 - documentScrollTop,
-      toJSON: () => ({})
-    }));
-    const windowScrollBy = vi.fn((options: ScrollToOptions) => {
-      documentScrollTop += options.top ?? 0;
-    });
-    Object.defineProperty(window, "scrollBy", {
-      configurable: true,
-      value: windowScrollBy
-    });
-    cleanup = installSoftKeyboardViewportController(window, document);
-
-    input.focus();
-    viewport.height = 500;
-    viewport.dispatchEvent(new Event("resize"));
-    vi.runAllTimers();
-
-    expect(windowScrollBy).toHaveBeenCalledWith({ top: 22, behavior: "auto" });
-    expect(input.getBoundingClientRect().bottom).toBe(488);
   });
 
   it("removes document state and listeners during cleanup", () => {

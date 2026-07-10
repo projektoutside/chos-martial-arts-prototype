@@ -3214,7 +3214,7 @@ describe("app fullscreen behavior", () => {
     stubUnsupportedScreenOrientation();
   });
 
-  it("does not retry fullscreen or orientation work during text entry", async () => {
+  it("does not start or retry fullscreen and orientation work during mirrored text entry", async () => {
     stubMatchMedia(true);
     const requestFullscreen = vi.fn().mockResolvedValue(undefined);
     const lock = stubScreenOrientationLock(vi.fn().mockResolvedValue(undefined));
@@ -3227,15 +3227,13 @@ describe("app fullscreen behavior", () => {
     const touchPointerDown = new Event("pointerdown", { bubbles: true });
     Object.defineProperty(touchPointerDown, "pointerType", { value: "touch" });
     fireEvent(username, touchPointerDown);
-    username.focus();
-    await waitFor(() => expect(lock).toHaveBeenCalledWith("portrait-primary"));
-    requestFullscreen.mockClear();
-    lock.mockClear();
+    expect(document.documentElement.dataset.softKeyboardEditor).toBe("open");
+    expect(requestFullscreen).not.toHaveBeenCalled();
+    expect(lock).not.toHaveBeenCalled();
 
     window.dispatchEvent(new Event("resize"));
     await Promise.resolve();
 
-    expect(document.documentElement.dataset.softKeyboard).toBe("opening");
     expect(requestFullscreen).not.toHaveBeenCalled();
     expect(lock).not.toHaveBeenCalled();
   });

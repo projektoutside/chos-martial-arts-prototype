@@ -23605,8 +23605,7 @@ html[data-theme="light"] {
   align-items: stretch;
   justify-items: center;
   width: 100%;
-  height: 100svh;
-  height: 100dvh;
+  height: var(--app-stable-viewport-height, 100dvh);
   min-height: 0;
   padding: var(--cho-safe-area-top) 0 var(--cho-safe-area-bottom);
   overflow: hidden;
@@ -23617,45 +23616,101 @@ html[data-theme="light"] {
   isolation: isolate;
 }
 
-html[data-soft-keyboard="open"] .portrait-app-shell {
-  height: var(--app-visible-viewport-height, 100dvh);
-}
-
-html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation-layout="true"] {
-  --manager-launcher-sidebar-track-width: 0px;
-  --manager-launcher-rail-hit-width: 0px;
-}
-
-html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation="true"],
-html[data-soft-keyboard="open"] .mobile-tabbar,
-html[data-soft-keyboard="open"] .operations-footer {
-  display: none !important;
-}
-
-html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation-layout="true"] .manager-launcher-body {
-  padding-right: 0;
-}
-
-html[data-soft-keyboard="open"] :is(
-  input:not([type="button"]):not([type="checkbox"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="image"]):not([type="radio"]):not([type="range"]):not([type="reset"]):not([type="submit"]),
-  textarea,
-  select,
-  [contenteditable="true"],
-  [contenteditable=""],
-  [role="textbox"]
-) {
-  scroll-margin-block: 12px 24px;
-}
-
 html[data-touch-input="true"] :is(
   input:not([type="button"]):not([type="checkbox"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="image"]):not([type="radio"]):not([type="range"]):not([type="reset"]):not([type="submit"]),
   textarea,
-  select,
   [contenteditable="true"],
   [contenteditable=""],
   [role="textbox"]
 ) {
   font-size: max(16px, 1em) !important;
+}
+
+.soft-keyboard-editor-layer {
+  position: fixed;
+  z-index: 2147483000;
+  top: var(--soft-keyboard-editor-top, 0px);
+  left: max(12px, var(--cho-safe-area-left));
+  right: max(12px, var(--cho-safe-area-right));
+  padding-bottom: 8px;
+  pointer-events: none;
+  transform: translateY(-100%);
+  animation: soft-keyboard-editor-enter var(--motion-fast) var(--motion-ease-out) both;
+}
+
+.soft-keyboard-editor-layer[hidden],
+.soft-keyboard-editor-layer [hidden] {
+  display: none !important;
+}
+
+.soft-keyboard-editor-surface {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: min(100%, 520px);
+  margin: 0 auto;
+  padding: 8px;
+  pointer-events: auto;
+  border: 1px solid color-mix(in srgb, var(--gold) 42%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.44), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.soft-keyboard-editor-layer [data-soft-keyboard-editor-control] {
+  flex: 1 1 auto;
+  width: min(var(--soft-keyboard-source-width, 100%), calc(100% - 72px));
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  font-size: max(16px, 1em) !important;
+  pointer-events: auto;
+}
+
+.soft-keyboard-editor-layer textarea[data-soft-keyboard-editor-control] {
+  min-height: 48px;
+  max-height: min(160px, 32vh);
+  overflow: auto;
+  resize: none;
+}
+
+.soft-keyboard-editor-layer [data-soft-keyboard-editor-control]::placeholder {
+  color: var(--soft-keyboard-editor-placeholder-color, var(--muted));
+  opacity: 0.72;
+}
+
+.soft-keyboard-editor-done {
+  flex: 0 0 auto;
+  min-width: 58px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--gold) 68%, var(--red));
+  border-radius: 10px;
+  color: var(--white);
+  background: linear-gradient(145deg, var(--red), var(--red-dark));
+  box-shadow: 0 8px 20px rgba(143, 16, 26, 0.32);
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.soft-keyboard-editor-done:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@keyframes soft-keyboard-editor-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .soft-keyboard-editor-layer {
+    animation: none;
+  }
 }
 
 .portrait-app-frame {

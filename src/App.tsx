@@ -7,6 +7,7 @@ import {
   SOFT_KEYBOARD_CHANGE_EVENT,
   useSoftKeyboardViewport
 } from "./softKeyboardViewport";
+import { useSoftKeyboardEditor } from "./softKeyboardEditor";
 import { useAppState } from "./state";
 import { isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, signInSupabaseAccount } from "./supabaseAccounts";
 import { initializeAppTheme } from "./theme";
@@ -196,6 +197,7 @@ function App() {
 }
 
 function PortraitAppShell({ children }: { children: ReactNode }) {
+  useSoftKeyboardEditor();
   useSoftKeyboardViewport();
   return (
     <div className="portrait-app-shell" data-testid="portrait-app-shell" data-orientation-lock="portrait-primary" aria-label="Cho's Martial Arts portrait app frame">

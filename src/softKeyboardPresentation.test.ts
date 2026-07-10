@@ -20,6 +20,7 @@ function parseStyleRules(source: string): StyleRule[] {
 }
 
 const styleRules = parseStyleRules(readFileSync(resolve(process.cwd(), "src", "styles.css"), "utf8"));
+const indexHtml = readFileSync(resolve(process.cwd(), "index.html"), "utf8");
 
 function ruleContaining(...selectors: string[]) {
   const rule = styleRules.find((candidate) => selectors.every((selector) => candidate.selectors.includes(selector)));
@@ -44,50 +45,41 @@ describe("soft keyboard presentation", () => {
     expect(root.get("--cho-safe-area-left")).toBe("var(--safe-area-inset-left, env(safe-area-inset-left, 0px))");
     expect(root.get("--app-keyboard-inset")).toBe("0px");
     expect(portraitShell.get("--portrait-frame-landscape-width")).toEqual(expect.stringContaining("--app-stable-frame-width"));
+    expect(portraitShell.get("height")).toContain("--app-stable-viewport-height");
     expect(portraitShell.get("padding")).toBe("var(--cho-safe-area-top) 0 var(--cho-safe-area-bottom)");
   });
 
-  it("uses the visible keyboard viewport and removes only secondary navigation chrome", () => {
+  it("keeps app chrome unchanged while only the keyboard editor follows the visible viewport", () => {
     const selectors = styleRules.map((rule) => rule.selectors);
-    const shell = ruleContaining('html[data-soft-keyboard="open"] .portrait-app-shell').declarations;
-    const managerLayout = ruleFor('html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation-layout="true"]').declarations;
-    const hiddenChrome = ruleContaining(
-      'html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation="true"]',
-      'html[data-soft-keyboard="open"] .mobile-tabbar',
-      'html[data-soft-keyboard="open"] .operations-footer'
-    ).declarations;
-    const managerBody = ruleFor('html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation-layout="true"] .manager-launcher-body').declarations;
+    const layer = ruleFor(".soft-keyboard-editor-layer").declarations;
 
-    expect(shell.get("height")).toContain("--app-visible-viewport-height");
-    expect(managerLayout.get("--manager-launcher-sidebar-track-width")).toBe("0px");
-    expect(managerLayout.get("--manager-launcher-rail-hit-width")).toBe("0px");
-    expect(selectors).not.toContain('html[data-soft-keyboard="open"] .manager-launcher-main');
-    expect(selectors).not.toContain('html[data-soft-keyboard="open"] .manager-launcher-body');
-    expect(hiddenChrome.get("display")).toBe("none !important");
-    expect(managerBody.get("padding-right")).toBe("0");
+    expect(selectors.some((selector) => selector.includes('html[data-soft-keyboard="open"] .portrait-app-shell'))).toBe(false);
+    expect(selectors.some((selector) => selector.includes('data-keyboard-secondary-navigation="true"'))).toBe(false);
+    expect(selectors.some((selector) => selector.includes(".mobile-tabbar") && selector.includes('data-soft-keyboard="open"'))).toBe(false);
+    expect(selectors.some((selector) => selector.includes(".operations-footer") && selector.includes('data-soft-keyboard="open"'))).toBe(false);
+    expect(layer.get("position")).toBe("fixed");
+    expect(layer.get("top")).toContain("--soft-keyboard-editor-top");
+    expect(layer.get("transform")).toBe("translateY(-100%)");
   });
 
-  it("keeps touch text inputs readable and revealable above the keyboard", () => {
-    const keyboardInputs = ruleContaining(
-      'html[data-soft-keyboard="open"] :is(',
-      'input:not([type="button"])',
-      "textarea",
-      "select",
-      '[contenteditable="true"]',
-      '[contenteditable=""]',
-      '[role="textbox"]'
-    ).declarations;
+  it("keeps touch editors readable without treating selects as typing controls", () => {
     const touchInputs = ruleContaining(
       'html[data-touch-input="true"] :is(',
       'input:not([type="button"])',
       "textarea",
-      "select",
       '[contenteditable="true"]',
       '[contenteditable=""]',
       '[role="textbox"]'
     ).declarations;
+    const editorInputs = ruleContaining(
+      ".soft-keyboard-editor-layer [data-soft-keyboard-editor-control]"
+    ).declarations;
 
-    expect(keyboardInputs.get("scroll-margin-block")).toBe("12px 24px");
     expect(touchInputs.get("font-size")).toBe("max(16px, 1em) !important");
+    expect(editorInputs.get("font-size")).toBe("max(16px, 1em) !important");
+  });
+
+  it("requests overlay keyboard behavior where the browser supports it", () => {
+    expect(indexHtml).toContain("interactive-widget=overlays-content");
   });
 });
