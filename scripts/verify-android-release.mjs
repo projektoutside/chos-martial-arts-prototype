@@ -4,14 +4,15 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { assertMainActivitySoftInputMode } from "./android-manifest-contract.mjs";
+import { assertImmersiveMainActivity, assertImmersiveTheme } from "./android-immersive-contract.mjs";
 
 const root = process.cwd();
 const expected = {
   appId: "com.xatoridev.chosmartialarts",
   appName: "Cho's Martial Arts",
   webDir: "dist",
-  versionCode: 4,
-  versionName: "0.1.3"
+  versionCode: 5,
+  versionName: "0.1.4"
 };
 
 function read(relativePath) {
@@ -62,6 +63,8 @@ assert.ok(targetSdk >= 35, `targetSdkVersion must be at least 35, received ${tar
 const manifest = read("android/app/src/main/AndroidManifest.xml");
 assertMainActivitySoftInputMode(manifest);
 assert.match(manifest, /android\.permission\.INTERNET/, "Android app must be allowed to reach Supabase staging");
+assertImmersiveMainActivity(read("android/app/src/main/java/com/xatoridev/chosmartialarts/MainActivity.java"));
+assertImmersiveTheme(read("android/app/src/main/res/values/styles.xml"));
 
 const gitignore = read(".gitignore");
 assert.match(gitignore, /^\*\.jks$/m, "Signing keystores must be ignored");

@@ -159,7 +159,7 @@ test("keeps the entire app frozen while a matching editor follows the phone keyb
   await expect(username).toHaveValue("manager.one");
   await page.locator(".soft-keyboard-editor-done").tap();
   await expect(page.locator("input[data-soft-keyboard-editor-control]:not([hidden])")).toBeFocused();
-  await page.locator(".login-portrait-toggle").tap();
+  await page.locator(".soft-keyboard-editor-backdrop").tap({ position: { x: 12, y: 12 } });
   await expect(root).not.toHaveAttribute("data-soft-keyboard-editor");
 
   await setVisualViewportHeight(page, before.visualViewportHeight);
@@ -344,8 +344,9 @@ test("removes the hovering editor on outside taps and Back navigation", async ({
   const username = page.locator(".auth-gate input[placeholder='Username']");
   await username.tap();
   await expect(root).toHaveAttribute("data-soft-keyboard-editor", "open");
-  await page.getByRole("button", { name: "Outside target" }).tap();
+  await page.locator(".soft-keyboard-editor-backdrop").tap({ position: { x: 12, y: 12 } });
   await expect(root).not.toHaveAttribute("data-soft-keyboard-editor");
+  await expect(page.getByRole("button", { name: "Outside target" })).toBeVisible();
 
   await page.evaluate(() => window.history.pushState({}, "", "?typing-test=1"));
   await username.tap();

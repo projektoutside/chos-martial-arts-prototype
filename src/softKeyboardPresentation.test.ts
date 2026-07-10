@@ -52,14 +52,21 @@ describe("soft keyboard presentation", () => {
   it("keeps app chrome unchanged while only the keyboard editor follows the visible viewport", () => {
     const selectors = styleRules.map((rule) => rule.selectors);
     const layer = ruleFor(".soft-keyboard-editor-layer").declarations;
+    const backdrop = ruleFor(".soft-keyboard-editor-backdrop").declarations;
+    const surface = ruleFor(".soft-keyboard-editor-surface").declarations;
 
     expect(selectors.some((selector) => selector.includes('html[data-soft-keyboard="open"] .portrait-app-shell'))).toBe(false);
     expect(selectors.some((selector) => selector.includes('data-keyboard-secondary-navigation="true"'))).toBe(false);
     expect(selectors.some((selector) => selector.includes(".mobile-tabbar") && selector.includes('data-soft-keyboard="open"'))).toBe(false);
     expect(selectors.some((selector) => selector.includes(".operations-footer") && selector.includes('data-soft-keyboard="open"'))).toBe(false);
     expect(layer.get("position")).toBe("fixed");
-    expect(layer.get("top")).toContain("--soft-keyboard-editor-top");
-    expect(layer.get("transform")).toBe("translateY(-50%)");
+    expect(layer.get("inset")).toBe("0");
+    expect(backdrop.get("position")).toBe("absolute");
+    expect(backdrop.get("inset")).toBe("0");
+    expect(backdrop.get("backdrop-filter")).toContain("blur");
+    expect(surface.get("position")).toBe("fixed");
+    expect(surface.get("top")).toContain("--soft-keyboard-editor-top");
+    expect(surface.get("transform")).toBe("translateY(-50%)");
   });
 
   it("keeps touch editors readable without treating selects as typing controls", () => {

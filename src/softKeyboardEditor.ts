@@ -220,6 +220,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   const root = doc.documentElement;
   const mobileEditorEnabled = isTouchInputCapable(win);
   const layer = doc.createElement("div");
+  const backdrop = doc.createElement("div");
   const surface = doc.createElement("div");
   const input = doc.createElement("input");
   const textarea = doc.createElement("textarea");
@@ -236,6 +237,8 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   layer.className = "soft-keyboard-editor-layer";
   layer.hidden = true;
   layer.setAttribute("role", "presentation");
+  backdrop.className = "soft-keyboard-editor-backdrop";
+  backdrop.setAttribute("aria-hidden", "true");
   surface.className = "soft-keyboard-editor-surface";
   input.dataset.softKeyboardEditorControl = "true";
   textarea.dataset.softKeyboardEditorControl = "true";
@@ -245,7 +248,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   done.className = "soft-keyboard-editor-done";
   done.textContent = "Send";
   surface.append(input, textarea, done);
-  layer.append(surface);
+  layer.append(backdrop, surface);
   doc.body.append(layer);
 
   const resizeEditor = () => {
@@ -310,6 +313,11 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     layer.hidden = true;
     delete root.dataset.softKeyboardEditor;
     root.style.removeProperty("--soft-keyboard-editor-top");
+  };
+
+  const handleBackdropPointerDown = (event: PointerEvent) => {
+    if (event.cancelable) event.preventDefault();
+    close();
   };
 
   const handleEditorInput = (event: Event) => {
@@ -583,6 +591,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   doc.addEventListener("mousemove", handleEditorMouseMove, true);
   doc.addEventListener("mouseup", endEditorDrag, true);
   done.addEventListener("click", performEditorAction);
+  backdrop.addEventListener("pointerdown", handleBackdropPointerDown);
   doc.addEventListener("pointerdown", handlePointerDown, true);
   doc.addEventListener("touchstart", handleTouchStart, { capture: true, passive: false });
   doc.addEventListener("click", handleClick, true);
@@ -610,6 +619,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     doc.removeEventListener("focusin", handleFocusIn, true);
     doc.removeEventListener("submit", handleSubmit, true);
     doc.removeEventListener(SOFT_KEYBOARD_CHANGE_EVENT, handleSoftKeyboardChange);
+    backdrop.removeEventListener("pointerdown", handleBackdropPointerDown);
     win.removeEventListener("resize", positionLayer);
     win.removeEventListener("orientationchange", handleOrientationChange);
     win.removeEventListener("popstate", close);

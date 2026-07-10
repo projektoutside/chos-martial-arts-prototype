@@ -8,6 +8,17 @@ export interface TestingUpdateNotice {
 
 export const testingUpdateNotices: readonly TestingUpdateNotice[] = [
   {
+    id: "2026-07-10-immersive-mobile-typing",
+    version: "0.1.4",
+    date: "July 10, 2026",
+    title: "A cleaner full-screen phone experience",
+    changes: [
+      "The Android app now uses the full display and hides the status and navigation bars during normal use.",
+      "Typing now opens on a calm, focused background so the logo and login screen do not crowd the text box.",
+      "You can temporarily reveal Android system controls with an edge swipe whenever you need them."
+    ]
+  },
+  {
     id: "2026-07-10-android-keyboard-first-tap",
     version: "0.1.3",
     date: "July 10, 2026",
