@@ -7,6 +7,7 @@ import App from "./App";
 import { buildOperationsBackupSnapshot, type OperationsBackupInput } from "./operationsBackup";
 import { AppStateProvider, useAppState } from "./state";
 import { supabaseBackendInactiveMessage } from "./supabaseAccounts";
+import { markTestingUpdateSeen } from "./testingUpdateNotice";
 import type { AccountSession, StudentRecord } from "./types";
 import { prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
 import serviceWorkerSource from "../public/cho-service-worker.js?raw";
@@ -2618,6 +2619,12 @@ describe("login landing", () => {
     expect(container.querySelector(".portrait-app-frame .auth-gate")).toBeInTheDocument();
   });
 
+  it("initializes stable portrait geometry for the login shell", () => {
+    renderLoggedOutApp("/");
+
+    expect(document.documentElement.style.getPropertyValue("--app-stable-frame-width")).not.toBe("");
+  });
+
   it("keeps the front login screen free of the parent login section", () => {
     renderLoggedOutApp("/");
 
@@ -2643,7 +2650,7 @@ describe("login landing", () => {
     expect(screen.queryByRole("dialog", { name: "Login failed" })).not.toBeInTheDocument();
   });
 
-  it("signs the prototype manager credential directly into staff mode on Live Chat without post-login popups", async () => {
+  it("shows the current testing update after the prototype manager signs in", async () => {
     const { container } = renderLoggedOutApp("/");
 
     fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "Manager123" } });
@@ -2652,11 +2659,32 @@ describe("login landing", () => {
 
     expect(container.querySelector(".authenticated-app-shell")).toHaveClass("is-login-transitioning");
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: "What's New" });
+    expect(dialog).toHaveClass("testing-update-modal");
+    expect(within(dialog).getByRole("heading", { name: "What's New" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "Testing updates are now easier to follow" })).toBeInTheDocument();
+    const gotItButton = within(dialog).getByRole("button", { name: "Got it" });
+    expect(gotItButton).toBeVisible();
+    expect(gotItButton).toHaveClass("testing-update-action");
+    fireEvent.click(gotItButton);
+    expect(screen.queryByRole("dialog", { name: "What's New" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Profile page header")).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Account type" })).not.toBeInTheDocument();
     expect(screen.queryByText("Signed in to Cho's manager prototype.")).not.toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toMatchObject({ email: "manager123@chos.prototype", remembered: true });
     expect(JSON.parse(window.localStorage.getItem("chos.accountRoles.v1") ?? "[]")).toContainEqual({ email: "manager123@chos.prototype", role: "staff" });
+  });
+
+  it("does not show a testing update the prototype manager already acknowledged", async () => {
+    markTestingUpdateSeen("manager123@chos.prototype");
+    renderLoggedOutApp("/");
+
+    fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "Manager123" } });
+    fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: prototypeManagerLogin.password } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "What's New" })).not.toBeInTheDocument();
   });
 
   it("keeps unknown credentials on the login screen without granting staff access", () => {
@@ -3183,6 +3211,32 @@ describe("app fullscreen behavior", () => {
     window.scrollTo = vi.fn();
     stubMatchMedia();
     stubUnsupportedScreenOrientation();
+  });
+
+  it("does not retry fullscreen or orientation work during text entry", async () => {
+    stubMatchMedia(true);
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    const lock = stubScreenOrientationLock(vi.fn().mockResolvedValue(undefined));
+    Object.defineProperty(document.documentElement, "requestFullscreen", { configurable: true, value: requestFullscreen });
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, value: null });
+
+    renderLoggedOutApp("/");
+    const username = screen.getByPlaceholderText("Username");
+    const touchPointerDown = new Event("pointerdown", { bubbles: true });
+    Object.defineProperty(touchPointerDown, "pointerType", { value: "touch" });
+    fireEvent(username, touchPointerDown);
+    username.focus();
+    await waitFor(() => expect(lock).toHaveBeenCalledWith("portrait-primary"));
+    requestFullscreen.mockClear();
+    lock.mockClear();
+
+    window.dispatchEvent(new Event("resize"));
+    await Promise.resolve();
+
+    expect(document.documentElement.dataset.softKeyboard).toBe("opening");
+    expect(requestFullscreen).not.toHaveBeenCalled();
+    expect(lock).not.toHaveBeenCalled();
   });
 
   it("requests fullscreen on the first app interaction when supported", async () => {
@@ -4272,15 +4326,19 @@ describe("post-login operations app", () => {
     expect(screen.getByLabelText("Live chat room page")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Live Chats" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Live Chat Rooms" })).toBeInTheDocument();
+    const liveChatLayout = screen.getByLabelText("Live chat room page").querySelector(".manager-launcher-main");
+    expect(liveChatLayout).not.toHaveAttribute("data-keyboard-secondary-navigation-layout");
     const chatFrame = screen.getByLabelText("Live chat room frame");
     expect(chatFrame).toHaveClass("manager-launcher-body", "live-chat-shell");
     expect(chatFrame).not.toHaveClass("is-sidebar-collapsed");
     const roster = screen.getByLabelText("Live chat members");
     expect(roster).toHaveClass("manager-launcher-grid", "manager-launcher-sidebar", "live-chat-roster");
+    expect(roster).not.toHaveAttribute("data-keyboard-secondary-navigation");
     const rosterMembers = roster.querySelectorAll(".manager-launcher-item.live-chat-roster-member");
     expect(rosterMembers[0]).toBeInTheDocument();
     const rosterToggle = screen.getByRole("button", { name: "Collapse live chat member list" });
     expect(rosterToggle).toHaveClass("manager-launcher-rail-toggle");
+    expect(rosterToggle).not.toHaveAttribute("data-keyboard-secondary-navigation");
     expect(rosterToggle.querySelector(".manager-launcher-rail-toggle-bar")).toBeInTheDocument();
     expect(rosterToggle).toHaveAttribute("aria-expanded", "true");
     expect(document.getElementById("live-chat-roster-members")).not.toHaveAttribute("hidden");
@@ -7082,9 +7140,13 @@ describe("post-login operations app", () => {
     renderLoggedInApp("/manager");
 
     const launcherBody = screen.getByLabelText("Manager launcher workspace frame");
+    const managerLayout = launcherBody.closest(".manager-launcher-main");
     const launcher = screen.getByLabelText("Manager app launcher");
     const collapseRail = screen.getByRole("button", { name: "Collapse manager app launcher" });
 
+    expect(managerLayout).toHaveAttribute("data-keyboard-secondary-navigation-layout", "true");
+    expect(launcher).toHaveAttribute("data-keyboard-secondary-navigation", "true");
+    expect(collapseRail).toHaveAttribute("data-keyboard-secondary-navigation", "true");
     expect(collapseRail).toHaveAttribute("aria-controls", "manager-launcher-sidebar");
     expect(collapseRail).toHaveAttribute("aria-expanded", "true");
     expect(collapseRail.querySelector(".manager-launcher-rail-toggle-bar")).toBeInTheDocument();

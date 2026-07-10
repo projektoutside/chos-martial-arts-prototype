@@ -1,0 +1,4 @@
+storeFile=chos-upload-key.jks
+storePassword=CHANGE_ME
+keyAlias=chos-upload
+keyPassword=CHANGE_ME

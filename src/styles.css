@@ -67,6 +67,11 @@
   --white: #fffaf0;
   --shadow: 0 18px 45px rgba(0, 0, 0, 0.34);
   --app-header-height: 86px;
+  --cho-safe-area-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --cho-safe-area-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --cho-safe-area-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --cho-safe-area-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --app-keyboard-inset: 0px;
   --motion-fast: 160ms;
   --motion-medium: 320ms;
   --motion-slow: 640ms;
@@ -21205,6 +21210,14 @@ html[data-theme="light"] .modal-card {
     linear-gradient(145deg, rgba(255, 253, 248, 0.98), rgba(242, 236, 226, 0.98));
 }
 
+html[data-theme="light"] .testing-update-modal {
+  border-color: rgba(184, 135, 46, 0.52);
+}
+
+html[data-theme="light"] .testing-update-kicker {
+  color: #76520e;
+}
+
 html[data-theme="light"] .manager-starter-program-dialog label {
   color: #172033;
 }
@@ -22775,6 +22788,14 @@ html[data-custom-colors="true"] .manager-compose-submit {
   background: linear-gradient(135deg, var(--user-visual-button), color-mix(in srgb, var(--user-visual-button) 62%, var(--user-visual-primary)));
 }
 
+html[data-custom-colors="true"] .testing-update-modal {
+  border-color: color-mix(in srgb, var(--user-visual-primary) 72%, var(--user-visual-border));
+}
+
+html[data-custom-colors="true"] .testing-update-kicker {
+  color: var(--user-visual-primary);
+}
+
 html[data-custom-colors="true"] .manager-launcher-item.is-selected,
 html[data-custom-colors="true"] .parent-tool-tabs button.is-active,
 html[data-custom-colors="true"] .parent-child-handoff-actions .parent-child-handoff-primary,
@@ -23568,7 +23589,7 @@ html[data-theme="light"] {
    frame is the guaranteed visual contract across mobile, tablet, and desktop. */
 .portrait-app-shell {
   --portrait-frame-max-width: 520px;
-  --portrait-frame-landscape-width: 56.25dvh;
+  --portrait-frame-landscape-width: var(--app-stable-frame-width, 56.25svh);
   position: fixed;
   inset: 0;
   z-index: 0;
@@ -23579,13 +23600,54 @@ html[data-theme="light"] {
   height: 100svh;
   height: 100dvh;
   min-height: 0;
-  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  padding: var(--cho-safe-area-top) 0 var(--cho-safe-area-bottom);
   overflow: hidden;
   background:
     radial-gradient(ellipse at 18% 18%, rgba(197, 22, 37, 0.18), transparent 34%),
     radial-gradient(ellipse at 82% 78%, rgba(217, 174, 79, 0.14), transparent 32%),
     linear-gradient(90deg, #030405 0%, #08090c 24%, #111014 50%, #08090c 76%, #030405 100%);
   isolation: isolate;
+}
+
+html[data-soft-keyboard="open"] .portrait-app-shell {
+  height: var(--app-visible-viewport-height, 100dvh);
+}
+
+html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation-layout="true"] {
+  --manager-launcher-sidebar-track-width: 0px;
+  --manager-launcher-rail-hit-width: 0px;
+}
+
+html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation="true"],
+html[data-soft-keyboard="open"] .mobile-tabbar,
+html[data-soft-keyboard="open"] .operations-footer {
+  display: none !important;
+}
+
+html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation-layout="true"] .manager-launcher-body {
+  padding-right: 0;
+}
+
+html[data-soft-keyboard="open"] :is(
+  input:not([type="button"]):not([type="checkbox"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="image"]):not([type="radio"]):not([type="range"]):not([type="reset"]):not([type="submit"]),
+  textarea,
+  select,
+  [contenteditable="true"],
+  [contenteditable=""],
+  [role="textbox"]
+) {
+  scroll-margin-block: 12px 24px;
+}
+
+html[data-touch-input="true"] :is(
+  input:not([type="button"]):not([type="checkbox"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="image"]):not([type="radio"]):not([type="range"]):not([type="reset"]):not([type="submit"]),
+  textarea,
+  select,
+  [contenteditable="true"],
+  [contenteditable=""],
+  [role="textbox"]
+) {
+  font-size: max(16px, 1em) !important;
 }
 
 .portrait-app-frame {
@@ -26966,4 +27028,45 @@ html[data-theme="light"] .student-panel-action-row a + a {
   .manager-shell--student-reference #student-profile-messages-panel .manager-home-feed-item:nth-of-type(n+2) {
     display: none;
   }
+}
+
+.testing-update-modal,
+.modal-backdrop .testing-update-modal {
+  width: min(92vw, 390px);
+  padding: 24px;
+  border-color: rgba(220, 176, 75, 0.72);
+  text-align: left;
+}
+
+.testing-update-kicker {
+  margin: 0 0 6px;
+  color: #e7c56c;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.testing-update-modal h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.testing-update-modal h3 {
+  margin: 8px 0 0;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.testing-update-modal ul {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding-left: 20px;
+  line-height: 1.45;
+}
+
+.testing-update-action {
+  width: 100%;
+  margin-top: 18px;
 }
