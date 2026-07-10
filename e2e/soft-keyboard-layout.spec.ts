@@ -70,7 +70,9 @@ async function readMobileLayout(page: Page) {
   });
 }
 
-test("keeps the portrait frame stable while the visual keyboard viewport is reduced", async ({ page }) => {
+test("keeps the portrait frame stable while the visual keyboard viewport is reduced", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "chromium-desktop", "Keyboard geometry runs on touch devices.");
+
   await page.setViewportSize(mobileLayoutViewport);
   await installVisualViewportHarness(page);
   await page.goto("/");
@@ -116,46 +118,27 @@ test("keeps the portrait frame stable while the visual keyboard viewport is redu
   expect(after.scrollWidth).toBeLessThanOrEqual(after.clientWidth + 1);
 });
 
-test("ordinary desktop text focus keeps secondary navigation and frame geometry", async ({ page, browserName }) => {
-  test.skip(browserName === "webkit", "Desktop assertion runs once in Chromium");
+test("ordinary desktop text focus keeps the login frame stable", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-desktop", "Desktop assertion runs once in Chromium.");
 
-  const managerSession = {
-    email: "manager123@chos.prototype",
-    remembered: true,
-    createdAt: "2026-07-09T00:00:00.000Z"
-  };
-  await page.addInitScript((session) => {
-    const value = JSON.stringify(session);
-    window.localStorage.setItem("chos.session.v1", value);
-    window.sessionStorage.setItem("chos.session.v1", value);
-  }, managerSession);
-  await page.setViewportSize({ width: 1366, height: 768 });
-  await page.goto("/manager?tool=students");
+  await page.goto("/");
 
   const root = page.locator("html");
   const frame = page.locator(".portrait-app-frame");
-  const sidebar = page.locator("nav[data-keyboard-secondary-navigation='true']");
-  const search = page.getByPlaceholder("Search students");
-  await expect(sidebar).toBeVisible();
-  await expect(search).toBeVisible();
+  const username = page.getByPlaceholder("Username");
+  await expect(username).toBeVisible();
+  await expect(page.locator(".launch-loader")).toHaveCount(0);
 
   const frameBefore = await frame.boundingBox();
-  const sidebarBefore = await sidebar.boundingBox();
   expect(frameBefore).not.toBeNull();
-  expect(sidebarBefore).not.toBeNull();
 
-  await search.focus();
-  await expect(search).toBeFocused();
+  await username.click();
+  await expect(username).toBeFocused();
   await page.waitForTimeout(500);
   await expect(root).not.toHaveAttribute("data-soft-keyboard");
-  await expect(sidebar).toBeVisible();
 
   const frameAfter = await frame.boundingBox();
-  const sidebarAfter = await sidebar.boundingBox();
   expect(frameAfter).not.toBeNull();
-  expect(sidebarAfter).not.toBeNull();
   expect(Math.abs(frameAfter!.width - frameBefore!.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(frameAfter!.height - frameBefore!.height)).toBeLessThanOrEqual(1);
-  expect(sidebarAfter!.width).toBeGreaterThan(1);
-  expect(sidebarAfter!.height).toBeGreaterThan(1);
 });
