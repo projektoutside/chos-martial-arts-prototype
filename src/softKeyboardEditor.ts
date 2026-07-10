@@ -137,6 +137,22 @@ export type InstallSoftKeyboardEditorOptions = {
   doc?: Document;
 };
 
+function isTouchInputCapable(win: Window) {
+  return win.navigator.maxTouchPoints > 0 || Boolean(win.matchMedia?.("(pointer: coarse)")?.matches);
+}
+
+function resolveKeyboardEditableTarget(target: EventTarget | null): KeyboardEditableElement | null {
+  if (!(target instanceof HTMLElement)) return null;
+  const element = target as HTMLElement;
+  if (isKeyboardEditableTarget(target)) return target;
+
+  const editableAncestor = element.closest("input, textarea, [contenteditable], [role='textbox']");
+  if (isKeyboardEditableTarget(editableAncestor)) return editableAncestor;
+
+  const label = element.closest("label");
+  return isKeyboardEditableTarget(label?.control ?? null) ? label!.control! : null;
+}
+
 const copiedStyleProperties = [
   "font-family", "font-size", "font-weight", "font-style", "line-height", "letter-spacing",
   "color", "background-color", "background-image", "border-top-width", "border-right-width",
@@ -201,6 +217,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   const win = options.win ?? window;
   const doc = options.doc ?? document;
   const root = doc.documentElement;
+  const mobileEditorEnabled = isTouchInputCapable(win);
   const layer = doc.createElement("div");
   const surface = doc.createElement("div");
   const input = doc.createElement("input");
@@ -327,7 +344,12 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     if (!source.dispatchEvent(forwarded)) event.preventDefault();
   };
 
-  const open = (nextSource: KeyboardEditableElement, event: PointerEvent) => {
+  const open = (nextSource: KeyboardEditableElement, event: Event) => {
+    if (source === nextSource && !layer.hidden) {
+      if (event.cancelable) event.preventDefault();
+      editor?.focus({ preventScroll: true });
+      return;
+    }
     if (source && source !== nextSource) close();
     source = nextSource;
     const descriptor = createKeyboardEditorDescriptor(nextSource);
@@ -351,8 +373,26 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   const handlePointerDown = (event: PointerEvent) => {
     if (layer.contains(event.target as Node)) return;
     if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
-    if (!isKeyboardEditableTarget(event.target)) return;
-    open(event.target, event);
+    const target = resolveKeyboardEditableTarget(event.target);
+    if (target) open(target, event);
+  };
+
+  const handleTouchStart = (event: TouchEvent) => {
+    if (layer.contains(event.target as Node)) return;
+    const target = resolveKeyboardEditableTarget(event.target);
+    if (target) open(target, event);
+  };
+
+  const handleClick = (event: MouseEvent) => {
+    if (!mobileEditorEnabled || layer.contains(event.target as Node)) return;
+    const target = resolveKeyboardEditableTarget(event.target);
+    if (target) open(target, event);
+  };
+
+  const handleFocusIn = (event: FocusEvent) => {
+    if (!mobileEditorEnabled || layer.contains(event.target as Node)) return;
+    const target = resolveKeyboardEditableTarget(event.target);
+    if (target) open(target, event);
   };
 
   const forwardCompositionEvent = (event: CompositionEvent) => {
@@ -401,6 +441,9 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   textarea.addEventListener("compositionend", handleCompositionEnd);
   done.addEventListener("click", close);
   doc.addEventListener("pointerdown", handlePointerDown, true);
+  doc.addEventListener("touchstart", handleTouchStart, { capture: true, passive: false });
+  doc.addEventListener("click", handleClick, true);
+  doc.addEventListener("focusin", handleFocusIn, true);
   doc.addEventListener("submit", handleSubmit, true);
   win.addEventListener("resize", positionLayer);
   win.addEventListener("orientationchange", handleOrientationChange);
@@ -413,6 +456,9 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     close();
     win.clearInterval(healthTimer);
     doc.removeEventListener("pointerdown", handlePointerDown, true);
+    doc.removeEventListener("touchstart", handleTouchStart, true);
+    doc.removeEventListener("click", handleClick, true);
+    doc.removeEventListener("focusin", handleFocusIn, true);
     doc.removeEventListener("submit", handleSubmit, true);
     win.removeEventListener("resize", positionLayer);
     win.removeEventListener("orientationchange", handleOrientationChange);

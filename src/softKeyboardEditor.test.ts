@@ -135,6 +135,77 @@ describe("soft keyboard editor helpers", () => {
     expect(document.documentElement.dataset.softKeyboardEditor).toBe("open");
   });
 
+  it("opens the editor when a phone user taps an input's associated label", () => {
+    const label = document.createElement("label");
+    label.htmlFor = "member-name";
+    label.textContent = "Member name";
+    const source = document.createElement("input");
+    source.id = "member-name";
+    source.value = "Jordan";
+    document.body.append(label, source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    const pointerEvent = dispatchPointerDown(label, "touch");
+    const editor = document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]");
+
+    expect(pointerEvent.defaultPrevented).toBe(true);
+    expect(editor).toBe(document.activeElement);
+    expect(editor?.value).toBe("Jordan");
+    expect(editor).toHaveAttribute("aria-label", "Member name");
+  });
+
+  it("opens the editor when a phone label contains nested presentation content", () => {
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = "Notes";
+    const source = document.createElement("textarea");
+    source.value = "Follow up";
+    label.append(labelText, source);
+    document.body.append(label);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    dispatchPointerDown(labelText, "touch");
+
+    const editor = document.querySelector<HTMLTextAreaElement>("textarea[data-soft-keyboard-editor-control]");
+    expect(editor).toBe(document.activeElement);
+    expect(editor?.value).toBe("Follow up");
+  });
+
+  it("uses the global editor when a text field receives focus on a coarse-pointer phone", () => {
+    const source = document.createElement("input");
+    source.value = "Autofilled name";
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    source.focus();
+
+    const editor = document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]");
+    expect(editor).toBe(document.activeElement);
+    expect(editor?.value).toBe("Autofilled name");
+    expect(source).toHaveAttribute("data-soft-keyboard-source-active", "true");
+  });
+
+  it("does not proxy focus on a non-coarse desktop or for readonly controls", () => {
+    Object.defineProperty(window.navigator, "maxTouchPoints", { configurable: true, value: 0 });
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ matches: false })
+    });
+    const desktopSource = document.createElement("input");
+    const readonlySource = document.createElement("input");
+    readonlySource.readOnly = true;
+    document.body.append(desktopSource, readonlySource);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    desktopSource.focus();
+    expect(desktopSource).toBe(document.activeElement);
+    desktopSource.blur();
+    readonlySource.focus();
+
+    expect(readonlySource).toBe(document.activeElement);
+    expect(document.documentElement.dataset.softKeyboardEditor).toBeUndefined();
+  });
+
   it("centers the mirror in the usable phone area when only the layout viewport resizes", () => {
     const source = document.createElement("input");
     document.body.append(source);

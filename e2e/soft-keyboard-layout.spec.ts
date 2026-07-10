@@ -179,6 +179,40 @@ test("uses a capped multiline mirror without moving the phone app", async ({ pag
   expect(during.scrollY).toBe(before.scrollY);
 });
 
+test("opens the global editor for label taps and focus-only phone activation", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "chromium-desktop", "Mobile activation coverage runs on touch devices.");
+
+  await page.setViewportSize(mobileLayoutViewport);
+  await installVisualViewportHarness(page);
+  await page.goto("/");
+  await expect(page.locator(".launch-loader")).toHaveCount(0);
+  await page.evaluate(() => {
+    const panel = document.querySelector(".login-panel");
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    const labelledInput = document.createElement("input");
+    labelText.textContent = "Label-activated field";
+    labelledInput.value = "Label value";
+    label.append(labelText, labelledInput);
+
+    const focusedInput = document.createElement("input");
+    focusedInput.setAttribute("aria-label", "Focus-activated field");
+    focusedInput.value = "Focus value";
+    panel?.append(label, focusedInput);
+  });
+
+  await page.getByText("Label-activated field").tap();
+  const editor = page.locator("input[data-soft-keyboard-editor-control]:not([hidden])");
+  await expect(editor).toBeFocused();
+  await expect(editor).toHaveValue("Label value");
+  await page.getByRole("button", { name: "Done editing" }).tap();
+
+  await page.getByRole("textbox", { name: "Focus-activated field" }).evaluate((element) => element.focus());
+  await expect(editor).toBeFocused();
+  await expect(editor).toHaveValue("Focus value");
+  await expect(page.locator("html")).toHaveAttribute("data-soft-keyboard-editor", "open");
+});
+
 test("uses the full device height even when safe-area insets are present", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "chromium-desktop", "Full-device phone geometry runs on touch devices.");
 
