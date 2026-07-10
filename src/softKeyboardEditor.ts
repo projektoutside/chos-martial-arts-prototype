@@ -26,6 +26,15 @@ export type KeyboardEditorInputDetails = {
   isComposing?: boolean;
 };
 
+type VirtualKeyboardGeometry = EventTarget & {
+  overlaysContent: boolean;
+  boundingRect?: DOMRect;
+};
+
+type VirtualKeyboardNavigator = Navigator & {
+  virtualKeyboard?: VirtualKeyboardGeometry;
+};
+
 function isNativeTextControl(element: KeyboardEditableElement): element is HTMLInputElement | HTMLTextAreaElement {
   return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement;
 }
@@ -221,10 +230,14 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   const positionLayer = () => {
     const viewport = win.visualViewport;
     const visualViewportBottom = (viewport?.offsetTop ?? 0) + (viewport?.height ?? win.innerHeight);
+    const keyboardRect = (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.boundingRect;
+    const overlayKeyboardTop = keyboardRect && keyboardRect.height > 0 ? keyboardRect.y : Number.POSITIVE_INFINITY;
     // Android WebViews using adjustResize can keep visualViewport at its pre-keyboard
-    // height while window.innerHeight already reflects the keyboard. The smaller edge
-    // is the actual boundary above the keyboard on both Android and iOS.
-    const visibleBottom = Math.min(visualViewportBottom, win.innerHeight);
+    // height while window.innerHeight already reflects the keyboard. Other Android
+    // WebViews overlay the keyboard without resizing either viewport, but expose its
+    // top edge through the Virtual Keyboard API. The smallest edge is the actual
+    // boundary above the keyboard on Android and iOS.
+    const visibleBottom = Math.min(visualViewportBottom, win.innerHeight, overlayKeyboardTop);
     root.style.setProperty("--soft-keyboard-editor-top", `${Math.max(0, Math.round(visibleBottom - 8))}px`);
   };
 
@@ -390,6 +403,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   win.addEventListener("orientationchange", handleOrientationChange);
   win.visualViewport?.addEventListener("resize", positionLayer);
   win.visualViewport?.addEventListener("scroll", positionLayer);
+  (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.addEventListener("geometrychange", positionLayer);
   const healthTimer = win.setInterval(healthCheck, 120);
 
   return () => {
@@ -401,6 +415,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     win.removeEventListener("orientationchange", handleOrientationChange);
     win.visualViewport?.removeEventListener("resize", positionLayer);
     win.visualViewport?.removeEventListener("scroll", positionLayer);
+    (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.removeEventListener("geometrychange", positionLayer);
     layer.remove();
     delete root.dataset.softKeyboardEditor;
     root.style.removeProperty("--soft-keyboard-editor-top");

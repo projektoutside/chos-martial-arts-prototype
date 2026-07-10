@@ -46,7 +46,7 @@ describe("soft keyboard presentation", () => {
     expect(root.get("--app-keyboard-inset")).toBe("0px");
     expect(portraitShell.get("--portrait-frame-landscape-width")).toEqual(expect.stringContaining("--app-stable-frame-width"));
     expect(portraitShell.get("height")).toContain("--app-stable-viewport-height");
-    expect(portraitShell.get("padding")).toBe("var(--cho-safe-area-top) 0 var(--cho-safe-area-bottom)");
+    expect(portraitShell.get("padding")).toBe("0");
   });
 
   it("keeps app chrome unchanged while only the keyboard editor follows the visible viewport", () => {

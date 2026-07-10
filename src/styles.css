@@ -23607,7 +23607,7 @@ html[data-theme="light"] {
   width: 100%;
   height: var(--app-stable-viewport-height, 100dvh);
   min-height: 0;
-  padding: var(--cho-safe-area-top) 0 var(--cho-safe-area-bottom);
+  padding: 0;
   overflow: hidden;
   background:
     radial-gradient(ellipse at 18% 18%, rgba(197, 22, 37, 0.18), transparent 34%),

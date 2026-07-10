@@ -180,6 +180,27 @@ test("uses a capped multiline mirror without moving the phone app", async ({ pag
   expect(during.scrollY).toBe(before.scrollY);
 });
 
+test("uses the full device height even when safe-area insets are present", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "chromium-desktop", "Full-device phone geometry runs on touch devices.");
+
+  await page.setViewportSize(mobileLayoutViewport);
+  await page.goto("/");
+  await expect(page.locator(".launch-loader")).toHaveCount(0);
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--safe-area-inset-top", "24px");
+    document.documentElement.style.setProperty("--safe-area-inset-bottom", "32px");
+  });
+
+  const shell = page.locator(".portrait-app-shell");
+  const frame = page.locator(".portrait-app-frame");
+  const shellBox = await shell.boundingBox();
+  const frameBox = await frame.boundingBox();
+  expect(shellBox).not.toBeNull();
+  expect(frameBox).not.toBeNull();
+  expect(Math.abs(frameBox!.y - shellBox!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(frameBox!.height - shellBox!.height)).toBeLessThanOrEqual(1);
+});
+
 test("ordinary desktop text focus keeps the login frame stable", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-desktop", "Desktop assertion runs once in Chromium.");
 

@@ -154,6 +154,28 @@ describe("soft keyboard editor helpers", () => {
     expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("492px");
   });
 
+  it("keeps the mirror directly above an overlay keyboard that does not resize either viewport", () => {
+    const source = document.createElement("input");
+    document.body.append(source);
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 844 });
+    const viewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(viewport, {
+      height: { configurable: true, value: 844 },
+      offsetTop: { configurable: true, value: 0 }
+    });
+    const virtualKeyboard = new EventTarget() as EventTarget & { overlaysContent: boolean; boundingRect: DOMRect };
+    virtualKeyboard.overlaysContent = false;
+    virtualKeyboard.boundingRect = new DOMRect(0, 500, 390, 344);
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+    Object.defineProperty(window.navigator, "virtualKeyboard", { configurable: true, value: virtualKeyboard });
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    dispatchPointerDown(source, "touch");
+    virtualKeyboard.dispatchEvent(new Event("geometrychange"));
+
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("492px");
+  });
+
   it("synchronizes edits live and closes from the Done action", () => {
     const source = document.createElement("input");
     source.value = "before";
