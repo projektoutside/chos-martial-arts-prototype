@@ -2,6 +2,11 @@ import { AlertTriangle, Eye, EyeOff, Lock, User, X } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { publicAsset } from "./appAssets";
+import {
+  isSoftKeyboardLayoutActive,
+  SOFT_KEYBOARD_CHANGE_EVENT,
+  useSoftKeyboardViewport
+} from "./softKeyboardViewport";
 import { useAppState } from "./state";
 import { isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, signInSupabaseAccount } from "./supabaseAccounts";
 import { initializeAppTheme } from "./theme";
@@ -69,7 +74,7 @@ function useAppPortraitRuntime() {
     let requestInFlight = false;
 
     const requestPortraitRuntime = () => {
-      if (requestInFlight || document.visibilityState === "hidden") return;
+      if (requestInFlight || document.visibilityState === "hidden" || isSoftKeyboardLayoutActive()) return;
       requestInFlight = true;
       requestDocumentFullscreen()
         .then(() => requestPortraitOrientationLock())
@@ -168,6 +173,7 @@ function App() {
 }
 
 function PortraitAppShell({ children }: { children: ReactNode }) {
+  useSoftKeyboardViewport();
   return (
     <div className="portrait-app-shell" data-testid="portrait-app-shell" data-orientation-lock="portrait-primary" aria-label="Cho's Martial Arts portrait app frame">
       <div className="portrait-app-frame">
@@ -343,9 +349,14 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
       landing.style.setProperty("--login-portrait-anchor-y", `${Math.round(anchoredCenterY * 100) / 100}px`);
     };
     const updatePortraitAnchor = () => {
+      if (isSoftKeyboardLayoutActive()) return;
       window.cancelAnimationFrame(animationFrame);
       setPortraitAnchor();
       animationFrame = window.requestAnimationFrame(setPortraitAnchor);
+    };
+    const handleSoftKeyboardChange = (event: Event) => {
+      const state = (event as CustomEvent<{ state: "open" | "closed" }>).detail?.state;
+      if (state === "closed") updatePortraitAnchor();
     };
 
     const resizeObserver = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(updatePortraitAnchor);
@@ -355,6 +366,7 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
     window.addEventListener("resize", updatePortraitAnchor);
     window.addEventListener("orientationchange", updatePortraitAnchor);
     window.visualViewport?.addEventListener("resize", updatePortraitAnchor);
+    document.addEventListener(SOFT_KEYBOARD_CHANGE_EVENT, handleSoftKeyboardChange);
     void document.fonts?.ready.then(updatePortraitAnchor).catch(() => undefined);
     updatePortraitAnchor();
 
@@ -364,6 +376,7 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
       window.removeEventListener("resize", updatePortraitAnchor);
       window.removeEventListener("orientationchange", updatePortraitAnchor);
       window.visualViewport?.removeEventListener("resize", updatePortraitAnchor);
+      document.removeEventListener(SOFT_KEYBOARD_CHANGE_EVENT, handleSoftKeyboardChange);
       landing.style.removeProperty("--login-portrait-anchor-y");
     };
   }, [handoffActive, portraitVisible, visible]);

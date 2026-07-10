@@ -2618,6 +2618,12 @@ describe("login landing", () => {
     expect(container.querySelector(".portrait-app-frame .auth-gate")).toBeInTheDocument();
   });
 
+  it("initializes stable portrait geometry for the login shell", () => {
+    renderLoggedOutApp("/");
+
+    expect(document.documentElement.style.getPropertyValue("--app-stable-frame-width")).not.toBe("");
+  });
+
   it("keeps the front login screen free of the parent login section", () => {
     renderLoggedOutApp("/");
 
@@ -3183,6 +3189,32 @@ describe("app fullscreen behavior", () => {
     window.scrollTo = vi.fn();
     stubMatchMedia();
     stubUnsupportedScreenOrientation();
+  });
+
+  it("does not retry fullscreen or orientation work during text entry", async () => {
+    stubMatchMedia(true);
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    const lock = stubScreenOrientationLock(vi.fn().mockResolvedValue(undefined));
+    Object.defineProperty(document.documentElement, "requestFullscreen", { configurable: true, value: requestFullscreen });
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, value: null });
+
+    renderLoggedOutApp("/");
+    const username = screen.getByPlaceholderText("Username");
+    const touchPointerDown = new Event("pointerdown", { bubbles: true });
+    Object.defineProperty(touchPointerDown, "pointerType", { value: "touch" });
+    fireEvent(username, touchPointerDown);
+    username.focus();
+    await waitFor(() => expect(lock).toHaveBeenCalledWith("portrait-primary"));
+    requestFullscreen.mockClear();
+    lock.mockClear();
+
+    window.dispatchEvent(new Event("resize"));
+    await Promise.resolve();
+
+    expect(document.documentElement.dataset.softKeyboard).toBe("opening");
+    expect(requestFullscreen).not.toHaveBeenCalled();
+    expect(lock).not.toHaveBeenCalled();
   });
 
   it("requests fullscreen on the first app interaction when supported", async () => {
