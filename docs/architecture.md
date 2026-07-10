@@ -16,7 +16,7 @@ When `VITE_SUPABASE_URL`, a publishable key, and a Supabase Auth session are pre
 | Auth | Supabase Auth for configured staging Manager123 login; local prototype fallback only when Supabase env is absent | Harden production Auth settings before real users |
 | Payments | None | Future Stripe test/live resources only if product scope requires payments |
 | Messaging | Browser queue/export contracts for Twilio and Web Push | Private server owns provider credentials, consent, audit logs, and sends |
-| Hosting | GitHub Pages workflow from `xatori-dev/chos-martial-arts-operations-app`, verified at `https://xatori-dev.github.io/chos-martial-arts-operations-app/` | Keep staging healthy; choose a production hosting/domain path only after launch approval |
+| Hosting | Cloudflare Pages Direct Upload from `xatori-dev/chos-martial-arts-operations-app`, verified at `https://chos-martial-arts-operations-app.pages.dev/` | Keep staging healthy; choose a client-facing custom domain only after launch approval |
 | Monitoring | None | Future per-app monitoring project if the app becomes production-backed |
 
 ## Data Boundaries
@@ -31,7 +31,7 @@ When `VITE_SUPABASE_URL`, a publishable key, and a Supabase Auth session are pre
 ## Routing And Deployment
 
 - `src/main.tsx` derives the React Router basename from `import.meta.env.BASE_URL`.
-- `vite.config.ts` sets the production base path from `GITHUB_REPOSITORY`, preserving GitHub Pages project-subpath hosting.
-- `.github/workflows/deploy-pages.yml` runs tests, builds the app, creates `dist/404.html`, and deploys through GitHub Pages.
-- The Xatori target Pages deployment is verified through the `Deploy to GitHub Pages` workflow from `main`.
-- GitHub Pages deep links use the deployed `404.html` SPA fallback. Direct paths can return HTTP 404 while still serving the app shell.
+- `vite.config.ts` uses a root base path for Cloudflare Pages and retains project-subpath support when `GITHUB_REPOSITORY` is supplied for legacy builds.
+- `.github/workflows/deploy-pages.yml` runs tests, validates the approved Cho staging variables, builds the Cloudflare artifact, and uploads it for inspection.
+- Authenticated Wrangler Direct Upload publishes `dist` to the Xatori `chos-martial-arts-operations-app` Pages project.
+- Cloudflare Pages deep links use `dist/_redirects` to serve the SPA shell with HTTP 200.

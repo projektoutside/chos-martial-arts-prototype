@@ -13,21 +13,22 @@ Open `http://127.0.0.1:5173/`.
 
 ```powershell
 npm run test
-npm run build:pages
+npm run build:cloudflare
 npm audit --audit-level=moderate
 git diff --check
 ```
 
-`npm run build:pages` must create `dist/404.html` for GitHub Pages SPA fallback.
+`npm run build:cloudflare` must create `dist/app-version.json` and preserve `dist/_redirects` for the SPA fallback.
 
 ## Current Deployment
 
 - Xatori repository: `xatori-dev/chos-martial-arts-operations-app`
 - Legacy repository: `projektoutside/chos-martial-arts-prototype`
 - Legacy Pages URL: `https://projektoutside.github.io/chos-martial-arts-prototype/`
-- Staging Pages URL: `https://xatori-dev.github.io/chos-martial-arts-operations-app/`
-- Workflow: `.github/workflows/deploy-pages.yml`
-- Status: Xatori GitHub Pages is the real staging pilot target. It is not production hosting.
+- Hosted pilot URL: `https://chos-martial-arts-operations-app.pages.dev/`
+- Cloudflare Pages project: `chos-martial-arts-operations-app` in the Xatori account
+- Workflow: `.github/workflows/deploy-pages.yml` verifies the release build; Cloudflare Pages uses Direct Upload
+- Status: Cloudflare Pages is the active hosted pilot target. GitHub Pages is unavailable while the Xatori repository is private on the current organization plan.
 - Staging build requirements: repo variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and `VITE_ENABLE_DEVELOPER_ACCOUNT=true` must be present before the workflow builds the Pages artifact. `VITE_SUPABASE_URL` must point to Cho's staging Supabase project `zfuwbbepsnmmlpgfkmhz`.
 - Public staging account model: `Manager123` validates real Supabase manager auth when the approved password is supplied from the secret store. `Dev123` is intentionally enabled on public staging for developer diagnostics and validates through Supabase Auth when `VITE_ENABLE_DEVELOPER_ACCOUNT=true`.
 
@@ -36,9 +37,10 @@ git diff --check
 1. Confirm GitHub CLI or connector identity is ready for `xatori-dev`; local `gh` currently authenticates as `projektoutside`.
 2. Confirm local `main` tracks `origin/main`.
 3. Confirm repository variables are set for Cho's staging Supabase project and the selected public `Dev123` staging pilot.
-4. Push to `main`, then wait for `Deploy to GitHub Pages` to complete successfully.
-5. Verify the deployed URL, `app-version.json`, and live bundle before inviting pilot users.
-6. Only after verification, decide whether to archive the legacy repo, redirect users, or leave a documented exception.
+4. Push to `main`, then wait for `Verify main web release` to complete successfully.
+5. Run `npm run build:cloudflare`, then deploy with `npx wrangler pages deploy dist --project-name chos-martial-arts-operations-app --branch main --commit-hash <full-main-sha>`.
+6. Verify the permanent hosted URL, immutable deployment URL, `app-version.json.version`, and live bundle before inviting pilot users.
+7. Only after verification, decide whether to archive the legacy repo, redirect users, or leave a documented exception.
 
 ## Messaging And Notifications
 
@@ -53,12 +55,12 @@ git diff --check
 
 ## Rollback
 
-For the current legacy GitHub Pages deployment:
+For the current Cloudflare Pages hosted pilot:
 
-1. Identify the last successful workflow run on `main`.
+1. Identify the last successful production deployment with `npx wrangler pages deployment list --project-name chos-martial-arts-operations-app`.
 2. Revert or reset through a normal reviewed Git commit.
 3. Push to `main`.
-4. Verify the GitHub Pages workflow and live URL.
+4. Rebuild and Direct Upload the reverted commit, then verify `app-version.json.version` on the permanent URL.
 
 For future Xatori staging/production:
 

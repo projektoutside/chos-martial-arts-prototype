@@ -23,11 +23,11 @@ Last updated: 2026-07-09
 | Legacy hosting | GitHub Pages |
 | Legacy Pages URL | `https://projektoutside.github.io/chos-martial-arts-prototype/` |
 | Legacy workflow | `.github/workflows/deploy-pages.yml` |
-| Target staging hosting | GitHub Pages from the Xatori repo, verified |
-| Target Pages URL | `https://xatori-dev.github.io/chos-martial-arts-operations-app/` |
-| Target deployment workflow | `Deploy to GitHub Pages` deploys `main` to the `github-pages` environment |
+| Target staging hosting | Cloudflare Pages Direct Upload from the Xatori repo, verified |
+| Target Pages URL | `https://chos-martial-arts-operations-app.pages.dev/` |
+| Target deployment workflow | `Verify main web release` validates `main`; authenticated Wrangler publishes the verified `dist` artifact |
 | Staging build variables | GitHub repo variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and `VITE_ENABLE_DEVELOPER_ACCOUNT=true`; workflow preflight requires Cho's staging Supabase ref `zfuwbbepsnmmlpgfkmhz` |
-| SPA fallback behavior | `dist/404.html` is deployed. Deep links such as `/messages` return GitHub Pages HTTP 404 while serving the app shell, which is expected for the static SPA fallback. |
+| SPA fallback behavior | `dist/_redirects` routes deep links such as `/messages` to `/index.html` with HTTP 200 on Cloudflare Pages. |
 | Target Cloudflare Pages name | `chos-martial-arts-operations-app` |
 | DNS/custom domain | Not configured in phase 1 |
 

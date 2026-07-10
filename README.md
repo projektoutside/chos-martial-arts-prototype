@@ -22,15 +22,16 @@ npm run test
 npm run build
 ```
 
-## GitHub Pages
+## Hosted Web Release
 
-This prototype is ready to deploy as a GitHub Pages project site.
+The hosted pilot deploys to the Xatori Cloudflare Pages project `chos-martial-arts-operations-app`.
 
 ```bash
-npm run build:pages
+npm run build:cloudflare
+npx wrangler pages deploy dist --project-name chos-martial-arts-operations-app --branch main
 ```
 
-The Pages workflow in `.github/workflows/deploy-pages.yml` runs tests, builds the Vite app, creates a `404.html` single-page-app fallback, and deploys the `dist` folder through GitHub Pages. The Vite base path is automatically set from `GITHUB_REPOSITORY`, so the app works from a project URL such as `https://your-user.github.io/your-repo/`.
+The permanent hosted URL is `https://chos-martial-arts-operations-app.pages.dev/`. The workflow in `.github/workflows/deploy-pages.yml` verifies tests, the approved Cho staging environment, and the Cloudflare release artifact on every push to `main`. Deployment is a Cloudflare Pages Direct Upload because the private Xatori GitHub repository is not eligible for GitHub Pages on the current organization plan.
 
 ## Prototype And Staging Notes
 
@@ -42,4 +43,4 @@ The Pages workflow in `.github/workflows/deploy-pages.yml` runs tests, builds th
 - Local prototype mode still uses `localStorage` for mock operational data and device-local preferences.
 - `.ics` actions generate local calendar files.
 - Existing loader work was preserved as `legacy-loader.html`; the Vite app owns the root `index.html`.
-- Runtime login and operations assets live in `public/` and `src/assets/` so the app works on GitHub Pages.
+- Runtime login and operations assets live in `public/` and `src/assets/` so the app works on static hosting.
