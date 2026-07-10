@@ -346,6 +346,7 @@ function LoginLandingPage({
   const [loginFailedOpen, setLoginFailedOpen] = useState(false);
   const [loginFailedMessage, setLoginFailedMessage] = useState(defaultLoginFailedMessage);
   const [loginPending, setLoginPending] = useState(false);
+  const [newAccountOpen, setNewAccountOpen] = useState(false);
   const supabaseConfigured = isSupabaseAuthConfigured();
   const loginLandingStyle = { "--login-bg-image": `url("${publicAsset("NewFinalBackground.png")}")` } as CSSProperties;
 
@@ -544,6 +545,9 @@ function LoginLandingPage({
           <button className="login-submit" type="submit" disabled={loginPending}>
             {loginPending ? "Signing In..." : "Sign In"}
           </button>
+          <button className="login-new-account" type="button" onClick={() => setNewAccountOpen(true)}>
+            New Account
+          </button>
         </form>
         <div className="login-divider" aria-hidden="true">
           <span></span>
@@ -562,6 +566,17 @@ function LoginLandingPage({
             <button className="btn btn-red login-failed-action" type="button" onClick={() => setLoginFailedOpen(false)}>
               Try Again
             </button>
+          </div>
+        </ModalShell>
+      )}
+      {newAccountOpen && (
+        <ModalShell label="New account" onClose={() => setNewAccountOpen(false)} panelClass="modal-card login-new-account-modal">
+          <div className="login-new-account-content">
+            <h2>New Account</h2>
+            <p>A Manager, Staff member, or Developer must create and activate your account before you can sign in.</p>
+            <p>They will give you a default username and password for your first sign-in.</p>
+            <p>After your first sign-in, your Manager or Staff member can help you update your account details.</p>
+            <button className="btn btn-red" type="button" onClick={() => setNewAccountOpen(false)}>Return to Sign In</button>
           </div>
         </ModalShell>
       )}

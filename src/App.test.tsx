@@ -2881,8 +2881,18 @@ describe("login landing", () => {
     expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Create New Account" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New Account" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign in as Guest" })).not.toBeInTheDocument();
+  });
+
+  it("explains that a Manager, Staff member, or Developer creates new accounts", () => {
+    renderLoggedOutApp("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "New Account" }));
+
+    const dialog = screen.getByRole("dialog", { name: "New account" });
+    expect(within(dialog).getByText("A Manager, Staff member, or Developer must create and activate your account before you can sign in.")).toBeInTheDocument();
+    expect(within(dialog).getByText("They will give you a default username and password for your first sign-in.")).toBeInTheDocument();
   });
 
   it("signs the gated developer credential into owner mode on Live Chat", async () => {
