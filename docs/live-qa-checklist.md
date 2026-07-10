@@ -101,10 +101,11 @@ Date: 2026-07-10
 - [x] Hosted Supabase RLS blocks student-role access to sensitive order, contact, student-directory, and campaign state while retaining member content and staff access.
 - [x] Hosted migration `20260710121652_restrict_app_state_read_access` applied; post-change security advisor reports no RLS warning.
 - [x] Dependency audit: zero known vulnerabilities at moderate-or-higher severity.
-- [x] Full Vitest suite: 32 files, 590 passed, 52 skipped.
-- [x] Keyboard browser E2E: 7 passed across Chromium phone, WebKit iPhone, and desktop; 5 intentional project-inapplicable skips.
+- [x] Full Vitest suite: 33 files, 614 passed, 52 skipped.
+- [x] Keyboard browser E2E: 14 passed across Chromium phone, WebKit iPhone, and desktop; 10 intentional project-inapplicable skips.
+- [x] Login portrait browser E2E: 6 passed across Chromium phone, WebKit iPhone, and desktop.
 - [x] TypeScript and Cloudflare production build pass.
-- [x] Android release configuration verified: `com.xatoridev.chosmartialarts`, version `0.1.2` (3), target SDK 36.
+- [x] Android release configuration verified: `com.xatoridev.chosmartialarts`, version `0.1.3` (4), target SDK 36.
 
 ### Open findings / follow-up
 

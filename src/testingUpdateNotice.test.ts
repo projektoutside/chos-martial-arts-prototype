@@ -13,11 +13,16 @@ describe("testing update acknowledgements", () => {
 
   it("exposes newest-first versioned update history", () => {
     expect(testingUpdateNotices[0]).toMatchObject({
+      id: "2026-07-10-android-keyboard-first-tap",
+      version: "0.1.3",
+      title: "Phone typing now opens more reliably"
+    });
+    expect(testingUpdateNotices[1]).toMatchObject({
       id: "2026-07-10-stable-mobile-keyboard",
       version: "0.1.2",
       title: "Typing on phones now stays steady"
     });
-    expect(testingUpdateNotices[1]).toMatchObject({ version: "0.1.1" });
+    expect(testingUpdateNotices[2]).toMatchObject({ version: "0.1.1" });
     expect(testingUpdateNotices.length).toBeGreaterThan(0);
 
     for (const notice of testingUpdateNotices) {

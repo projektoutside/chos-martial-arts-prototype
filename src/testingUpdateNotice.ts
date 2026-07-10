@@ -8,6 +8,17 @@ export interface TestingUpdateNotice {
 
 export const testingUpdateNotices: readonly TestingUpdateNotice[] = [
   {
+    id: "2026-07-10-android-keyboard-first-tap",
+    version: "0.1.3",
+    date: "July 10, 2026",
+    title: "Phone typing now opens more reliably",
+    changes: [
+      "Username, password, and other text fields now activate the phone keyboard more reliably on the first tap.",
+      "Long messages can be scrolled inside the typing box while the rest of the app stays still.",
+      "The floating typing box now closes cleanly when the phone keyboard is dismissed."
+    ]
+  },
+  {
     id: "2026-07-10-stable-mobile-keyboard",
     version: "0.1.2",
     date: "July 10, 2026",
