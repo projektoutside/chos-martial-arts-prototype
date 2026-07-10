@@ -265,6 +265,47 @@ describe("soft keyboard editor helpers", () => {
     expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("370px");
   });
 
+  it("does not jump the editor to the top during transient keyboard geometry", () => {
+    const source = document.createElement("input");
+    document.body.append(source);
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 844 });
+    const viewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(viewport, {
+      height: { configurable: true, value: 844 },
+      offsetTop: { configurable: true, value: 0 }
+    });
+    const virtualKeyboard = new EventTarget() as EventTarget & { overlaysContent: boolean; boundingRect: DOMRect };
+    virtualKeyboard.overlaysContent = false;
+    virtualKeyboard.boundingRect = new DOMRect(0, 844, 390, 0);
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+    Object.defineProperty(window.navigator, "virtualKeyboard", { configurable: true, value: virtualKeyboard });
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    dispatchPointerDown(source, "touch");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("422px");
+
+    Object.defineProperty(viewport, "height", { configurable: true, value: 40 });
+    virtualKeyboard.boundingRect = new DOMRect(0, 0, 390, 844);
+    virtualKeyboard.dispatchEvent(new Event("geometrychange"));
+
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("422px");
+  });
+
+  it("closes the hovering editor when the phone keyboard closes", () => {
+    const source = document.createElement("input");
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+
+    document.dispatchEvent(new CustomEvent("cho:soft-keyboard-change", {
+      detail: { state: "closed" }
+    }));
+
+    expect(document.documentElement.dataset.softKeyboardEditor).toBeUndefined();
+    expect(document.querySelector(".soft-keyboard-editor-layer")).toHaveAttribute("hidden");
+    expect(source).not.toHaveAttribute("data-soft-keyboard-source-active");
+  });
+
   it("synchronizes edits live and closes from the Done action", () => {
     const source = document.createElement("input");
     source.value = "before";

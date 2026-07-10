@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { isKeyboardEditableTarget } from "./softKeyboardViewport";
+import { isKeyboardEditableTarget, SOFT_KEYBOARD_CHANGE_EVENT } from "./softKeyboardViewport";
 
 export type KeyboardEditableElement = HTMLInputElement | HTMLTextAreaElement | HTMLElement;
 export type KeyboardEditorControl = HTMLInputElement | HTMLTextAreaElement;
@@ -257,7 +257,14 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     // boundary above the keyboard on Android and iOS. Keep the mirrored editor
     // comfortably centered within that visible area instead of crowding the keyboard.
     const visibleBottom = Math.min(visualViewportBottom, win.innerHeight, overlayKeyboardTop);
-    const visibleMidpoint = visibleTop + Math.max(0, visibleBottom - visibleTop) / 2;
+    const usableHeight = visibleBottom - visibleTop;
+    if (usableHeight < 160) {
+      if (!root.style.getPropertyValue("--soft-keyboard-editor-top")) {
+        root.style.setProperty("--soft-keyboard-editor-top", `${Math.round(win.innerHeight / 2)}px`);
+      }
+      return;
+    }
+    const visibleMidpoint = visibleTop + usableHeight / 2;
     root.style.setProperty("--soft-keyboard-editor-top", `${Math.max(0, Math.round(visibleMidpoint))}px`);
   };
 
@@ -418,6 +425,9 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     if (source.form && event.target === source.form) close();
   };
   const handleOrientationChange = () => close();
+  const handleSoftKeyboardChange = (event: Event) => {
+    if ((event as CustomEvent<{ state?: string }>).detail?.state === "closed") close();
+  };
   const healthCheck = () => {
     if (!source || composing) return;
     if (!source.isConnected || source.matches(":disabled, [aria-disabled='true'], [readonly], [aria-readonly='true']")) {
@@ -445,6 +455,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   doc.addEventListener("click", handleClick, true);
   doc.addEventListener("focusin", handleFocusIn, true);
   doc.addEventListener("submit", handleSubmit, true);
+  doc.addEventListener(SOFT_KEYBOARD_CHANGE_EVENT, handleSoftKeyboardChange);
   win.addEventListener("resize", positionLayer);
   win.addEventListener("orientationchange", handleOrientationChange);
   win.visualViewport?.addEventListener("resize", positionLayer);
@@ -460,6 +471,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     doc.removeEventListener("click", handleClick, true);
     doc.removeEventListener("focusin", handleFocusIn, true);
     doc.removeEventListener("submit", handleSubmit, true);
+    doc.removeEventListener(SOFT_KEYBOARD_CHANGE_EVENT, handleSoftKeyboardChange);
     win.removeEventListener("resize", positionLayer);
     win.removeEventListener("orientationchange", handleOrientationChange);
     win.visualViewport?.removeEventListener("resize", positionLayer);

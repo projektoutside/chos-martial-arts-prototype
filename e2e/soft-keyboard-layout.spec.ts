@@ -213,6 +213,38 @@ test("opens the global editor for label taps and focus-only phone activation", a
   await expect(page.locator("html")).toHaveAttribute("data-soft-keyboard-editor", "open");
 });
 
+test("removes the hovering editor when the phone keyboard is dismissed", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "chromium-desktop", "Keyboard dismissal coverage runs on touch devices.");
+
+  await page.setViewportSize(mobileLayoutViewport);
+  await installVisualViewportHarness(page);
+  await page.goto("/");
+  await expect(page.locator(".launch-loader")).toHaveCount(0);
+
+  const root = page.locator("html");
+  const initialViewportHeight = await page.evaluate(() => window.visualViewport?.height ?? window.innerHeight);
+  await page.locator(".auth-gate input[placeholder='Username']").tap();
+  await setVisualViewportHeight(page, reducedVisualViewportHeight);
+  await expect(root).toHaveAttribute("data-soft-keyboard", "open");
+  await expect(root).toHaveAttribute("data-soft-keyboard-editor", "open");
+
+  await setVisualViewportHeight(page, initialViewportHeight);
+
+  await expect.poll(() => page.evaluate(() => ({
+    visibleHeight: window.visualViewport?.height,
+    stableHeight: document.documentElement.style.getPropertyValue("--app-stable-viewport-height"),
+    keyboardState: document.documentElement.dataset.softKeyboard
+  }))).toEqual({
+    visibleHeight: initialViewportHeight,
+    stableHeight: `${initialViewportHeight}px`,
+    keyboardState: undefined
+  });
+
+  await expect(root).not.toHaveAttribute("data-soft-keyboard");
+  await expect(root).not.toHaveAttribute("data-soft-keyboard-editor");
+  await expect(page.locator(".soft-keyboard-editor-layer:not([hidden])")).toHaveCount(0);
+});
+
 test("uses the full device height even when safe-area insets are present", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "chromium-desktop", "Full-device phone geometry runs on touch devices.");
 
