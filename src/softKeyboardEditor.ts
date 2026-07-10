@@ -71,7 +71,7 @@ export function createKeyboardEditorDescriptor(source: KeyboardEditableElement):
   const input = source instanceof HTMLInputElement ? source : undefined;
   const textarea = source instanceof HTMLTextAreaElement ? source : undefined;
   return {
-    kind: textarea || hasEditableContent(source) ? "textarea" : "input",
+    kind: textarea || hasEditableContent(source) || (input && input.type !== "password") ? "textarea" : "input",
     type: input?.type || "text",
     value: readKeyboardEditorValue(source),
     placeholder: input?.placeholder ?? textarea?.placeholder ?? "",
@@ -227,6 +227,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   let editor: KeyboardEditorControl | null = null;
   let dirty = false;
   let composing = false;
+  let editorMaxHeight = Math.max(120, win.innerHeight - 32);
 
   layer.className = "soft-keyboard-editor-layer";
   layer.hidden = true;
@@ -238,11 +239,20 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   textarea.hidden = true;
   done.type = "button";
   done.className = "soft-keyboard-editor-done";
-  done.setAttribute("aria-label", "Done editing");
-  done.textContent = "Done";
+  done.textContent = "Send";
   surface.append(input, textarea, done);
   layer.append(surface);
   doc.body.append(layer);
+
+  const resizeEditor = () => {
+    if (!(editor instanceof HTMLTextAreaElement)) return;
+    editor.style.height = "auto";
+    const contentHeight = Math.max(48, editor.scrollHeight);
+    const nextHeight = Math.min(contentHeight, editorMaxHeight);
+    editor.style.height = `${Math.round(nextHeight)}px`;
+    editor.style.maxHeight = `${Math.round(editorMaxHeight)}px`;
+    editor.style.overflowY = contentHeight > editorMaxHeight ? "auto" : "hidden";
+  };
 
   const positionLayer = () => {
     const viewport = win.visualViewport;
@@ -264,8 +274,10 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
       }
       return;
     }
+    editorMaxHeight = Math.max(120, usableHeight - 32);
     const visibleMidpoint = visibleTop + usableHeight / 2;
     root.style.setProperty("--soft-keyboard-editor-top", `${Math.max(0, Math.round(visibleMidpoint))}px`);
+    resizeEditor();
   };
 
   const close = () => {
@@ -278,6 +290,8 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     composing = false;
     input.hidden = true;
     textarea.hidden = true;
+    input.removeAttribute("style");
+    textarea.removeAttribute("style");
     layer.hidden = true;
     delete root.dataset.softKeyboardEditor;
     root.style.removeProperty("--soft-keyboard-editor-top");
@@ -291,6 +305,33 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     writeKeyboardEditorValue(source, editor.value, details);
     copyKeyboardEditorSelection(editor, source);
     dirty = true;
+    resizeEditor();
+  };
+
+  const sourceForm = (target: KeyboardEditableElement) => target.closest("form");
+
+  const nextEditableSource = (currentSource: KeyboardEditableElement) => {
+    const scope = sourceForm(currentSource) ?? doc;
+    const candidates = Array.from(scope.querySelectorAll<HTMLElement>(
+      "input, textarea, [contenteditable], [role='textbox']"
+    )).filter((candidate) => !candidate.hasAttribute("data-soft-keyboard-editor-control")
+      && !candidate.hidden
+      && isKeyboardEditableTarget(candidate));
+    const currentIndex = candidates.indexOf(currentSource);
+    return currentIndex >= 0 ? candidates[currentIndex + 1] ?? null : null;
+  };
+
+  const performEditorAction = () => {
+    if (!source) return;
+    const currentSource = source;
+    const form = sourceForm(currentSource);
+    if (form?.classList.contains("live-chat-composer")) {
+      form.requestSubmit();
+      return;
+    }
+    const nextSource = nextEditableSource(currentSource);
+    close();
+    if (nextSource) open(nextSource, new Event("soft-keyboard-editor-advance"));
   };
 
   const forwardKeyboardEvent = (event: KeyboardEvent) => {
@@ -323,15 +364,9 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
       event.preventDefault();
       return;
     }
-    if (event.key !== "Enter" || editor !== input) return;
-    if ((source instanceof HTMLInputElement || source instanceof HTMLTextAreaElement) && source.form) {
-      event.preventDefault();
-      source.form.requestSubmit();
-    } else if (input.enterKeyHint === "done") {
-      event.preventDefault();
-      close();
-      done.focus({ preventScroll: true });
-    }
+    if (event.key !== "Enter" || !(source instanceof HTMLInputElement)) return;
+    event.preventDefault();
+    performEditorAction();
   };
 
   const handleEditorKeyUp = (event: KeyboardEvent) => {
@@ -366,6 +401,13 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     mirrorDescriptor(editor, descriptor);
     mirrorSourceAttributes(nextSource, editor);
     copyKeyboardEditorAppearance(nextSource, editor, win);
+    const form = sourceForm(nextSource);
+    const nextSourceCandidate = form?.classList.contains("live-chat-composer") ? null : nextEditableSource(nextSource);
+    done.setAttribute("aria-label", form?.classList.contains("live-chat-composer")
+      ? "Send message"
+      : nextSourceCandidate
+        ? "Apply and continue to next field"
+        : "Apply text");
     nextSource.setAttribute("data-soft-keyboard-source-active", "true");
     dirty = false;
     composing = false;
@@ -375,6 +417,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     if (event.cancelable) event.preventDefault();
     editor.focus({ preventScroll: true });
     restoreInitialSelection(nextSource, editor);
+    win.requestAnimationFrame(resizeEditor);
   };
 
   const handlePointerDown = (event: PointerEvent) => {
@@ -452,7 +495,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   textarea.addEventListener("compositionupdate", handleCompositionUpdate);
   input.addEventListener("compositionend", handleCompositionEnd);
   textarea.addEventListener("compositionend", handleCompositionEnd);
-  done.addEventListener("click", close);
+  done.addEventListener("click", performEditorAction);
   doc.addEventListener("pointerdown", handlePointerDown, true);
   doc.addEventListener("touchstart", handleTouchStart, { capture: true, passive: false });
   doc.addEventListener("click", handleClick, true);

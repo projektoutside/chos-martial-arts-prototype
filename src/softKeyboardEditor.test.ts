@@ -50,7 +50,7 @@ describe("soft keyboard editor helpers", () => {
     source.setAttribute("aria-label", "Member email");
 
     expect(createKeyboardEditorDescriptor(source)).toEqual({
-      kind: "input",
+      kind: "textarea",
       type: "email",
       value: "member@example.com",
       placeholder: "Email",
@@ -127,7 +127,7 @@ describe("soft keyboard editor helpers", () => {
 
     const pointerEvent = dispatchPointerDown(source, "touch");
 
-    const editor = document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]");
+    const editor = document.querySelector<HTMLTextAreaElement>("textarea[data-soft-keyboard-editor-control]");
     expect(pointerEvent.defaultPrevented).toBe(true);
     expect(editor).toBe(document.activeElement);
     expect(editor?.value).toBe("member");
@@ -146,7 +146,7 @@ describe("soft keyboard editor helpers", () => {
     cleanup = installSoftKeyboardEditor({ win: window, doc: document });
 
     const pointerEvent = dispatchPointerDown(label, "touch");
-    const editor = document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]");
+    const editor = document.querySelector<HTMLTextAreaElement>("textarea[data-soft-keyboard-editor-control]");
 
     expect(pointerEvent.defaultPrevented).toBe(true);
     expect(editor).toBe(document.activeElement);
@@ -179,7 +179,7 @@ describe("soft keyboard editor helpers", () => {
 
     source.focus();
 
-    const editor = document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]");
+    const editor = document.querySelector<HTMLTextAreaElement>("textarea[data-soft-keyboard-editor-control]");
     expect(editor).toBe(document.activeElement);
     expect(editor?.value).toBe("Autofilled name");
     expect(source).toHaveAttribute("data-soft-keyboard-source-active", "true");
@@ -334,7 +334,102 @@ describe("soft keyboard editor helpers", () => {
     expect(source).not.toHaveAttribute("data-soft-keyboard-source-active");
   });
 
-  it("synchronizes edits live and closes from the Done action", () => {
+  it("grows a wrapping editor with long ordinary input text", () => {
+    const source = document.createElement("input");
+    source.value = "A long value that should wrap across several visible lines on a phone.";
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+
+    const editor = document.querySelector<HTMLTextAreaElement>("textarea[data-soft-keyboard-editor-control]:not([hidden])")!;
+    Object.defineProperty(editor, "scrollHeight", { configurable: true, value: 180 });
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "x" }));
+
+    expect(editor).toBe(document.activeElement);
+    expect(editor.style.height).toBe("180px");
+    expect(editor.style.overflowY).toBe("hidden");
+  });
+
+  it("caps a growing editor at the usable device height and then scrolls", () => {
+    const source = document.createElement("textarea");
+    document.body.append(source);
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 500 });
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+
+    const editor = document.querySelector<HTMLTextAreaElement>("textarea[data-soft-keyboard-editor-control]:not([hidden])")!;
+    Object.defineProperty(editor, "scrollHeight", { configurable: true, value: 900 });
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "x" }));
+
+    expect(Number.parseFloat(editor.style.height)).toBeLessThan(500);
+    expect(Number.parseFloat(editor.style.height)).toBeGreaterThan(300);
+    expect(editor.style.overflowY).toBe("auto");
+  });
+
+  it("advances ordinary forms to the next editable field without submitting", () => {
+    const form = document.createElement("form");
+    const username = document.createElement("input");
+    username.autocomplete = "username";
+    const password = document.createElement("input");
+    password.type = "password";
+    let submitCount = 0;
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitCount += 1;
+    });
+    form.append(username, password);
+    document.body.append(form);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(username, "touch");
+
+    document.querySelector<HTMLButtonElement>(".soft-keyboard-editor-done")!.click();
+
+    expect(submitCount).toBe(0);
+    expect(password).toHaveAttribute("data-soft-keyboard-source-active", "true");
+    expect(document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]:not([hidden])")).toBe(document.activeElement);
+  });
+
+  it("commits and closes from the final ordinary field without submitting", () => {
+    const form = document.createElement("form");
+    const source = document.createElement("input");
+    let submitCount = 0;
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitCount += 1;
+    });
+    form.append(source);
+    document.body.append(form);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+
+    document.querySelector<HTMLButtonElement>(".soft-keyboard-editor-done")!.click();
+
+    expect(submitCount).toBe(0);
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard-editor");
+  });
+
+  it("submits only the existing live chat composer from Send", () => {
+    const form = document.createElement("form");
+    form.className = "live-chat-composer";
+    const source = document.createElement("input");
+    let submitCount = 0;
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitCount += 1;
+    });
+    form.append(source);
+    document.body.append(form);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+
+    const action = document.querySelector<HTMLButtonElement>(".soft-keyboard-editor-done")!;
+    expect(action).toHaveTextContent("Send");
+    action.click();
+
+    expect(submitCount).toBe(1);
+  });
+
+  it("synchronizes edits live and closes from the final-field Send action", () => {
     const source = document.createElement("input");
     source.value = "before";
     const observed: string[] = [];
@@ -342,7 +437,7 @@ describe("soft keyboard editor helpers", () => {
     document.body.append(source);
     cleanup = installSoftKeyboardEditor({ win: window, doc: document });
     dispatchPointerDown(source, "touch");
-    const editor = document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]")!;
+    const editor = document.querySelector<HTMLTextAreaElement>("textarea[data-soft-keyboard-editor-control]")!;
 
     editor.value = "updated";
     editor.setSelectionRange(3, 5);
@@ -357,7 +452,7 @@ describe("soft keyboard editor helpers", () => {
     expect(source.selectionEnd).toBe(5);
     expect(observed).toEqual(["updated"]);
 
-    document.querySelector<HTMLButtonElement>("button[aria-label='Done editing']")!.click();
+    document.querySelector<HTMLButtonElement>(".soft-keyboard-editor-done")!.click();
     expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard-editor");
     expect(document.querySelector(".soft-keyboard-editor-layer")).toHaveAttribute("hidden");
   });
@@ -373,7 +468,7 @@ describe("soft keyboard editor helpers", () => {
 
     dispatchPointerDown(textarea, "touch");
     expect(document.activeElement).toBe(document.querySelector("textarea[data-soft-keyboard-editor-control]"));
-    document.querySelector<HTMLButtonElement>("button[aria-label='Done editing']")!.click();
+    document.querySelector<HTMLButtonElement>(".soft-keyboard-editor-done")!.click();
 
     dispatchPointerDown(password, "touch");
     expect(document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]")?.type).toBe("password");
@@ -408,7 +503,7 @@ describe("soft keyboard editor helpers", () => {
     expect(document.querySelector(".soft-keyboard-editor-layer")).toHaveAttribute("hidden");
   });
 
-  it("forwards composition, before-input, and Enter form behavior to the source", () => {
+  it("forwards composition and before-input while Enter applies a final ordinary field", () => {
     const form = document.createElement("form");
     const source = document.createElement("input");
     source.value = "member";
@@ -424,13 +519,13 @@ describe("soft keyboard editor helpers", () => {
     });
     cleanup = installSoftKeyboardEditor({ win: window, doc: document });
     dispatchPointerDown(source, "touch");
-    const editor = document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]")!;
+    const editor = document.querySelector<HTMLTextAreaElement>("textarea[data-soft-keyboard-editor-control]")!;
 
     editor.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "m" }));
     editor.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, data: "m", inputType: "insertCompositionText" }));
     editor.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", code: "Enter" }));
 
-    expect(observed).toEqual(["compositionstart", "beforeinput", "keydown:Enter", "submit"]);
+    expect(observed).toEqual(["compositionstart", "beforeinput", "keydown:Enter"]);
     expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard-editor");
   });
 });

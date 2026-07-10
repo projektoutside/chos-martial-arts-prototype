@@ -49,7 +49,7 @@ async function readMobileLayout(page: Page) {
     const frame = document.querySelector<HTMLElement>(".portrait-app-frame");
     const loginPanel = document.querySelector<HTMLElement>(".login-panel");
     const username = document.querySelector<HTMLInputElement>("input[placeholder='Username']");
-    const editor = document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]:not([hidden])");
+    const editor = document.querySelector<HTMLElement>("[data-soft-keyboard-editor-control]:not([hidden])");
     if (!shell || !frame || !loginPanel || !username) throw new Error("The login portrait geometry is unavailable.");
 
     const shellRect = shell.getBoundingClientRect();
@@ -108,7 +108,7 @@ test("keeps the entire app frozen while a matching editor follows the phone keyb
   expect(before.maxTouchPoints > 0 || before.coarsePointer).toBe(true);
   expect(before.touchInputState).toBe("true");
   await username.tap();
-  const editor = page.locator("input[data-soft-keyboard-editor-control]:not([hidden])");
+  const editor = page.locator("textarea[data-soft-keyboard-editor-control]:not([hidden])");
   await expect(editor).toBeFocused();
   await expect(root).toHaveAttribute("data-soft-keyboard-editor", "open");
   await setVisualViewportHeight(page, reducedVisualViewportHeight);
@@ -132,7 +132,9 @@ test("keeps the entire app frozen while a matching editor follows the phone keyb
 
   await editor.fill("manager.one");
   await expect(username).toHaveValue("manager.one");
-  await page.getByRole("button", { name: "Done editing" }).tap();
+  await page.locator(".soft-keyboard-editor-done").tap();
+  await expect(page.locator("input[data-soft-keyboard-editor-control]:not([hidden])")).toBeFocused();
+  await page.locator(".login-portrait-toggle").tap();
   await expect(root).not.toHaveAttribute("data-soft-keyboard-editor");
 
   await setVisualViewportHeight(page, before.visualViewportHeight);
@@ -171,7 +173,19 @@ test("uses a capped multiline mirror without moving the phone app", async ({ pag
   await expect(page.getByRole("textbox", { name: "Test multiline note" }).first()).toHaveValue("Line one\nLine two\nLine three");
   const editorBox = await editor.boundingBox();
   expect(editorBox).not.toBeNull();
-  expect(editorBox!.height).toBeLessThanOrEqual(160);
+  expect(editorBox!.height).toBeGreaterThanOrEqual(48);
+  expect(editorBox!.height).toBeLessThan(reducedVisualViewportHeight);
+  await editor.fill(Array.from({ length: 60 }, (_, index) => `Long visible line ${index + 1}`).join("\n"));
+  const cappedEditorBox = await editor.boundingBox();
+  const overflowState = await editor.evaluate((element) => ({
+    overflowY: getComputedStyle(element).overflowY,
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight
+  }));
+  expect(cappedEditorBox).not.toBeNull();
+  expect(cappedEditorBox!.height).toBeLessThan(reducedVisualViewportHeight);
+  expect(overflowState.overflowY).toBe("auto");
+  expect(overflowState.scrollHeight).toBeGreaterThan(overflowState.clientHeight);
   const during = await readMobileLayout(page);
   expect(during.shell).toEqual(before.shell);
   expect(during.frame).toEqual(before.frame);
@@ -202,12 +216,10 @@ test("opens the global editor for label taps and focus-only phone activation", a
   });
 
   await page.getByText("Label-activated field").tap();
-  const editor = page.locator("input[data-soft-keyboard-editor-control]:not([hidden])");
+  const editor = page.locator("textarea[data-soft-keyboard-editor-control]:not([hidden])");
   await expect(editor).toBeFocused();
   await expect(editor).toHaveValue("Label value");
-  await page.getByRole("button", { name: "Done editing" }).tap();
-
-  await page.getByRole("textbox", { name: "Focus-activated field" }).evaluate((element) => element.focus());
+  await page.locator(".soft-keyboard-editor-done").tap();
   await expect(editor).toBeFocused();
   await expect(editor).toHaveValue("Focus value");
   await expect(page.locator("html")).toHaveAttribute("data-soft-keyboard-editor", "open");
