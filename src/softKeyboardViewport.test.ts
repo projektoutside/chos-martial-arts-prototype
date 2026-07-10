@@ -242,6 +242,60 @@ describe("soft keyboard viewport", () => {
     expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("344px");
   });
 
+  it("clears a verified session after Android Back restores the viewport without blur", () => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    cleanup = installSoftKeyboardViewportController(window, document);
+
+    dispatchPointerDown(input, "touch");
+    input.focus();
+    viewport.height = 500;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 500 });
+    viewport.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+    expect(document.documentElement.dataset.softKeyboard).toBe("open");
+
+    viewport.height = 844;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 844 });
+    viewport.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+    expect(document.activeElement).toBe(input);
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard");
+
+    viewport.height = 700;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 700 });
+    window.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard");
+    expect(document.documentElement.style.getPropertyValue("--app-stable-viewport-height")).toBe("700px");
+    expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("0px");
+  });
+
+  it("keeps a verified layout-resize keyboard session open across editable focus transfer", () => {
+    const first = document.createElement("input");
+    const second = document.createElement("input");
+    document.body.append(first, second);
+    cleanup = installSoftKeyboardViewportController(window, document);
+
+    dispatchPointerDown(first, "touch");
+    first.focus();
+    viewport.height = 500;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 500 });
+    viewport.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+    expect(document.documentElement.dataset.softKeyboard).toBe("open");
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    second.focus();
+    vi.runAllTimers();
+
+    expect(document.activeElement).toBe(second);
+    expect(document.documentElement.dataset.softKeyboard).toBe("open");
+    expect(document.documentElement.style.getPropertyValue("--app-stable-viewport-height")).toBe("844px");
+    expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("344px");
+  });
+
   it("retains the pre-keyboard baseline while the IME close animation is still compressed", () => {
     const input = document.createElement("input");
     document.body.append(input);
@@ -292,6 +346,38 @@ describe("soft keyboard viewport", () => {
     expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard");
     expect(document.documentElement.style.getPropertyValue("--app-stable-viewport-height")).toBe("844px");
     expect(document.documentElement.style.getPropertyValue("--app-stable-frame-width")).toBe("474.75px");
+    expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("0px");
+  });
+
+  it("unlocks an overshoot hold after settle so a later ordinary resize can set the baseline", () => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    cleanup = installSoftKeyboardViewportController(window, document);
+
+    dispatchPointerDown(input, "touch");
+    input.focus();
+    viewport.height = 500;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 500 });
+    viewport.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+    expect(document.documentElement.dataset.softKeyboard).toBe("open");
+
+    input.blur();
+    viewport.height = 860;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 860 });
+    viewport.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+    expect(document.documentElement.style.getPropertyValue("--app-stable-viewport-height")).toBe("844px");
+    expect(document.documentElement.style.getPropertyValue("--app-stable-frame-width")).toBe("474.75px");
+
+    viewport.height = 700;
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 700 });
+    window.dispatchEvent(new Event("resize"));
+    vi.runAllTimers();
+
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard");
+    expect(document.documentElement.style.getPropertyValue("--app-stable-viewport-height")).toBe("700px");
+    expect(document.documentElement.style.getPropertyValue("--app-stable-frame-width")).toBe("393.75px");
     expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("0px");
   });
 

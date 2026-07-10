@@ -12,6 +12,7 @@ const nonTextInputTypes = new Set([
 type KeyboardFocusModality = "keyboard" | "mouse" | "pen" | "programmatic" | "touch";
 
 const KEYBOARD_FOCUS_MODALITY_WINDOW_MS = 1000;
+const SOFT_KEYBOARD_CLOSE_SETTLE_MS = 420;
 
 export type SoftKeyboardViewportInput = {
   stableHeight: number;
@@ -114,8 +115,12 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   let lastOpen = false;
   let lastFocused: HTMLElement | null = null;
   let awaitingViewportRestore = false;
+  let baselineUpdateRequiresOrdinaryResize = false;
+  let closeSettleVersion = 0;
+  let pendingOrdinaryWindowResize = false;
   let pendingFocusModality: KeyboardFocusModality = "programmatic";
   let focusModalityVersion = 0;
+  let softKeyboardSessionActive = false;
   let softKeyboardFocusTarget: HTMLElement | null = null;
 
   const setTimer = (callback: () => void, delay: number) => {
@@ -128,6 +133,23 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
 
   const dispatchState = (state: "open" | "closed") => {
     doc.dispatchEvent(new CustomEvent(SOFT_KEYBOARD_CHANGE_EVENT, { detail: { state } }));
+  };
+
+  const clearViewportRestoreHold = () => {
+    awaitingViewportRestore = false;
+    baselineUpdateRequiresOrdinaryResize = false;
+    closeSettleVersion += 1;
+  };
+
+  const beginViewportRestoreHold = () => {
+    awaitingViewportRestore = true;
+    baselineUpdateRequiresOrdinaryResize = false;
+    const version = ++closeSettleVersion;
+    setTimer(() => {
+      if (closeSettleVersion !== version || !awaitingViewportRestore) return;
+      awaitingViewportRestore = false;
+      baselineUpdateRequiresOrdinaryResize = true;
+    }, SOFT_KEYBOARD_CLOSE_SETTLE_MS);
   };
 
   const markFocusModality = (modality: KeyboardFocusModality) => {
@@ -147,6 +169,8 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
 
   const measure = () => {
     animationFrame = 0;
+    const isOrdinaryWindowResize = pendingOrdinaryWindowResize;
+    pendingOrdinaryWindowResize = false;
     const focused = isKeyboardEditableTarget(doc.activeElement) ? doc.activeElement : null;
     const viewport = visualMetrics(win);
     const layoutCandidate = Math.max(win.innerHeight, viewport.height + Math.max(0, viewport.offsetTop));
@@ -162,12 +186,19 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
       && (focused === softKeyboardFocusTarget || hasVisualOnlyOcclusion);
     if (!stableHeight) {
       stableHeight = layoutCandidate;
-      awaitingViewportRestore = false;
+      clearViewportRestoreHold();
     } else if (!touchInputCapable) {
       stableHeight = layoutCandidate;
-      awaitingViewportRestore = false;
+      clearViewportRestoreHold();
     } else if (awaitingViewportRestore) {
-      if (Math.abs(layoutCandidate - stableHeight) <= 1) awaitingViewportRestore = false;
+      if (Math.abs(layoutCandidate - stableHeight) <= 1) clearViewportRestoreHold();
+    } else if (baselineUpdateRequiresOrdinaryResize) {
+      if (Math.abs(layoutCandidate - stableHeight) <= 1) {
+        clearViewportRestoreHold();
+      } else if (isOrdinaryWindowResize && !hasSoftKeyboardFocus && !lastOpen) {
+        stableHeight = layoutCandidate;
+        clearViewportRestoreHold();
+      }
     } else if (!hasSoftKeyboardFocus && !lastOpen) {
       stableHeight = layoutCandidate;
     }
@@ -186,7 +217,9 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
     root.style.setProperty("--app-keyboard-inset", `${state.keyboardInset}px`);
 
     if (state.isOpen) {
-      awaitingViewportRestore = false;
+      if (awaitingViewportRestore || baselineUpdateRequiresOrdinaryResize) clearViewportRestoreHold();
+      softKeyboardSessionActive = true;
+      if (focused) softKeyboardFocusTarget = focused;
       root.dataset.softKeyboard = "open";
       if (!lastOpen) dispatchState("open");
       if (!lastOpen || focused !== lastFocused) {
@@ -194,7 +227,12 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
         setTimer(() => focused && revealFocusedElement(focused, win), 180);
       }
     } else {
-      if (lastOpen) awaitingViewportRestore = touchInputCapable && Math.abs(layoutCandidate - stableHeight) > 1;
+      if (lastOpen) {
+        softKeyboardSessionActive = false;
+        softKeyboardFocusTarget = null;
+        if (touchInputCapable && Math.abs(layoutCandidate - stableHeight) > 1) beginViewportRestoreHold();
+        else clearViewportRestoreHold();
+      }
       if (root.dataset.softKeyboard === "open") {
         delete root.dataset.softKeyboard;
         dispatchState("closed");
@@ -210,6 +248,11 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   const scheduleMeasure = () => {
     if (animationFrame) win.cancelAnimationFrame(animationFrame);
     animationFrame = win.requestAnimationFrame(measure);
+  };
+
+  const handleWindowResize = () => {
+    pendingOrdinaryWindowResize = true;
+    scheduleMeasure();
   };
 
   const handlePointerDown = (event: PointerEvent) => {
@@ -232,21 +275,26 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   const handleFocusIn = (event: FocusEvent) => {
     const modality = consumeFocusModality();
     if (!isKeyboardEditableTarget(event.target)) return;
-    const mayOpenSoftKeyboard = touchInputCapable && (modality === "touch" || modality === "pen");
-    softKeyboardFocusTarget = mayOpenSoftKeyboard ? event.target : null;
+    const continuesVerifiedSession = softKeyboardSessionActive;
+    const mayOpenSoftKeyboard = !continuesVerifiedSession && touchInputCapable
+      && (modality === "touch" || modality === "pen");
+    softKeyboardFocusTarget = continuesVerifiedSession || mayOpenSoftKeyboard ? event.target : null;
     if (mayOpenSoftKeyboard) root.dataset.softKeyboard = "opening";
     scheduleMeasure();
     if (mayOpenSoftKeyboard) {
       setTimer(scheduleMeasure, 80);
       setTimer(scheduleMeasure, 240);
       setTimer(() => {
-        if (root.dataset.softKeyboard === "opening") delete root.dataset.softKeyboard;
+        if (root.dataset.softKeyboard === "opening") {
+          delete root.dataset.softKeyboard;
+          if (!softKeyboardSessionActive) softKeyboardFocusTarget = null;
+        }
       }, 420);
     }
   };
 
   const handleFocusOut = () => {
-    softKeyboardFocusTarget = null;
+    if (!softKeyboardSessionActive) softKeyboardFocusTarget = null;
     scheduleMeasure();
     setTimer(scheduleMeasure, 80);
     setTimer(scheduleMeasure, 240);
@@ -255,7 +303,10 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   const handleOrientationChange = () => {
     stableHeight = 0;
     lastOpen = false;
-    awaitingViewportRestore = false;
+    softKeyboardSessionActive = false;
+    softKeyboardFocusTarget = null;
+    pendingOrdinaryWindowResize = false;
+    clearViewportRestoreHold();
     delete root.dataset.softKeyboard;
     setTimer(scheduleMeasure, 220);
     setTimer(scheduleMeasure, 520);
@@ -271,7 +322,7 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   doc.addEventListener("keydown", handleKeyDown);
   doc.addEventListener("focusin", handleFocusIn);
   doc.addEventListener("focusout", handleFocusOut);
-  win.addEventListener("resize", scheduleMeasure);
+  win.addEventListener("resize", handleWindowResize);
   win.addEventListener("orientationchange", handleOrientationChange);
   win.visualViewport?.addEventListener("resize", scheduleMeasure);
   win.visualViewport?.addEventListener("scroll", scheduleMeasure);
@@ -284,7 +335,7 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
     doc.removeEventListener("keydown", handleKeyDown);
     doc.removeEventListener("focusin", handleFocusIn);
     doc.removeEventListener("focusout", handleFocusOut);
-    win.removeEventListener("resize", scheduleMeasure);
+    win.removeEventListener("resize", handleWindowResize);
     win.removeEventListener("orientationchange", handleOrientationChange);
     win.visualViewport?.removeEventListener("resize", scheduleMeasure);
     win.visualViewport?.removeEventListener("scroll", scheduleMeasure);
