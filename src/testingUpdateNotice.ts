@@ -8,6 +8,17 @@ export interface TestingUpdateNotice {
 
 export const testingUpdateNotices: readonly TestingUpdateNotice[] = [
   {
+    id: "2026-07-10-stable-mobile-keyboard",
+    version: "0.1.2",
+    date: "July 10, 2026",
+    title: "Typing on phones now stays steady",
+    changes: [
+      "The app now stays in place when your phone keyboard opens.",
+      "A matching text box appears directly above the keyboard so you can always see what you are typing.",
+      "The new typing experience works throughout the app without moving menus, pages, or other controls."
+    ]
+  },
+  {
     id: "2026-07-10-testing-update-notice",
     version: "0.1.1",
     date: "July 10, 2026",

@@ -135,6 +135,25 @@ describe("soft keyboard editor helpers", () => {
     expect(document.documentElement.dataset.softKeyboardEditor).toBe("open");
   });
 
+  it("keeps the mirror directly above an Android keyboard when only the layout viewport resizes", () => {
+    const source = document.createElement("input");
+    document.body.append(source);
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 844 });
+    const viewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(viewport, {
+      height: { configurable: true, value: 844 },
+      offsetTop: { configurable: true, value: 0 }
+    });
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    dispatchPointerDown(source, "touch");
+    window.innerHeight = 500;
+    window.dispatchEvent(new Event("resize"));
+
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("492px");
+  });
+
   it("synchronizes edits live and closes from the Done action", () => {
     const source = document.createElement("input");
     source.value = "before";

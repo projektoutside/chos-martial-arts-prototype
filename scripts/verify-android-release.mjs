@@ -10,8 +10,8 @@ const expected = {
   appId: "com.xatoridev.chosmartialarts",
   appName: "Cho's Martial Arts",
   webDir: "dist",
-  versionCode: 2,
-  versionName: "0.1.1"
+  versionCode: 3,
+  versionName: "0.1.2"
 };
 
 function read(relativePath) {
