@@ -6338,6 +6338,18 @@ describe("post-login operations app", () => {
     expect(await screen.findByRole("dialog", { name: "Manager profile settings" })).toBeInTheDocument();
   });
 
+  it("lets manager and staff Profile Settings open and close App updates", () => {
+    renderLoggedInApp("/manager?profile=settings");
+
+    const profileSettings = screen.getByRole("dialog", { name: "Manager profile settings" });
+    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+
+    expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
+
+    expect(screen.getByRole("dialog", { name: "Manager profile settings" })).toBeInTheDocument();
+  });
+
   it("toggles light and dark mode from the Home profile card without a toast", () => {
     renderLoggedInApp("/profile");
 
@@ -6416,6 +6428,20 @@ describe("post-login operations app", () => {
     const miniScreen = within(editor).getByLabelText("Live profile mini screen");
     expect(within(miniScreen).getByText("Student Profile")).toBeInTheDocument();
     expect(within(miniScreen).getByText(/Student$/)).toBeInTheDocument();
+  });
+
+  it("lets students open and close App updates without closing Profile Settings", () => {
+    renderBootstrappedSessionApp("/profile", "student");
+
+    const profileOverview = screen.getByLabelText("Student reference profile card");
+    fireEvent.click(within(profileOverview).getByRole("button", { name: "Profile Settings" }));
+    const profileSettings = screen.getByRole("dialog", { name: "Student profile settings" });
+
+    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+    expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
+
+    expect(screen.getByRole("dialog", { name: "Student profile settings" })).toBeInTheDocument();
   });
 
   it("lets students control profile notification categories from Profile Settings", async () => {
@@ -6546,6 +6572,19 @@ describe("post-login operations app", () => {
     fireEvent.click(within(editor).getByRole("button", { name: "Save Colors" }));
 
     expect(JSON.parse(window.localStorage.getItem(visualThemeKey("parent123@chos.prototype")) ?? "{}")).toEqual(expect.objectContaining({ background: "#102030" }));
+  });
+
+  it("lets parents open and close App updates without closing Profile Settings", () => {
+    renderBootstrappedSessionApp("/profile", "guardian");
+
+    fireEvent.click(screen.getByRole("button", { name: "Profile Settings" }));
+    const profileSettings = screen.getByRole("dialog", { name: "Parent profile settings" });
+
+    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+    expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
+
+    expect(screen.getByRole("dialog", { name: "Parent profile settings" })).toBeInTheDocument();
   });
 
   it("lets parents control profile notification categories from Profile Settings", async () => {

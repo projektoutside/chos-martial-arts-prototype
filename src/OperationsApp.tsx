@@ -112,6 +112,7 @@ import {
 } from "./theme";
 import { buildTwilioSupabaseMessagingUrls, isSupabaseTwilioMessagingEndpoint, isTwilioRelayHealthReady, twilioConsentSyncUrlForRelayEndpoint } from "./twilioSupabaseMessaging";
 import { validateTwilioRelayHealthResponseForBrowser, validateTwilioRelayPayloadForServer, type TwilioRelayHealthReadinessChecks } from "./twilioRelayContract";
+import { TestingUpdateHistoryDialog } from "./TestingUpdateHistoryDialog";
 import type { AccountRole, BeltRank, ChildAccount, ClassWeekday, DirectMessage, ManagedAccount, ManagerAccessKey, MerchandiseItem, MessageCampaign, MessageLog, MessageNotificationSettings, ScheduledClass, ScheduledTextCampaign, StudioClass, StudyGuideFolder, StudyGuideMaterial, StudentRecord, StudioEvent, TextAutomationRun, TrainingVideo, TrainingVideoFolder } from "./types";
 import { downloadTextFile, formatMoney, hasSmsOptOutLanguage, isDeveloperAccountEnabled, profileAvatarPathForSession, smsOptOutPreflightText, smsSegmentPreflightText, validateEmail } from "./utils";
 
@@ -5716,6 +5717,7 @@ function StudentProfilePage() {
   }, [currentChildAccount, session?.email, students]);
   const [studentProfile, setStudentProfile] = useState(() => readStudentProfile(session?.email, selectedStudent, currentChildAccount));
   const [studentProfileOpen, setStudentProfileOpen] = useState(false);
+  const [studentUpdateHistoryOpen, setStudentUpdateHistoryOpen] = useState(false);
   const [homeScheduleWeekStartKey, setHomeScheduleWeekStartKey] = useState(() => toDateKey(weekDaysForDate(today)[0]));
   const [selectedHomeScheduleDateKey, setSelectedHomeScheduleDateKey] = useState(() => toDateKey(today));
   const [manualFeedThreads, setManualFeedThreads] = useState(() => studentHomeThreads);
@@ -6590,6 +6592,14 @@ function StudentProfilePage() {
                   permission={studentNotificationPermission}
                   pushSubscriptionReady={studentPushSubscriptionReady}
                 />
+                <button
+                  type="button"
+                  className="profile-editing-tool-button"
+                  aria-haspopup="dialog"
+                  onClick={() => setStudentUpdateHistoryOpen(true)}
+                >
+                  View App Updates
+                </button>
               </div>
               <ProfileColorEditingTool sessionEmail={session?.email} showToast={showToast} preview={studentColorPreview} />
             </section>
@@ -6599,6 +6609,7 @@ function StudentProfilePage() {
               </button>
             </div>
           </form>
+          {studentUpdateHistoryOpen && <TestingUpdateHistoryDialog onClose={() => setStudentUpdateHistoryOpen(false)} />}
         </div>
       )}
     </section>
@@ -7078,6 +7089,7 @@ function ParentProfilePage() {
   const [isParentPushSubscribing, setIsParentPushSubscribing] = useState(false);
   const [isParentPushSubscriptionSyncing, setIsParentPushSubscriptionSyncing] = useState(false);
   const [parentProfileOpen, setParentProfileOpen] = useState(false);
+  const [parentUpdateHistoryOpen, setParentUpdateHistoryOpen] = useState(false);
   const [parentProfile, setParentProfile] = useState(() => readGuardianProfile(session?.email));
   const [tutorialStepId, setTutorialStepId] = useState<ParentTutorialStepId | null>(null);
   const [tutorialFinishedChildId, setTutorialFinishedChildId] = useState("");
@@ -7766,6 +7778,14 @@ function ParentProfilePage() {
                   permission={parentNotificationPermission}
                   pushSubscriptionReady={parentPushSubscriptionReady}
                 />
+                <button
+                  type="button"
+                  className="profile-editing-tool-button"
+                  aria-haspopup="dialog"
+                  onClick={() => setParentUpdateHistoryOpen(true)}
+                >
+                  View App Updates
+                </button>
               </div>
               <ProfileColorEditingTool sessionEmail={session?.email} showToast={showToast} preview={parentColorPreview} />
             </section>
@@ -7775,6 +7795,7 @@ function ParentProfilePage() {
               </button>
             </div>
           </form>
+          {parentUpdateHistoryOpen && <TestingUpdateHistoryDialog onClose={() => setParentUpdateHistoryOpen(false)} />}
         </div>
       )}
 
@@ -9130,6 +9151,7 @@ function ManagerLauncherPage() {
   const writePanelProfile = isManagerOwner ? writeManagerProfile : writeStaffProfile;
   const profileOwnerLabel = isDeveloper ? "Developer" : isManagerOwner ? "Manager" : "Staff";
   const [profileOpen, setProfileOpen] = useState(false);
+  const [updateHistoryOpen, setUpdateHistoryOpen] = useState(false);
   const [profileSettings, setProfileSettings] = useState(() => readPanelProfile(session?.email));
   const [profileNotificationPermission, setProfileNotificationPermission] = useState(() => getBrowserNotificationPermission());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -9462,6 +9484,14 @@ function ManagerLauncherPage() {
                   permission={profileNotificationPermission}
                   pushSubscriptionReady={managerProfilePushSubscriptionReady}
                 />
+                <button
+                  type="button"
+                  className="profile-editing-tool-button"
+                  aria-haspopup="dialog"
+                  onClick={() => setUpdateHistoryOpen(true)}
+                >
+                  View App Updates
+                </button>
               </div>
               <ProfileColorEditingTool sessionEmail={session?.email} showToast={showToast} preview={managerColorPreview} />
             </section>
@@ -9471,6 +9501,7 @@ function ManagerLauncherPage() {
               </button>
             </div>
           </form>
+          {updateHistoryOpen && <TestingUpdateHistoryDialog onClose={() => setUpdateHistoryOpen(false)} />}
         </div>
       )}
     </section>
