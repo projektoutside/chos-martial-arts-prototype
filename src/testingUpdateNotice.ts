@@ -1,12 +1,25 @@
-export const testingUpdateNotice = {
-  id: "2026-07-10-testing-update-notice",
-  date: "July 10, 2026",
-  title: "Testing updates are now easier to follow",
-  changes: [
-    "After you sign in, you will see a short summary when the app has new changes.",
-    "You only need to read each update once."
-  ]
-} as const;
+export interface TestingUpdateNotice {
+  id: string;
+  version: string;
+  date: string;
+  title: string;
+  changes: readonly string[];
+}
+
+export const testingUpdateNotices: readonly TestingUpdateNotice[] = [
+  {
+    id: "2026-07-10-testing-update-notice",
+    version: "0.1.1",
+    date: "July 10, 2026",
+    title: "Testing updates are now easier to follow",
+    changes: [
+      "After you sign in, you will see a short summary when the app has new changes.",
+      "You only need to read each update once."
+    ]
+  }
+];
+
+export const testingUpdateNotice = testingUpdateNotices[0];
 
 function testingUpdateStorageKey(email: string, noticeId: string) {
   return `chos.testingUpdateSeen.v1:${encodeURIComponent(email.trim().toLowerCase())}:${encodeURIComponent(noticeId)}`;
