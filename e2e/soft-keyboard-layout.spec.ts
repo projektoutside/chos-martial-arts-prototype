@@ -150,7 +150,8 @@ test("keeps the entire app frozen while a matching editor follows the phone keyb
   expect(during.scrollX).toBe(before.scrollX);
   expect(during.scrollY).toBe(before.scrollY);
   expect(during.editor).not.toBeNull();
-  expect(Math.abs(((during.editor!.top + during.editor!.bottom) / 2) - (reducedVisualViewportHeight / 2))).toBeLessThanOrEqual(32);
+  expect(reducedVisualViewportHeight - during.editor!.bottom).toBeGreaterThanOrEqual(8);
+  expect(reducedVisualViewportHeight - during.editor!.bottom).toBeLessThanOrEqual(32);
   expect(during.editorStyle).toEqual(during.sourceStyle);
   expect(during.scrollWidth).toBeLessThanOrEqual(during.clientWidth + 1);
   expect(during.inputFontSize).toBeGreaterThanOrEqual(16);

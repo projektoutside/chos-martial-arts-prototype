@@ -8,6 +8,17 @@ export interface TestingUpdateNotice {
 
 export const testingUpdateNotices: readonly TestingUpdateNotice[] = [
   {
+    id: "2026-07-10-locked-intro-keyboard-anchor",
+    version: "0.1.5",
+    date: "July 10, 2026",
+    title: "A smoother start and better phone typing",
+    changes: [
+      "The opening animation now ignores accidental taps until the login controls are completely ready.",
+      "The phone typing box now follows the real keyboard edge instead of floating near the middle of the screen.",
+      "Long typing boxes grow upward while preserving a comfortable gap above the keyboard."
+    ]
+  },
+  {
     id: "2026-07-10-immersive-mobile-typing",
     version: "0.1.4",
     date: "July 10, 2026",

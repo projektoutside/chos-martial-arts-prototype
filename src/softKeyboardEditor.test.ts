@@ -254,7 +254,7 @@ describe("soft keyboard editor helpers", () => {
     window.innerHeight = 500;
     window.dispatchEvent(new Event("resize"));
 
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("230px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("484px");
   });
 
   it("centers the mirror in the usable phone area for an overlay keyboard", () => {
@@ -276,7 +276,7 @@ describe("soft keyboard editor helpers", () => {
     dispatchPointerDown(source, "touch");
     virtualKeyboard.dispatchEvent(new Event("geometrychange"));
 
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("230px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("484px");
   });
 
   it("closes the editor when an Android overlay keyboard reports zero geometry", () => {
@@ -314,7 +314,7 @@ describe("soft keyboard editor helpers", () => {
 
     dispatchPointerDown(source, "touch");
 
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("350px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("604px");
   });
 
   it("does not jump the editor to the top during transient keyboard geometry", () => {
@@ -334,13 +334,13 @@ describe("soft keyboard editor helpers", () => {
     cleanup = installSoftKeyboardEditor({ win: window, doc: document });
 
     dispatchPointerDown(source, "touch");
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("388px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("828px");
 
     Object.defineProperty(viewport, "height", { configurable: true, value: 40 });
     virtualKeyboard.boundingRect = new DOMRect(0, 0, 390, 844);
     virtualKeyboard.dispatchEvent(new Event("geometrychange"));
 
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("388px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("828px");
   });
 
   it("closes the hovering editor when the phone keyboard closes", () => {
@@ -437,7 +437,7 @@ describe("soft keyboard editor helpers", () => {
     dispatchPointerDown(source, "touch");
 
     const editor = document.querySelector<HTMLTextAreaElement>("textarea[data-soft-keyboard-editor-control]:not([hidden])")!;
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("230px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("273px");
     expect(Number.parseFloat(editor.style.maxHeight)).toBeLessThanOrEqual(404);
   });
 

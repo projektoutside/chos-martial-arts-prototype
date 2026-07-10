@@ -287,11 +287,10 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     const surfaceHeight = surface.getBoundingClientRect().height;
     const surfaceHalfHeight = surfaceHeight / 2;
     const safeEdgeGap = 16;
-    const upwardBiasedCenter = visibleTop + usableHeight * 0.46;
     const minimumCenter = visibleTop + surfaceHalfHeight + safeEdgeGap;
     const maximumCenter = visibleBottom - surfaceHalfHeight - safeEdgeGap;
     const editorCenter = minimumCenter <= maximumCenter
-      ? Math.min(Math.max(upwardBiasedCenter, minimumCenter), maximumCenter)
+      ? maximumCenter
       : visibleTop + usableHeight / 2;
     root.style.setProperty("--soft-keyboard-editor-top", `${Math.max(0, Math.round(editorCenter))}px`);
   };

@@ -157,7 +157,7 @@ function App() {
         <PortraitAppShell>
           <div className="auth-gate" data-testid="auth-gate">
             <AuthLaunchLogo animating={!launchComplete} />
-            <LoginLandingPage visible={true} handoffActive={!launchComplete} />
+            <LoginLandingPage visible={true} handoffActive={!launchComplete} interactive={launchComplete} />
             {!launchComplete && <LaunchLogoAnimation onReveal={revealLogin} onComplete={completeLaunch} />}
           </div>
         </PortraitAppShell>
@@ -325,7 +325,15 @@ function LaunchLogoAnimation({ onReveal, onComplete }: { onReveal: () => void; o
   );
 }
 
-function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean; handoffActive?: boolean }) {
+function LoginLandingPage({
+  visible,
+  handoffActive = false,
+  interactive = true
+}: {
+  visible: boolean;
+  handoffActive?: boolean;
+  interactive?: boolean;
+}) {
   const { login, loginCreatedAccount, showToast } = useAppState();
   const navigate = useNavigate();
   const loginLandingRef = useRef<HTMLElement | null>(null);
@@ -481,7 +489,14 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
   };
 
   return (
-    <section ref={loginLandingRef} className={`login-landing ${visible ? "is-visible" : ""} ${handoffActive ? "is-handoff" : ""}`} style={loginLandingStyle} aria-label="Cho's Martial Arts login">
+    <section
+      ref={loginLandingRef}
+      className={`login-landing ${visible ? "is-visible" : ""} ${handoffActive ? "is-handoff" : ""}`}
+      style={loginLandingStyle}
+      aria-label="Cho's Martial Arts login"
+      data-interaction-ready={interactive}
+      inert={!interactive}
+    >
       <div className="login-scrim"></div>
       <button
         className="login-portrait-toggle is-above-launch"

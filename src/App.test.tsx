@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useRef, useState } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -2551,6 +2551,24 @@ describe("login landing", () => {
     vi.unstubAllEnvs();
   });
 
+  it("keeps the complete login surface inert until the launch animation finishes", () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = renderLoggedOutApp("/");
+      const landing = container.querySelector(".login-landing");
+
+      expect(landing).toHaveAttribute("inert");
+      expect(landing).toHaveAttribute("data-interaction-ready", "false");
+
+      act(() => vi.advanceTimersByTime(3050));
+
+      expect(landing).not.toHaveAttribute("inert");
+      expect(landing).toHaveAttribute("data-interaction-ready", "true");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renders the centered portrait blend image on the login screen", () => {
     const { container } = renderLoggedOutApp("/");
 
@@ -2662,8 +2680,8 @@ describe("login landing", () => {
     const dialog = await screen.findByRole("dialog", { name: "What's New" });
     expect(dialog).toHaveClass("testing-update-modal");
     expect(within(dialog).getByRole("heading", { name: "What's New" })).toBeInTheDocument();
-    expect(within(dialog).getByText("Version 0.1.4")).toBeVisible();
-    expect(within(dialog).getByRole("heading", { name: "A cleaner full-screen phone experience" })).toBeInTheDocument();
+    expect(within(dialog).getByText("Version 0.1.5")).toBeVisible();
+    expect(within(dialog).getByRole("heading", { name: "A smoother start and better phone typing" })).toBeInTheDocument();
     const gotItButton = within(dialog).getByRole("button", { name: "Got it" });
     expect(gotItButton).toBeVisible();
     expect(gotItButton).toHaveClass("testing-update-action");

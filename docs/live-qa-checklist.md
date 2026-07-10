@@ -105,7 +105,7 @@ Date: 2026-07-10
 - [x] Keyboard browser E2E: 14 passed across Chromium phone, WebKit iPhone, and desktop; 10 intentional project-inapplicable skips.
 - [x] Login portrait browser E2E: 6 passed across Chromium phone, WebKit iPhone, and desktop.
 - [x] TypeScript and Cloudflare production build pass.
-- [x] Android release configuration verified: `com.xatoridev.chosmartialarts`, version `0.1.4` (5), target SDK 36.
+- [x] Android release configuration verified: `com.xatoridev.chosmartialarts`, version `0.1.5` (6), target SDK 36.
 
 ### Open findings / follow-up
 

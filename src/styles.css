@@ -2384,7 +2384,7 @@ select option { color: #111; }
 .launch-loader {
   position: fixed;
   inset: 0;
-  z-index: 120;
+  z-index: 190;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -2578,6 +2578,10 @@ select option { color: #111; }
 
 .login-landing.is-visible {
   opacity: 1;
+}
+
+.login-landing[data-interaction-ready="false"] {
+  pointer-events: none;
 }
 
 .login-landing.is-handoff .login-panel,
