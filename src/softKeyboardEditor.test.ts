@@ -20,6 +20,9 @@ describe("soft keyboard editor helpers", () => {
 
   beforeEach(() => {
     Object.defineProperty(window.navigator, "maxTouchPoints", { configurable: true, value: 5 });
+    Object.defineProperty(window.navigator, "virtualKeyboard", { configurable: true, value: undefined });
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: undefined });
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 844 });
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
       value: vi.fn().mockReturnValue({ matches: true })
@@ -222,7 +225,7 @@ describe("soft keyboard editor helpers", () => {
     window.innerHeight = 500;
     window.dispatchEvent(new Event("resize"));
 
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("250px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("230px");
   });
 
   it("centers the mirror in the usable phone area for an overlay keyboard", () => {
@@ -244,7 +247,7 @@ describe("soft keyboard editor helpers", () => {
     dispatchPointerDown(source, "touch");
     virtualKeyboard.dispatchEvent(new Event("geometrychange"));
 
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("250px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("230px");
   });
 
   it("centers the mirror within a visual viewport that is offset by browser chrome", () => {
@@ -262,7 +265,7 @@ describe("soft keyboard editor helpers", () => {
 
     dispatchPointerDown(source, "touch");
 
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("370px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("350px");
   });
 
   it("does not jump the editor to the top during transient keyboard geometry", () => {
@@ -282,13 +285,13 @@ describe("soft keyboard editor helpers", () => {
     cleanup = installSoftKeyboardEditor({ win: window, doc: document });
 
     dispatchPointerDown(source, "touch");
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("422px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("388px");
 
     Object.defineProperty(viewport, "height", { configurable: true, value: 40 });
     virtualKeyboard.boundingRect = new DOMRect(0, 0, 390, 844);
     virtualKeyboard.dispatchEvent(new Event("geometrychange"));
 
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("422px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("388px");
   });
 
   it("closes the hovering editor when the phone keyboard closes", () => {
@@ -364,6 +367,29 @@ describe("soft keyboard editor helpers", () => {
     expect(Number.parseFloat(editor.style.height)).toBeLessThan(500);
     expect(Number.parseFloat(editor.style.height)).toBeGreaterThan(300);
     expect(editor.style.overflowY).toBe("auto");
+  });
+
+  it("keeps a growing editor safely above the keyboard edge", () => {
+    const source = document.createElement("textarea");
+    document.body.append(source);
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 844 });
+    const viewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(viewport, {
+      height: { configurable: true, value: 500 },
+      offsetTop: { configurable: true, value: 0 }
+    });
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    const surface = document.querySelector<HTMLElement>(".soft-keyboard-editor-surface")!;
+    vi.spyOn(surface, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, top: 0, left: 0, right: 390, bottom: 422, width: 390, height: 422, toJSON: () => ({})
+    });
+
+    dispatchPointerDown(source, "touch");
+
+    const editor = document.querySelector<HTMLTextAreaElement>("textarea[data-soft-keyboard-editor-control]:not([hidden])")!;
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("230px");
+    expect(Number.parseFloat(editor.style.maxHeight)).toBeLessThanOrEqual(404);
   });
 
   it("advances ordinary forms to the next editable field without submitting", () => {

@@ -184,6 +184,7 @@ test("uses a capped multiline mirror without moving the phone app", async ({ pag
   }));
   expect(cappedEditorBox).not.toBeNull();
   expect(cappedEditorBox!.height).toBeLessThan(reducedVisualViewportHeight);
+  expect(cappedEditorBox!.y + cappedEditorBox!.height).toBeLessThanOrEqual(reducedVisualViewportHeight - 16);
   expect(overflowState.overflowY).toBe("auto");
   expect(overflowState.scrollHeight).toBeGreaterThan(overflowState.clientHeight);
   const during = await readMobileLayout(page);

@@ -274,10 +274,18 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
       }
       return;
     }
-    editorMaxHeight = Math.max(120, usableHeight - 32);
-    const visibleMidpoint = visibleTop + usableHeight / 2;
-    root.style.setProperty("--soft-keyboard-editor-top", `${Math.max(0, Math.round(visibleMidpoint))}px`);
+    editorMaxHeight = Math.max(120, usableHeight - 96);
     resizeEditor();
+    const surfaceHeight = surface.getBoundingClientRect().height;
+    const surfaceHalfHeight = surfaceHeight / 2;
+    const safeEdgeGap = 16;
+    const upwardBiasedCenter = visibleTop + usableHeight * 0.46;
+    const minimumCenter = visibleTop + surfaceHalfHeight + safeEdgeGap;
+    const maximumCenter = visibleBottom - surfaceHalfHeight - safeEdgeGap;
+    const editorCenter = minimumCenter <= maximumCenter
+      ? Math.min(Math.max(upwardBiasedCenter, minimumCenter), maximumCenter)
+      : visibleTop + usableHeight / 2;
+    root.style.setProperty("--soft-keyboard-editor-top", `${Math.max(0, Math.round(editorCenter))}px`);
   };
 
   const close = () => {
@@ -305,7 +313,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     writeKeyboardEditorValue(source, editor.value, details);
     copyKeyboardEditorSelection(editor, source);
     dirty = true;
-    resizeEditor();
+    positionLayer();
   };
 
   const sourceForm = (target: KeyboardEditableElement) => target.closest("form");
