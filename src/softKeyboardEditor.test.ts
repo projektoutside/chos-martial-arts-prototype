@@ -1,15 +1,36 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   copyKeyboardEditorSelection,
   createKeyboardEditorDescriptor,
+  installSoftKeyboardEditor,
   readKeyboardEditorValue,
   writeKeyboardEditorValue
 } from "./softKeyboardEditor";
 
+function dispatchPointerDown(target: EventTarget, pointerType: "mouse" | "pen" | "touch") {
+  const event = new Event("pointerdown", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "pointerType", { value: pointerType });
+  target.dispatchEvent(event);
+  return event;
+}
+
 describe("soft keyboard editor helpers", () => {
+  let cleanup: (() => void) | undefined;
+
+  beforeEach(() => {
+    Object.defineProperty(window.navigator, "maxTouchPoints", { configurable: true, value: 5 });
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ matches: true })
+    });
+  });
+
   afterEach(() => {
+    cleanup?.();
+    cleanup = undefined;
     document.body.replaceChildren();
+    delete document.documentElement.dataset.softKeyboardEditor;
     vi.restoreAllMocks();
   });
 
@@ -94,5 +115,97 @@ describe("soft keyboard editor helpers", () => {
     expect(source.selectionStart).toBe(2);
     expect(source.selectionEnd).toBe(7);
     expect(source.selectionDirection).toBe("backward");
+  });
+
+  it("opens a matching editor synchronously for a touch text target", () => {
+    const source = document.createElement("input");
+    source.className = "input manager-home-search";
+    source.value = "member";
+    source.setAttribute("aria-label", "Search members");
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    const pointerEvent = dispatchPointerDown(source, "touch");
+
+    const editor = document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]");
+    expect(pointerEvent.defaultPrevented).toBe(true);
+    expect(editor).toBe(document.activeElement);
+    expect(editor?.value).toBe("member");
+    expect(editor).toHaveAttribute("aria-label", "Search members");
+    expect(document.documentElement.dataset.softKeyboardEditor).toBe("open");
+  });
+
+  it("synchronizes edits live and closes from the Done action", () => {
+    const source = document.createElement("input");
+    source.value = "before";
+    const observed: string[] = [];
+    source.addEventListener("input", () => observed.push(source.value));
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+    const editor = document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]")!;
+
+    editor.value = "updated";
+    editor.setSelectionRange(3, 5);
+    editor.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      data: "d",
+      inputType: "insertText"
+    }));
+
+    expect(source.value).toBe("updated");
+    expect(source.selectionStart).toBe(3);
+    expect(source.selectionEnd).toBe(5);
+    expect(observed).toEqual(["updated"]);
+
+    document.querySelector<HTMLButtonElement>("button[aria-label='Done editing']")!.click();
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard-editor");
+    expect(document.querySelector(".soft-keyboard-editor-layer")).toHaveAttribute("hidden");
+  });
+
+  it("uses textarea and password editors without changing their semantics", () => {
+    const textarea = document.createElement("textarea");
+    textarea.value = "Multiline note";
+    const password = document.createElement("input");
+    password.type = "password";
+    password.value = "secret";
+    document.body.append(textarea, password);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    dispatchPointerDown(textarea, "touch");
+    expect(document.activeElement).toBe(document.querySelector("textarea[data-soft-keyboard-editor-control]"));
+    document.querySelector<HTMLButtonElement>("button[aria-label='Done editing']")!.click();
+
+    dispatchPointerDown(password, "touch");
+    expect(document.querySelector<HTMLInputElement>("input[data-soft-keyboard-editor-control]")?.type).toBe("password");
+  });
+
+  it("closes on Escape and when the source is removed", () => {
+    vi.useFakeTimers();
+    const source = document.createElement("input");
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    dispatchPointerDown(source, "touch");
+    document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard-editor");
+
+    dispatchPointerDown(source, "touch");
+    source.remove();
+    vi.advanceTimersByTime(120);
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard-editor");
+    vi.useRealTimers();
+  });
+
+  it("keeps ordinary desktop mouse focus native", () => {
+    const source = document.createElement("input");
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    const pointerEvent = dispatchPointerDown(source, "mouse");
+
+    expect(pointerEvent.defaultPrevented).toBe(false);
+    expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard-editor");
+    expect(document.querySelector(".soft-keyboard-editor-layer")).toHaveAttribute("hidden");
   });
 });

@@ -119,3 +119,216 @@ export function copyKeyboardEditorSelection(from: KeyboardEditorControl, to: Key
     // Some text-like keyboard inputs, such as email and number, do not expose selection APIs.
   }
 }
+
+export type InstallSoftKeyboardEditorOptions = {
+  win?: Window;
+  doc?: Document;
+};
+
+const copiedStyleProperties = [
+  "font-family", "font-size", "font-weight", "font-style", "line-height", "letter-spacing",
+  "color", "background-color", "background-image", "border-top-width", "border-right-width",
+  "border-bottom-width", "border-left-width", "border-top-style", "border-right-style",
+  "border-bottom-style", "border-left-style", "border-top-color", "border-right-color",
+  "border-bottom-color", "border-left-color", "border-radius", "box-shadow", "padding-top",
+  "padding-right", "padding-bottom", "padding-left", "text-align", "text-transform", "direction",
+  "caret-color"
+] as const;
+
+function copyKeyboardEditorAppearance(source: KeyboardEditableElement, editor: KeyboardEditorControl, win: Window) {
+  const computed = win.getComputedStyle(source);
+  for (const property of copiedStyleProperties) {
+    const value = computed.getPropertyValue(property);
+    if (value) editor.style.setProperty(property, value);
+  }
+  const sourceRect = source.getBoundingClientRect();
+  if (sourceRect.width > 0) editor.style.setProperty("--soft-keyboard-source-width", `${sourceRect.width}px`);
+  editor.style.setProperty("--soft-keyboard-editor-placeholder-color", computed.color || "currentColor");
+  editor.style.fontSize = `max(16px, ${computed.fontSize || "1em"})`;
+}
+
+function mirrorDescriptor(editor: KeyboardEditorControl, descriptor: KeyboardEditorDescriptor) {
+  editor.value = descriptor.value;
+  editor.placeholder = descriptor.placeholder;
+  if (descriptor.autocomplete) editor.setAttribute("autocomplete", descriptor.autocomplete);
+  else editor.removeAttribute("autocomplete");
+  editor.inputMode = descriptor.inputMode as typeof editor.inputMode;
+  editor.enterKeyHint = descriptor.enterKeyHint as typeof editor.enterKeyHint;
+  if (descriptor.maxLength >= 0) editor.maxLength = descriptor.maxLength;
+  else editor.removeAttribute("maxlength");
+  if (descriptor.minLength >= 0) editor.minLength = descriptor.minLength;
+  else editor.removeAttribute("minlength");
+  editor.required = descriptor.required;
+  editor.spellcheck = descriptor.spellcheck;
+  editor.setAttribute("aria-label", descriptor.ariaLabel);
+  if (editor instanceof HTMLInputElement) editor.type = descriptor.type;
+}
+
+function mirrorSourceAttributes(source: KeyboardEditableElement, editor: KeyboardEditorControl) {
+  for (const name of [
+    "aria-describedby", "aria-errormessage", "aria-invalid", "aria-required", "autocapitalize",
+    "autocorrect", "dirname", "formaction", "list", "max", "min", "pattern", "step"
+  ]) {
+    const value = source.getAttribute(name);
+    if (value === null) editor.removeAttribute(name);
+    else editor.setAttribute(name, value);
+  }
+}
+
+function restoreInitialSelection(source: KeyboardEditableElement, editor: KeyboardEditorControl) {
+  if (!(source instanceof HTMLInputElement || source instanceof HTMLTextAreaElement)) return;
+  if (source.selectionStart === null || source.selectionEnd === null) return;
+  try {
+    editor.setSelectionRange(source.selectionStart, source.selectionEnd, source.selectionDirection ?? undefined);
+  } catch {
+    editor.setSelectionRange(editor.value.length, editor.value.length);
+  }
+}
+
+export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOptions = {}) {
+  const win = options.win ?? window;
+  const doc = options.doc ?? document;
+  const root = doc.documentElement;
+  const layer = doc.createElement("div");
+  const surface = doc.createElement("div");
+  const input = doc.createElement("input");
+  const textarea = doc.createElement("textarea");
+  const done = doc.createElement("button");
+  let source: KeyboardEditableElement | null = null;
+  let editor: KeyboardEditorControl | null = null;
+  let dirty = false;
+  let composing = false;
+
+  layer.className = "soft-keyboard-editor-layer";
+  layer.hidden = true;
+  layer.setAttribute("role", "presentation");
+  surface.className = "soft-keyboard-editor-surface";
+  input.dataset.softKeyboardEditorControl = "true";
+  textarea.dataset.softKeyboardEditorControl = "true";
+  input.hidden = true;
+  textarea.hidden = true;
+  done.type = "button";
+  done.className = "soft-keyboard-editor-done";
+  done.setAttribute("aria-label", "Done editing");
+  done.textContent = "Done";
+  surface.append(input, textarea, done);
+  layer.append(surface);
+  doc.body.append(layer);
+
+  const positionLayer = () => {
+    const viewport = win.visualViewport;
+    const visibleBottom = (viewport?.offsetTop ?? 0) + (viewport?.height ?? win.innerHeight);
+    root.style.setProperty("--soft-keyboard-editor-top", `${Math.max(0, Math.round(visibleBottom - 8))}px`);
+  };
+
+  const close = () => {
+    if (!source) return;
+    if (dirty && source.isConnected) source.dispatchEvent(new Event("change", { bubbles: true }));
+    source.removeAttribute("data-soft-keyboard-source-active");
+    source = null;
+    editor = null;
+    dirty = false;
+    composing = false;
+    input.hidden = true;
+    textarea.hidden = true;
+    layer.hidden = true;
+    delete root.dataset.softKeyboardEditor;
+    root.style.removeProperty("--soft-keyboard-editor-top");
+  };
+
+  const handleEditorInput = (event: Event) => {
+    if (!source || !editor) return;
+    const details = event instanceof InputEvent
+      ? { data: event.data, inputType: event.inputType, isComposing: event.isComposing }
+      : {};
+    writeKeyboardEditorValue(source, editor.value, details);
+    copyKeyboardEditorSelection(editor, source);
+    dirty = true;
+  };
+
+  const handleEditorKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+      done.focus({ preventScroll: true });
+      return;
+    }
+    if (event.key === "Enter" && editor === input && input.enterKeyHint === "done") {
+      event.preventDefault();
+      close();
+      done.focus({ preventScroll: true });
+    }
+  };
+
+  const open = (nextSource: KeyboardEditableElement, event: PointerEvent) => {
+    if (source && source !== nextSource) close();
+    source = nextSource;
+    const descriptor = createKeyboardEditorDescriptor(nextSource);
+    editor = descriptor.kind === "textarea" ? textarea : input;
+    input.hidden = editor !== input;
+    textarea.hidden = editor !== textarea;
+    mirrorDescriptor(editor, descriptor);
+    mirrorSourceAttributes(nextSource, editor);
+    copyKeyboardEditorAppearance(nextSource, editor, win);
+    nextSource.setAttribute("data-soft-keyboard-source-active", "true");
+    dirty = false;
+    composing = false;
+    layer.hidden = false;
+    root.dataset.softKeyboardEditor = "open";
+    positionLayer();
+    if (event.cancelable) event.preventDefault();
+    editor.focus({ preventScroll: true });
+    restoreInitialSelection(nextSource, editor);
+  };
+
+  const handlePointerDown = (event: PointerEvent) => {
+    if (layer.contains(event.target as Node)) return;
+    if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+    if (!isKeyboardEditableTarget(event.target)) return;
+    open(event.target, event);
+  };
+
+  const handleCompositionStart = () => { composing = true; };
+  const handleCompositionEnd = () => { composing = false; };
+  const handleSubmit = (event: Event) => {
+    if (!(source instanceof HTMLInputElement || source instanceof HTMLTextAreaElement)) return;
+    if (source.form && event.target === source.form) close();
+  };
+  const handleOrientationChange = () => close();
+  const healthCheck = () => {
+    if (!source || composing) return;
+    if (!source.isConnected || source.matches(":disabled, [aria-disabled='true'], [readonly], [aria-readonly='true']")) {
+      close();
+    }
+  };
+
+  input.addEventListener("input", handleEditorInput);
+  textarea.addEventListener("input", handleEditorInput);
+  input.addEventListener("keydown", handleEditorKeyDown);
+  textarea.addEventListener("keydown", handleEditorKeyDown);
+  input.addEventListener("compositionstart", handleCompositionStart);
+  textarea.addEventListener("compositionstart", handleCompositionStart);
+  input.addEventListener("compositionend", handleCompositionEnd);
+  textarea.addEventListener("compositionend", handleCompositionEnd);
+  done.addEventListener("click", close);
+  doc.addEventListener("pointerdown", handlePointerDown, true);
+  doc.addEventListener("submit", handleSubmit, true);
+  win.addEventListener("orientationchange", handleOrientationChange);
+  win.visualViewport?.addEventListener("resize", positionLayer);
+  win.visualViewport?.addEventListener("scroll", positionLayer);
+  const healthTimer = win.setInterval(healthCheck, 120);
+
+  return () => {
+    close();
+    win.clearInterval(healthTimer);
+    doc.removeEventListener("pointerdown", handlePointerDown, true);
+    doc.removeEventListener("submit", handleSubmit, true);
+    win.removeEventListener("orientationchange", handleOrientationChange);
+    win.visualViewport?.removeEventListener("resize", positionLayer);
+    win.visualViewport?.removeEventListener("scroll", positionLayer);
+    layer.remove();
+    delete root.dataset.softKeyboardEditor;
+    root.style.removeProperty("--soft-keyboard-editor-top");
+  };
+}
+import { isKeyboardEditableTarget } from "./softKeyboardViewport";
