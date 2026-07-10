@@ -14,7 +14,8 @@ export const testingUpdateNotices: readonly TestingUpdateNotice[] = [
     title: "Testing updates are now easier to follow",
     changes: [
       "After you sign in, you will see a short summary when the app has new changes.",
-      "You only need to read each update once."
+      "You only need to read each update once.",
+      "Profile Settings now has a View App Updates button so you can reopen this update list later."
     ]
   }
 ];
