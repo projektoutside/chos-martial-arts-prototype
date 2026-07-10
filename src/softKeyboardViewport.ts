@@ -37,10 +37,11 @@ function isTouchInputCapable(win: Window) {
 
 export function isKeyboardEditableTarget(target: EventTarget | null): target is HTMLElement {
   if (!isHTMLElement(target)) return false;
-  if (target.matches(":disabled, [aria-disabled='true']")) return false;
-  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
-  if (target instanceof HTMLInputElement) return !nonTextInputTypes.has(target.type.toLowerCase());
-  return target.isContentEditable || target.getAttribute("role") === "textbox";
+  if (target.matches(":disabled, [aria-disabled='true'], [aria-readonly='true']")) return false;
+  if (target instanceof HTMLTextAreaElement) return !target.readOnly;
+  if (target instanceof HTMLInputElement) return !target.readOnly && !nonTextInputTypes.has(target.type.toLowerCase());
+  const contentEditable = target.getAttribute("contenteditable");
+  return target.isContentEditable || target.contentEditable?.toLowerCase() === "true" || contentEditable === "" || contentEditable?.toLowerCase() === "true" || target.getAttribute("role") === "textbox";
 }
 
 export function classifySoftKeyboardViewport(input: SoftKeyboardViewportInput): SoftKeyboardViewportState {

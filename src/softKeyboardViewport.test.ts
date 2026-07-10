@@ -69,15 +69,24 @@ describe("soft keyboard viewport", () => {
 
   it("classifies only controls that can open a text keyboard", () => {
     const text = document.createElement("input");
+    const readonly = document.createElement("input");
+    readonly.readOnly = true;
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     const textarea = document.createElement("textarea");
+    const select = document.createElement("select");
     const textbox = document.createElement("div");
     textbox.setAttribute("role", "textbox");
+    const ariaReadonlyTextbox = document.createElement("div");
+    ariaReadonlyTextbox.setAttribute("role", "textbox");
+    ariaReadonlyTextbox.setAttribute("aria-readonly", "true");
 
     expect(isKeyboardEditableTarget(text)).toBe(true);
     expect(isKeyboardEditableTarget(textarea)).toBe(true);
     expect(isKeyboardEditableTarget(textbox)).toBe(true);
+    expect(isKeyboardEditableTarget(select)).toBe(false);
+    expect(isKeyboardEditableTarget(readonly)).toBe(false);
+    expect(isKeyboardEditableTarget(ariaReadonlyTextbox)).toBe(false);
     expect(isKeyboardEditableTarget(checkbox)).toBe(false);
   });
 
