@@ -7117,6 +7117,8 @@ describe("post-login operations app", () => {
     const launcher = screen.getByLabelText("Manager app launcher");
     const collapseRail = screen.getByRole("button", { name: "Collapse manager app launcher" });
 
+    expect(launcher).toHaveAttribute("data-keyboard-secondary-navigation", "true");
+    expect(collapseRail).toHaveAttribute("data-keyboard-secondary-navigation", "true");
     expect(collapseRail).toHaveAttribute("aria-controls", "manager-launcher-sidebar");
     expect(collapseRail).toHaveAttribute("aria-expanded", "true");
     expect(collapseRail.querySelector(".manager-launcher-rail-toggle-bar")).toBeInTheDocument();

@@ -9332,6 +9332,7 @@ function ManagerLauncherPage() {
             id="manager-launcher-sidebar"
             aria-label={launcherAriaLabel}
             data-orientation="vertical"
+            data-keyboard-secondary-navigation="true"
             hidden={isSidebarCollapsed}
           >
             {launcherItems.map((item) => {
@@ -9354,6 +9355,7 @@ function ManagerLauncherPage() {
           <button
             className="manager-launcher-rail-toggle"
             type="button"
+            data-keyboard-secondary-navigation="true"
             aria-label={sidebarToggleLabel}
             aria-controls="manager-launcher-sidebar"
             aria-expanded={!isSidebarCollapsed}
