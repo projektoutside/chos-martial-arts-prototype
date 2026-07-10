@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import { assertMainActivitySoftInputMode } from "./android-manifest-contract.mjs";
+
 const root = process.cwd();
 const expected = {
   appId: "com.xatoridev.chosmartialarts",
@@ -57,11 +59,7 @@ assert.ok(minSdk >= 24, `minSdkVersion must be at least 24, received ${minSdk}`)
 assert.ok(targetSdk >= 35, `targetSdkVersion must be at least 35, received ${targetSdk}`);
 
 const manifest = read("android/app/src/main/AndroidManifest.xml");
-assert.match(
-  manifest,
-  /android:windowSoftInputMode=["']adjustResize["']/,
-  "Android must resize the visible WebView for the software keyboard"
-);
+assertMainActivitySoftInputMode(manifest);
 assert.match(manifest, /android\.permission\.INTERNET/, "Android app must be allowed to reach Supabase staging");
 
 const gitignore = read(".gitignore");
