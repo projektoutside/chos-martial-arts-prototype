@@ -138,6 +138,35 @@ describe("soft keyboard editor helpers", () => {
     expect(document.documentElement.dataset.softKeyboardEditor).toBe("open");
   });
 
+  it("focuses and requests the phone keyboard before canceling the first trusted tap", () => {
+    const order: string[] = [];
+    const source = document.createElement("input");
+    document.body.append(source);
+    const virtualKeyboard = new EventTarget() as EventTarget & {
+      overlaysContent: boolean;
+      boundingRect: DOMRect;
+      show: () => void;
+    };
+    virtualKeyboard.overlaysContent = true;
+    virtualKeyboard.boundingRect = new DOMRect(0, 844, 390, 0);
+    virtualKeyboard.show = vi.fn(() => order.push("show"));
+    Object.defineProperty(window.navigator, "virtualKeyboard", { configurable: true, value: virtualKeyboard });
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    const editor = document.querySelector<HTMLTextAreaElement>("textarea[data-soft-keyboard-editor-control]")!;
+    vi.spyOn(editor, "focus").mockImplementation(() => order.push("focus"));
+    const event = new Event("pointerdown", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "pointerType", { value: "touch" });
+    vi.spyOn(event, "preventDefault").mockImplementation(() => {
+      order.push("preventDefault");
+      Event.prototype.preventDefault.call(event);
+    });
+
+    source.dispatchEvent(event);
+
+    expect(order).toEqual(["focus", "show", "preventDefault"]);
+    expect(editor).not.toHaveAttribute("hidden");
+  });
+
   it("opens the editor when a phone user taps an input's associated label", () => {
     const label = document.createElement("label");
     label.htmlFor = "member-name";

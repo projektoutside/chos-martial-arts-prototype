@@ -10,6 +10,8 @@ type TestVisualViewport = VisualViewport & {
 type TestVirtualKeyboard = EventTarget & {
   boundingRect: DOMRect;
   overlaysContent: boolean;
+  showCallCount: number;
+  show: () => void;
   setTestGeometry: (top: number, height: number) => void;
 };
 
@@ -52,6 +54,10 @@ async function installVirtualKeyboardHarness(page: Page) {
   await page.addInitScript(() => {
     const keyboard = new EventTarget() as TestVirtualKeyboard;
     keyboard.overlaysContent = false;
+    keyboard.showCallCount = 0;
+    keyboard.show = () => {
+      keyboard.showCallCount += 1;
+    };
     keyboard.boundingRect = new DOMRect(0, window.innerHeight, window.innerWidth, 0);
     keyboard.setTestGeometry = (top, height) => {
       keyboard.boundingRect = new DOMRect(0, top, window.innerWidth, height);
@@ -304,6 +310,10 @@ test("removes the hovering editor when an Android overlay keyboard is dismissed"
   await expect(page.locator(".launch-loader")).toHaveCount(0);
   const root = page.locator("html");
   await page.locator(".auth-gate input[placeholder='Username']").tap();
+  await expect(page.locator("textarea[data-soft-keyboard-editor-control]:not([hidden])")).toBeFocused();
+  await expect.poll(() => page.evaluate(() => (
+    window.navigator as Navigator & { virtualKeyboard: TestVirtualKeyboard }
+  ).virtualKeyboard.showCallCount)).toBeGreaterThan(0);
   await page.evaluate(() => {
     (window.navigator as Navigator & { virtualKeyboard: TestVirtualKeyboard }).virtualKeyboard.setTestGeometry(500, 344);
   });

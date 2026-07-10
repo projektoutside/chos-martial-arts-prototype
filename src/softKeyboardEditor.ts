@@ -29,6 +29,7 @@ export type KeyboardEditorInputDetails = {
 type VirtualKeyboardGeometry = EventTarget & {
   overlaysContent: boolean;
   boundingRect?: DOMRect;
+  show?: () => void;
 };
 
 type VirtualKeyboardNavigator = Navigator & {
@@ -441,10 +442,20 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     if (!source.dispatchEvent(forwarded)) event.preventDefault();
   };
 
+  const activateEditorKeyboard = () => {
+    if (!editor) return;
+    editor.focus({ preventScroll: true });
+    try {
+      (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.show?.();
+    } catch {
+      // Unsupported browsers still open their keyboard from the focused native control.
+    }
+  };
+
   const open = (nextSource: KeyboardEditableElement, event: Event) => {
     if (source === nextSource && !layer.hidden) {
+      activateEditorKeyboard();
       if (event.cancelable) event.preventDefault();
-      editor?.focus({ preventScroll: true });
       return;
     }
     if (source && source !== nextSource) close();
@@ -468,10 +479,10 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     composing = false;
     layer.hidden = false;
     root.dataset.softKeyboardEditor = "open";
+    activateEditorKeyboard();
+    restoreInitialSelection(nextSource, editor);
     positionLayer();
     if (event.cancelable) event.preventDefault();
-    editor.focus({ preventScroll: true });
-    restoreInitialSelection(nextSource, editor);
     win.requestAnimationFrame(resizeEditor);
   };
 
