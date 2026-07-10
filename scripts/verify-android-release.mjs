@@ -10,8 +10,8 @@ const expected = {
   appId: "com.xatoridev.chosmartialarts",
   appName: "Cho's Martial Arts",
   webDir: "dist",
-  versionCode: 1,
-  versionName: "0.1.0"
+  versionCode: 2,
+  versionName: "0.1.1"
 };
 
 function read(relativePath) {
@@ -34,6 +34,7 @@ assert.equal(capacitorConfig.loggingBehavior, "none", "Release builds must not e
 assert.equal(capacitorConfig.server?.androidScheme, "https", "Android must use a secure local origin");
 
 const packageJson = JSON.parse(read("package.json"));
+assert.equal(packageJson.version, expected.versionName, "Package version must match Android versionName");
 assert.match(packageJson.dependencies?.["@capacitor/core"] ?? "", /^\^?8\./, "Capacitor core v8 is required");
 assert.match(packageJson.dependencies?.["@capacitor/android"] ?? "", /^\^?8\./, "Capacitor Android v8 is required");
 assert.match(packageJson.devDependencies?.["@capacitor/cli"] ?? "", /^\^?8\./, "Capacitor CLI v8 is required");
