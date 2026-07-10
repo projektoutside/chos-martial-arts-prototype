@@ -7,6 +7,12 @@ type TestVisualViewport = VisualViewport & {
   setTestHeight: (height: number) => void;
 };
 
+type TestVirtualKeyboard = EventTarget & {
+  boundingRect: DOMRect;
+  overlaysContent: boolean;
+  setTestGeometry: (top: number, height: number) => void;
+};
+
 async function installVisualViewportHarness(page: Page) {
   await page.addInitScript(() => {
     let visibleHeight = window.innerHeight;
@@ -40,6 +46,19 @@ async function setVisualViewportHeight(page: Page, height: number) {
   await page.evaluate((nextHeight) => {
     (window.visualViewport as TestVisualViewport).setTestHeight(nextHeight);
   }, height);
+}
+
+async function installVirtualKeyboardHarness(page: Page) {
+  await page.addInitScript(() => {
+    const keyboard = new EventTarget() as TestVirtualKeyboard;
+    keyboard.overlaysContent = false;
+    keyboard.boundingRect = new DOMRect(0, window.innerHeight, window.innerWidth, 0);
+    keyboard.setTestGeometry = (top, height) => {
+      keyboard.boundingRect = new DOMRect(0, top, window.innerWidth, height);
+      keyboard.dispatchEvent(new Event("geometrychange"));
+    };
+    Object.defineProperty(window.navigator, "virtualKeyboard", { configurable: true, value: keyboard });
+  });
 }
 
 async function readMobileLayout(page: Page) {
@@ -272,6 +291,28 @@ test("removes the hovering editor when the phone keyboard is dismissed", async (
   });
 
   await expect(root).not.toHaveAttribute("data-soft-keyboard");
+  await expect(root).not.toHaveAttribute("data-soft-keyboard-editor");
+  await expect(page.locator(".soft-keyboard-editor-layer:not([hidden])")).toHaveCount(0);
+});
+
+test("removes the hovering editor when an Android overlay keyboard is dismissed", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-phone", "Android overlay geometry runs in mobile Chromium.");
+
+  await page.setViewportSize(mobileLayoutViewport);
+  await installVirtualKeyboardHarness(page);
+  await page.goto("/");
+  await expect(page.locator(".launch-loader")).toHaveCount(0);
+  const root = page.locator("html");
+  await page.locator(".auth-gate input[placeholder='Username']").tap();
+  await page.evaluate(() => {
+    (window.navigator as Navigator & { virtualKeyboard: TestVirtualKeyboard }).virtualKeyboard.setTestGeometry(500, 344);
+  });
+  await expect(root).toHaveAttribute("data-soft-keyboard-editor", "open");
+
+  await page.evaluate(() => {
+    (window.navigator as Navigator & { virtualKeyboard: TestVirtualKeyboard }).virtualKeyboard.setTestGeometry(844, 0);
+  });
+
   await expect(root).not.toHaveAttribute("data-soft-keyboard-editor");
   await expect(page.locator(".soft-keyboard-editor-layer:not([hidden])")).toHaveCount(0);
 });

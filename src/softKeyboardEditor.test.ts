@@ -250,6 +250,26 @@ describe("soft keyboard editor helpers", () => {
     expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("230px");
   });
 
+  it("closes the editor when an Android overlay keyboard reports zero geometry", () => {
+    const source = document.createElement("input");
+    document.body.append(source);
+    const virtualKeyboard = new EventTarget() as EventTarget & { overlaysContent: boolean; boundingRect: DOMRect };
+    virtualKeyboard.overlaysContent = true;
+    virtualKeyboard.boundingRect = new DOMRect(0, 500, 390, 344);
+    Object.defineProperty(window.navigator, "virtualKeyboard", { configurable: true, value: virtualKeyboard });
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    dispatchPointerDown(source, "touch");
+    virtualKeyboard.dispatchEvent(new Event("geometrychange"));
+    expect(document.documentElement.dataset.softKeyboardEditor).toBe("open");
+
+    virtualKeyboard.boundingRect = new DOMRect(0, 844, 390, 0);
+    virtualKeyboard.dispatchEvent(new Event("geometrychange"));
+
+    expect(document.documentElement.dataset.softKeyboardEditor).toBeUndefined();
+    expect(document.querySelector(".soft-keyboard-editor-layer")).toHaveAttribute("hidden");
+  });
+
   it("centers the mirror within a visual viewport that is offset by browser chrome", () => {
     const source = document.createElement("input");
     document.body.append(source);

@@ -230,6 +230,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   let editorMaxHeight = Math.max(120, win.innerHeight - 32);
   let dragStartY: number | null = null;
   let dragStartScrollTop = 0;
+  let overlayKeyboardWasVisible = false;
 
   layer.className = "soft-keyboard-editor-layer";
   layer.hidden = true;
@@ -261,6 +262,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     const visibleTop = viewport?.offsetTop ?? 0;
     const visualViewportBottom = visibleTop + (viewport?.height ?? win.innerHeight);
     const keyboardRect = (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.boundingRect;
+    if (keyboardRect && keyboardRect.height > 0) overlayKeyboardWasVisible = true;
     const overlayKeyboardTop = keyboardRect && keyboardRect.height > 0 ? keyboardRect.y : Number.POSITIVE_INFINITY;
     // Android WebViews using adjustResize can keep visualViewport at its pre-keyboard
     // height while window.innerHeight already reflects the keyboard. Other Android
@@ -299,6 +301,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     dirty = false;
     composing = false;
     dragStartY = null;
+    overlayKeyboardWasVisible = false;
     input.hidden = true;
     textarea.hidden = true;
     input.removeAttribute("style");
@@ -526,6 +529,19 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   const handleSoftKeyboardChange = (event: Event) => {
     if ((event as CustomEvent<{ state?: string }>).detail?.state === "closed") close();
   };
+  const handleVirtualKeyboardGeometryChange = () => {
+    const keyboardRect = (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.boundingRect;
+    if (keyboardRect && keyboardRect.height > 0) {
+      overlayKeyboardWasVisible = true;
+      positionLayer();
+      return;
+    }
+    if (overlayKeyboardWasVisible) {
+      close();
+      return;
+    }
+    positionLayer();
+  };
   const healthCheck = () => {
     if (!source || composing) return;
     if (!source.isConnected || source.matches(":disabled, [aria-disabled='true'], [readonly], [aria-readonly='true']")) {
@@ -569,7 +585,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   win.addEventListener("pagehide", close);
   win.visualViewport?.addEventListener("resize", positionLayer);
   win.visualViewport?.addEventListener("scroll", positionLayer);
-  (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.addEventListener("geometrychange", positionLayer);
+  (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.addEventListener("geometrychange", handleVirtualKeyboardGeometryChange);
   const healthTimer = win.setInterval(healthCheck, 120);
 
   return () => {
@@ -590,7 +606,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     win.removeEventListener("pagehide", close);
     win.visualViewport?.removeEventListener("resize", positionLayer);
     win.visualViewport?.removeEventListener("scroll", positionLayer);
-    (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.removeEventListener("geometrychange", positionLayer);
+    (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.removeEventListener("geometrychange", handleVirtualKeyboardGeometryChange);
     layer.remove();
     delete root.dataset.softKeyboardEditor;
     root.style.removeProperty("--soft-keyboard-editor-top");
