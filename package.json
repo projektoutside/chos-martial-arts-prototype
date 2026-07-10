@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "preview:network": "vite preview --host 0.0.0.0",
     "test": "vitest run",
+    "test:e2e:keyboard": "playwright test e2e/soft-keyboard-layout.spec.ts",
     "verify:android": "node scripts/verify-android-release.mjs"
   },
   "dependencies": {

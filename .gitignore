@@ -7,6 +7,8 @@ coverage/
 /motion-frames/
 /qa-screens/
 /reference-frames/
+/playwright-report/
+/test-results/
 /ImageSegmentationProfilePage/
 /roundhouse-frames/
 /3dmodel/
