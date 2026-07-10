@@ -5,7 +5,7 @@ import { getProduct, studio } from "./data";
 import { parseOperationsBackupSnapshot, type OperationsBackupData } from "./operationsBackup";
 import { getClassReminderCandidates, getLeadCandidates, getMerchandiseTargetStock, getStudentCelebrationEvents, getStudentProfileIssues, hasGuardianSmsConsent, hasStaffSmsConsent, hasStudentSmsConsent, isAttendanceGapFollowUpDue, isBeltTestInviteDue, isLowStockMerchandiseItem, isMilestoneEncouragementDue, isMissedClassFollowUpDue, isNewStudentCheckInDue, isPausedStudentReviewDue, isProfileUpdateRequestDue, isQueuedMessageDeliverable, isStaleOneTimeScheduledClass, isTrialConversionDue } from "./operationsReports";
 import { buildStudentBeltProgress } from "./studentProgress";
-import { clearSupabaseAuthSession, isSupabaseAuthConfigured, readSupabaseAuthSession, supabaseAuthEmailForUsername } from "./supabaseAccounts";
+import { changeSupabaseAccountPassword, clearSupabaseAuthSession, isSupabaseAuthConfigured, readSupabaseAuthSession, supabaseAuthEmailForUsername } from "./supabaseAccounts";
 import { deleteSupabaseAppStateItem, fetchSupabaseAppStateItem, isSupabaseAppStateRemoteBacked, persistSupabaseAppStateItem } from "./supabaseAppStatePersistence";
 import { deleteSupabaseDirectMessages, deleteSupabaseMessageLogs, fetchSupabaseDirectMessages, fetchSupabaseMessageLogs, persistSupabaseDirectMessages, persistSupabaseMessageLogs } from "./supabaseMessagePersistence";
 import { normalizeTwilioInboundSmsWebhookForServer, normalizeTwilioStatusCallbackForServer, type TwilioInboundSmsWebhook } from "./twilioRelayContract";
@@ -241,6 +241,8 @@ type GuardianAccountInput = {
 
 type CreatedAccountLoginResult = ManagedAccount | AccountRecord | ChildAccount;
 
+type PasswordChangeResult = { status: "ok" } | { status: "error"; message: string };
+
 type ManagerAccountAccess = {
   isManagerOwner: boolean;
   isDeveloper: boolean;
@@ -429,6 +431,7 @@ interface AppState {
   createManagedAccount: (account: ManagedAccountInput) => ManagedAccount | undefined;
   createGuardianAccount: (account: GuardianAccountInput) => AccountRecord | undefined;
   updateManagedAccountStatus: (accountId: string, status: ManagedAccount["status"]) => ManagedAccount | undefined;
+  changeCurrentAccountPassword: (password: string, currentPassword: string) => Promise<PasswordChangeResult>;
   setAccountRole: (role: AccountRole) => void;
   addChildAccount: (child: { name: string; age: string; beltSlug: string; username: string; password: string }) => ChildAccount | undefined;
   updateChildAccount: (childId: string, child: { name: string; age: string; beltSlug: string; username: string; password: string }) => ChildAccount | undefined;
@@ -2803,6 +2806,47 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     [saveRoleForEmail, updateManagedAccountsState]
   );
 
+  const changeCurrentAccountPassword = useCallback(
+    async (password: string, currentPassword: string): Promise<PasswordChangeResult> => {
+      const cleanedPassword = password.trim();
+      const cleanedCurrentPassword = currentPassword.trim();
+      if (!session || !cleanedPassword) return { status: "error", message: "Sign in before changing your password." };
+      if (!cleanedCurrentPassword) return { status: "error", message: "Enter your current password." };
+
+      if (isSupabaseAuthConfigured()) {
+        const result = await changeSupabaseAccountPassword(cleanedPassword, cleanedCurrentPassword);
+        return result.status === "ok"
+          ? { status: "ok" }
+          : { status: "error", message: result.status === "not-configured" ? "Password updates are not configured." : result.message };
+      }
+
+      const normalizedIdentity = session.email.trim().toLowerCase();
+      const managedAccount = managedAccountsRef.current.find((account) => account.username.trim().toLowerCase() === normalizedIdentity && account.status !== "inactive");
+      if (managedAccount) {
+        if (managedAccount.password !== cleanedCurrentPassword) return { status: "error", message: "Your current password is not correct." };
+        updateManagedAccountsState((current) => current.map((account) => (account.id === managedAccount.id ? { ...account, password: cleanedPassword } : account)));
+        return { status: "ok" };
+      }
+
+      const registeredAccount = accountsRef.current.find((account) => account.email.trim().toLowerCase() === normalizedIdentity && Boolean(account.password?.trim()));
+      if (registeredAccount) {
+        if (registeredAccount.password !== cleanedCurrentPassword) return { status: "error", message: "Your current password is not correct." };
+        updateAccountsState((current) => current.map((account) => (account.email.trim().toLowerCase() === normalizedIdentity ? { ...account, password: cleanedPassword } : account)));
+        return { status: "ok" };
+      }
+
+      const childAccount = childAccountsRef.current.find((account) => account.username.trim().toLowerCase() === normalizedIdentity && Boolean(account.password?.trim()));
+      if (childAccount) {
+        if (childAccount.password !== cleanedCurrentPassword) return { status: "error", message: "Your current password is not correct." };
+        updateChildAccountsState((current) => current.map((account) => (account.id === childAccount.id ? { ...account, password: cleanedPassword } : account)));
+        return { status: "ok" };
+      }
+
+      return { status: "error", message: "This account does not support password changes in local fallback mode." };
+    },
+    [session, updateAccountsState, updateChildAccountsState, updateManagedAccountsState]
+  );
+
   const addOperationsStudent = useCallback(
     (student: StudentInput) => {
       const normalizedStudent = normalizeStudentInput(student);
@@ -4226,6 +4270,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     createManagedAccount,
     createGuardianAccount,
     updateManagedAccountStatus,
+    changeCurrentAccountPassword,
     setAccountRole,
     addChildAccount,
     updateChildAccount,

@@ -64,6 +64,12 @@ type SupabaseCreateAccountResult =
   | { status: "ok" }
   | { status: "error"; message: string };
 
+export type SupabasePasswordChangeResult =
+  | { status: "not-configured" }
+  | { status: "session-expired"; message: string }
+  | { status: "ok" }
+  | { status: "error"; message: string };
+
 const supabaseSessionStorageKey = "chos.supabase.auth.v1";
 const managerUsername = prototypeManagerLogin.username.toLowerCase();
 const supabaseAccountAuthDomain = "accounts.chosmartialarts.app";
@@ -287,6 +293,36 @@ export async function signInSupabaseAccount(credentials: { username: string; pas
   } catch (error) {
     if (isSupabaseBackendInactiveError(error)) return { status: "backend-inactive", message: supabaseBackendInactiveMessage };
     return { status: "error", message: error instanceof Error ? error.message : "Supabase sign-in failed." };
+  }
+}
+
+export async function changeSupabaseAccountPassword(password: string, currentPassword: string): Promise<SupabasePasswordChangeResult> {
+  if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
+  const session = readSupabaseAuthSession();
+  if (!session) return { status: "session-expired", message: "Your sign-in session has expired. Sign in again, then change your password." };
+
+  try {
+    const response = await fetch(`${supabaseUrl().replace(/\/+$/, "")}/auth/v1/user`, {
+      method: "PUT",
+      headers: {
+        apikey: supabasePublicKey(),
+        Authorization: `Bearer ${session.accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ password: password.trim(), current_password: currentPassword.trim() })
+    });
+
+    if (response.ok) return { status: "ok" };
+    if (await isSupabaseBackendInactiveResponse(response)) return { status: "error", message: supabaseBackendInactiveMessage };
+    if (response.status === 401 || response.status === 403) {
+      clearSupabaseAuthSession();
+      return { status: "session-expired", message: "Your sign-in session has expired. Sign in again, then change your password." };
+    }
+    const body = await response.json().catch(() => undefined) as { message?: string; error?: string } | undefined;
+    return { status: "error", message: body?.message ?? body?.error ?? "Your password could not be updated. Please try again." };
+  } catch (error) {
+    if (isSupabaseBackendInactiveError(error)) return { status: "error", message: supabaseBackendInactiveMessage };
+    return { status: "error", message: error instanceof Error ? error.message : "Your password could not be updated. Please try again." };
   }
 }
 

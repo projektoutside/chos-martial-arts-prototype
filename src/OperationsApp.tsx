@@ -70,6 +70,7 @@ import {
   resolveBeltRank
 } from "./beltCase";
 import { childUsernameFromName, normalizeChildUsername } from "./childAccountUtils";
+import { accountPasswordPolicyText, validateAccountPasswordChange } from "./accountPassword";
 import { beltRanks } from "./data";
 import {
   createSupabaseManagedAccount,
@@ -647,6 +648,71 @@ function ProfileNotificationSettingsControl({
       </div>
       <button type="button" className="profile-notification-test" onClick={onSendTest} disabled={!notificationsReady}>
         <Bell size={16} aria-hidden="true" /> Send Test Notification
+      </button>
+    </section>
+  );
+}
+
+function AccountPasswordChangePanel() {
+  const { changeCurrentAccountPassword, showToast } = useAppState();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [message, setMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const submit = async () => {
+    const validationMessage = validateAccountPasswordChange(password, confirmation);
+    if (validationMessage) {
+      setMessage(validationMessage);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      if (!currentPassword.trim()) {
+        setMessage("Enter your current password.");
+        return;
+      }
+      if (currentPassword.trim() === password.trim()) {
+        setMessage("Choose a new password that is different from your current password.");
+        return;
+      }
+      const result = await changeCurrentAccountPassword(password, currentPassword);
+      if (result.status === "ok") {
+        setPassword("");
+        setConfirmation("");
+        setCurrentPassword("");
+        setMessage("Password updated. Use your new password the next time you sign in.");
+        showToast("Password updated securely.");
+      } else {
+        setMessage(result.message);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <section className="account-password-change-panel" aria-label="Change password">
+      <div>
+        <strong>Change password</strong>
+        <p>{accountPasswordPolicyText}</p>
+      </div>
+      <label className="field-label">
+        Current password
+        <input className="input" type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+      </label>
+      <label className="field-label">
+        New password
+        <input className="input" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+      </label>
+      <label className="field-label">
+        Confirm new password
+        <input className="input" type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
+      </label>
+      {message && <p className="account-password-change-message" role="status">{message}</p>}
+      <button className="profile-editing-tool-button" type="button" onClick={() => void submit()} disabled={isSaving}>
+        <ShieldCheck size={18} /> {isSaving ? "Updating password..." : "Update Password"}
       </button>
     </section>
   );
@@ -6601,6 +6667,7 @@ function StudentProfilePage() {
                   View App Updates
                 </button>
               </div>
+              <AccountPasswordChangePanel />
               <ProfileColorEditingTool sessionEmail={session?.email} showToast={showToast} preview={studentColorPreview} />
             </section>
             <div className="student-editor-actions manager-profile-actions">
@@ -7787,6 +7854,7 @@ function ParentProfilePage() {
                   View App Updates
                 </button>
               </div>
+              <AccountPasswordChangePanel />
               <ProfileColorEditingTool sessionEmail={session?.email} showToast={showToast} preview={parentColorPreview} />
             </section>
             <div className="student-editor-actions manager-profile-actions">
@@ -9441,7 +9509,7 @@ function ManagerLauncherPage() {
                   placeholder="(262) 555-0100"
                 />
               </label>
-              <p className="operations-note">Sign-in passwords are managed in Supabase Auth for Manager123 and cannot be changed from profile settings.</p>
+              <AccountPasswordChangePanel />
               <div className="manager-profile-preferences">
                 <div className="manager-theme-setting" role="group" aria-label="App theme">
                   <span>App Theme</span>
@@ -9510,7 +9578,7 @@ function ManagerLauncherPage() {
 
 type CreateAccountMode = "staff" | "student" | "parent";
 
-const createdAccountPasswordPolicyText = "Use at least 12 characters with uppercase, lowercase, a number, and a symbol.";
+const createdAccountPasswordPolicyText = accountPasswordPolicyText;
 const createAccountStaffAccessOptions: { key: ManagerAccessKey; label: string; detail: string }[] = [
   { key: "dashboard", label: "Dashboard", detail: "Calendar and daily overview" },
   { key: "messages", label: "Messages", detail: "Live chat and text tools" },
@@ -9523,10 +9591,6 @@ const createAccountStaffAccessOptions: { key: ManagerAccessKey; label: string; d
   { key: "videos", label: "Videos", detail: "Training video library" },
   { key: "reports", label: "Reports", detail: "Operations reports" }
 ];
-
-function isStrongCreatedAccountPassword(password: string) {
-  return password.length >= 12 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
-}
 
 function normalizeCreateUsername(username: string) {
   return username
@@ -9628,7 +9692,7 @@ function CreateAccountsPage() {
     const cleanedPassword = password.trim();
     if (!cleanedPassword || !confirmPassword.trim()) return "Enter and confirm a password.";
     if (cleanedPassword !== confirmPassword.trim()) return "Passwords must match.";
-    if (!isStrongCreatedAccountPassword(cleanedPassword)) return createdAccountPasswordPolicyText;
+    if (validateAccountPasswordChange(cleanedPassword, cleanedPassword)) return createdAccountPasswordPolicyText;
     return "";
   };
 

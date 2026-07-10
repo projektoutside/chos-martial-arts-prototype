@@ -4225,16 +4225,17 @@ describe("post-login operations app", () => {
     expect(within(profileTitleHeader).getByRole("link", { name: "Manager's Panel" })).toHaveAttribute("href", "/manager");
   });
 
-  it("does not offer local password changes from manager profile settings", async () => {
+  it("offers secure password changes from manager profile settings", async () => {
     renderLoggedInApp("/profile");
 
     const profileOverview = within(screen.getByLabelText("Manager home overview")).getByLabelText("Manager profile overview");
     fireEvent.click(within(profileOverview).getByRole("link", { name: "Profile Settings" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Manager profile settings" });
-    expect(within(dialog).queryByLabelText("New Password")).not.toBeInTheDocument();
-    expect(within(dialog).queryByLabelText("Confirm Password")).not.toBeInTheDocument();
-    expect(within(dialog).getByText("Sign-in passwords are managed in Supabase Auth for Manager123 and cannot be changed from profile settings.")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Current password")).toHaveAttribute("autocomplete", "current-password");
+    expect(within(dialog).getByLabelText("New password")).toHaveAttribute("autocomplete", "new-password");
+    expect(within(dialog).getByLabelText("Confirm new password")).toHaveAttribute("autocomplete", "new-password");
+    expect(within(dialog).getByRole("button", { name: "Update Password" })).toBeInTheDocument();
   });
 
   it("lets managers control profile notification categories and reflects Messages in Message Settings", async () => {
@@ -7820,9 +7821,9 @@ describe("post-login operations app", () => {
     fireEvent.change(within(dialog).getByLabelText("Username"), { target: { value: "master-cho" } });
     fireEvent.change(within(dialog).getByLabelText("Email"), { target: { value: "manager@chos.test" } });
     fireEvent.change(within(dialog).getByLabelText("Phone"), { target: { value: "(262) 555-0199" } });
-    expect(within(dialog).queryByLabelText("New Password")).not.toBeInTheDocument();
-    expect(within(dialog).queryByLabelText("Confirm Password")).not.toBeInTheDocument();
-    expect(within(dialog).getByText("Sign-in passwords are managed in Supabase Auth for Manager123 and cannot be changed from profile settings.")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Current password")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("New password")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Confirm new password")).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Light" }));
     fireEvent.click(within(dialog).getByLabelText("Receive manager updates and reminders"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save Profile Settings" }));

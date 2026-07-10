@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearSupabaseAuthSession,
+  changeSupabaseAccountPassword,
   createSupabaseManagedAccount,
   getSupabaseBrowserConfig,
   isSupabaseAuthConfigured,
@@ -437,5 +438,30 @@ describe("supabase account adapter", () => {
       message: "Sign into the Supabase Manager123 owner account before syncing created accounts."
     });
     expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
+  });
+
+  it("updates only the authenticated user's Supabase password with their session JWT", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "staff-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "staff-user-id",
+      projectRef: "project",
+      authEmail: "jordan.staff@accounts.chosmartialarts.app"
+    }));
+    const fetchMock = vi.fn(async () => jsonResponse({ id: "staff-user-id" }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(changeSupabaseAccountPassword(" StrongPass123! ", "OldPass123!")).resolves.toEqual({ status: "ok" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/auth/v1/user",
+      expect.objectContaining({
+        method: "PUT",
+        headers: expect.objectContaining({
+          apikey: "sb_publishable_test",
+          Authorization: "Bearer staff-access-token"
+        }),
+        body: JSON.stringify({ password: "StrongPass123!", current_password: "OldPass123!" })
+      })
+    );
   });
 });

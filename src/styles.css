@@ -15523,6 +15523,38 @@ html[data-theme="light"] .profile-communication-tab[aria-selected="true"] {
   padding: 8px 10px;
 }
 
+.account-password-change-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 10px;
+  padding: 11px;
+  border: 1px solid rgba(228, 207, 154, 0.24);
+  border-radius: 12px;
+  background: rgba(251, 248, 241, 0.06);
+}
+
+.account-password-change-panel > div,
+.account-password-change-panel > button,
+.account-password-change-message {
+  grid-column: 1 / -1;
+}
+
+.account-password-change-panel strong {
+  color: var(--ops-text);
+}
+
+.account-password-change-panel p {
+  margin: 3px 0 0;
+  color: var(--ops-muted-text);
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.account-password-change-message {
+  color: var(--ops-text) !important;
+}
+
 .manager-profile-preferences {
   grid-column: 1 / -1;
   display: grid;
@@ -18107,6 +18139,12 @@ html[data-theme="light"] .profile-communication-tab[aria-selected="true"] {
   .manager-profile-preferences {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .account-password-change-panel {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 9px;
   }
 
   .manager-theme-option {
