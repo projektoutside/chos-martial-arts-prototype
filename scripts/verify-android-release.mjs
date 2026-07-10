@@ -57,6 +57,11 @@ assert.ok(minSdk >= 24, `minSdkVersion must be at least 24, received ${minSdk}`)
 assert.ok(targetSdk >= 35, `targetSdkVersion must be at least 35, received ${targetSdk}`);
 
 const manifest = read("android/app/src/main/AndroidManifest.xml");
+assert.match(
+  manifest,
+  /android:windowSoftInputMode=["']adjustResize["']/,
+  "Android must resize the visible WebView for the software keyboard"
+);
 assert.match(manifest, /android\.permission\.INTERNET/, "Android app must be allowed to reach Supabase staging");
 
 const gitignore = read(".gitignore");
