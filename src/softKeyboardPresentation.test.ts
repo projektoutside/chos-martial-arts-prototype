@@ -79,6 +79,16 @@ describe("soft keyboard presentation", () => {
     expect(editorInputs.get("font-size")).toBe("max(16px, 1em) !important");
   });
 
+  it("allows long mobile paragraphs to scroll vertically inside the editor", () => {
+    const textarea = ruleFor(
+      ".soft-keyboard-editor-layer textarea[data-soft-keyboard-editor-control]"
+    ).declarations;
+
+    expect(textarea.get("touch-action")).toBe("pan-y");
+    expect(textarea.get("overscroll-behavior-y")).toBe("contain");
+    expect(textarea.get("-webkit-overflow-scrolling")).toBe("touch");
+  });
+
   it("requests overlay keyboard behavior where the browser supports it", () => {
     expect(indexHtml).toContain("interactive-widget=overlays-content");
   });

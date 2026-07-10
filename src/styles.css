@@ -23674,6 +23674,9 @@ html[data-touch-input="true"] :is(
   max-height: calc(var(--app-visible-viewport-height, 100dvh) - 32px);
   overflow-x: hidden;
   overflow-y: hidden;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   resize: none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
