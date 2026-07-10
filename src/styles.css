@@ -2713,8 +2713,9 @@ select option { color: #111; }
 
 .login-landing.is-handoff .login-portrait-stage {
   opacity: 0;
-  transform: translate3d(-50%, -44%, 0) scale(0.96);
-  animation: loginPortraitHandoff 420ms cubic-bezier(0.16, 0.9, 0.14, 1) 2640ms both;
+  transform: translate3d(-50%, -50%, 0) scale(1);
+  filter: brightness(0.28) saturate(0.72) blur(3px);
+  animation: loginPortraitHandoff 780ms cubic-bezier(0.22, 1, 0.36, 1) 2200ms both;
 }
 
 .login-character-stage {
@@ -3164,15 +3165,18 @@ select option { color: #111; }
 @keyframes loginPortraitHandoff {
   0% {
     opacity: 0;
-    transform: translate3d(-50%, -44%, 0) scale(0.96);
+    transform: translate3d(-50%, -50%, 0) scale(1);
+    filter: brightness(0.28) saturate(0.72) blur(3px);
   }
-  56% {
-    opacity: var(--login-portrait-opacity);
-    transform: translate3d(-50%, -51%, 0) scale(1.018);
+  58% {
+    opacity: calc(var(--login-portrait-opacity) * 0.62);
+    transform: translate3d(-50%, -50%, 0) scale(1);
+    filter: brightness(0.68) saturate(0.88) blur(0.8px);
   }
   100% {
     opacity: var(--login-portrait-opacity);
     transform: translate3d(-50%, -50%, 0) scale(1);
+    filter: brightness(1) saturate(1) blur(0);
   }
 }
 
@@ -3220,6 +3224,7 @@ select option { color: #111; }
   .login-landing.is-handoff .login-portrait-stage {
     opacity: var(--login-portrait-opacity);
     transform: translate3d(-50%, -50%, 0) scale(1);
+    filter: none;
   }
 }
 

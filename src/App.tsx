@@ -350,7 +350,18 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
 
     let animationFrame = 0;
     const setPortraitAnchor = () => {
+      const loginPanel = usernameField.closest<HTMLElement>(".login-panel");
+      const previousPanelAnimation = loginPanel?.style.animation ?? "";
+      const previousPanelTransform = loginPanel?.style.transform ?? "";
+      if (loginPanel) {
+        loginPanel.style.animation = "none";
+        loginPanel.style.transform = "none";
+      }
       const usernameRect = usernameField.getBoundingClientRect();
+      if (loginPanel) {
+        loginPanel.style.animation = previousPanelAnimation;
+        loginPanel.style.transform = previousPanelTransform;
+      }
       const portraitRect = portraitStage.getBoundingClientRect();
       const portraitStyles = window.getComputedStyle(portraitStage);
       const portraitHeight = parseFloat(portraitStyles.height) || portraitRect.height;
@@ -365,7 +376,10 @@ function LoginLandingPage({ visible, handoffActive = false }: { visible: boolean
       const usernameUnderlap = Math.min(6, Math.max(4, usernameRect.height * 0.1));
       const fieldAnchoredCenterY = usernameRect.top + usernameUnderlap - portraitHeight / 2;
       const logo = landing.closest(".auth-gate")?.querySelector(".auth-logo") as HTMLElement | null;
+      const previousLogoAnimation = logo?.style.animation ?? "";
+      if (logo) logo.style.animation = "none";
       const logoRect = logo?.getBoundingClientRect();
+      if (logo) logo.style.animation = previousLogoAnimation;
       const logoSafeGap = 12;
       const logoSafeCenterY = logoRect && logoRect.height > 0
         ? logoRect.bottom + logoSafeGap + visiblePortraitHeight - portraitHeight / 2
