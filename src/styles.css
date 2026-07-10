@@ -23597,7 +23597,7 @@ html[data-soft-keyboard="open"] .portrait-app-shell {
   height: var(--app-visible-viewport-height, 100dvh);
 }
 
-html[data-soft-keyboard="open"] .manager-launcher-main {
+html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation-layout="true"] {
   --manager-launcher-sidebar-track-width: 0px;
   --manager-launcher-rail-hit-width: 0px;
 }
@@ -23608,7 +23608,7 @@ html[data-soft-keyboard="open"] .operations-footer {
   display: none !important;
 }
 
-html[data-soft-keyboard="open"] .manager-launcher-body {
+html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation-layout="true"] .manager-launcher-body {
   padding-right: 0;
 }
 

@@ -9307,7 +9307,7 @@ function ManagerLauncherPage() {
 
   return (
     <section className={`manager-launcher-page${isStudentPanel ? " student-launcher-page" : ""}${isStaffPanel ? " staff-launcher-page" : ""}`} aria-label={panelAriaLabel}>
-      <main className="manager-launcher-main">
+      <main className="manager-launcher-main" data-keyboard-secondary-navigation-layout="true">
         <header className="manager-launcher-topbar manager-page-title-bar" aria-label={panelHeaderAriaLabel}>
           <ManagerPageTitleFrame title={panelTitle} className="manager-page-title-frame--manager-panel" />
           <nav className="manager-home-top-actions" aria-label={panelQuickActionsLabel}>

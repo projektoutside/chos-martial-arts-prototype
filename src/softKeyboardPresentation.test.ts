@@ -38,28 +38,31 @@ describe("soft keyboard presentation", () => {
     const root = ruleFor(":root").declarations;
     const portraitShell = ruleFor(".portrait-app-shell").declarations;
 
-    expect(root.get("--cho-safe-area-top")).toEqual(expect.stringContaining("--safe-area-inset-top"));
-    expect(root.get("--cho-safe-area-right")).toEqual(expect.stringContaining("--safe-area-inset-right"));
-    expect(root.get("--cho-safe-area-bottom")).toEqual(expect.stringContaining("--safe-area-inset-bottom"));
-    expect(root.get("--cho-safe-area-left")).toEqual(expect.stringContaining("--safe-area-inset-left"));
+    expect(root.get("--cho-safe-area-top")).toBe("var(--safe-area-inset-top, env(safe-area-inset-top, 0px))");
+    expect(root.get("--cho-safe-area-right")).toBe("var(--safe-area-inset-right, env(safe-area-inset-right, 0px))");
+    expect(root.get("--cho-safe-area-bottom")).toBe("var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))");
+    expect(root.get("--cho-safe-area-left")).toBe("var(--safe-area-inset-left, env(safe-area-inset-left, 0px))");
     expect(root.get("--app-keyboard-inset")).toBe("0px");
     expect(portraitShell.get("--portrait-frame-landscape-width")).toEqual(expect.stringContaining("--app-stable-frame-width"));
     expect(portraitShell.get("padding")).toBe("var(--cho-safe-area-top) 0 var(--cho-safe-area-bottom)");
   });
 
   it("uses the visible keyboard viewport and removes only secondary navigation chrome", () => {
+    const selectors = styleRules.map((rule) => rule.selectors);
     const shell = ruleContaining('html[data-soft-keyboard="open"] .portrait-app-shell').declarations;
-    const managerMain = ruleContaining('html[data-soft-keyboard="open"] .manager-launcher-main').declarations;
+    const managerLayout = ruleFor('html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation-layout="true"]').declarations;
     const hiddenChrome = ruleContaining(
       'html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation="true"]',
       'html[data-soft-keyboard="open"] .mobile-tabbar',
       'html[data-soft-keyboard="open"] .operations-footer'
     ).declarations;
-    const managerBody = ruleContaining('html[data-soft-keyboard="open"] .manager-launcher-body').declarations;
+    const managerBody = ruleFor('html[data-soft-keyboard="open"] [data-keyboard-secondary-navigation-layout="true"] .manager-launcher-body').declarations;
 
     expect(shell.get("height")).toContain("--app-visible-viewport-height");
-    expect(managerMain.get("--manager-launcher-sidebar-track-width")).toBe("0px");
-    expect(managerMain.get("--manager-launcher-rail-hit-width")).toBe("0px");
+    expect(managerLayout.get("--manager-launcher-sidebar-track-width")).toBe("0px");
+    expect(managerLayout.get("--manager-launcher-rail-hit-width")).toBe("0px");
+    expect(selectors).not.toContain('html[data-soft-keyboard="open"] .manager-launcher-main');
+    expect(selectors).not.toContain('html[data-soft-keyboard="open"] .manager-launcher-body');
     expect(hiddenChrome.get("display")).toBe("none !important");
     expect(managerBody.get("padding-right")).toBe("0");
   });
@@ -67,14 +70,20 @@ describe("soft keyboard presentation", () => {
   it("keeps touch text inputs readable and revealable above the keyboard", () => {
     const keyboardInputs = ruleContaining(
       'html[data-soft-keyboard="open"] :is(',
+      'input:not([type="button"])',
       "textarea",
       "select",
+      '[contenteditable="true"]',
+      '[contenteditable=""]',
       '[role="textbox"]'
     ).declarations;
     const touchInputs = ruleContaining(
       'html[data-touch-input="true"] :is(',
+      'input:not([type="button"])',
       "textarea",
       "select",
+      '[contenteditable="true"]',
+      '[contenteditable=""]',
       '[role="textbox"]'
     ).declarations;
 

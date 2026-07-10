@@ -4304,15 +4304,19 @@ describe("post-login operations app", () => {
     expect(screen.getByLabelText("Live chat room page")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Live Chats" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Live Chat Rooms" })).toBeInTheDocument();
+    const liveChatLayout = screen.getByLabelText("Live chat room page").querySelector(".manager-launcher-main");
+    expect(liveChatLayout).not.toHaveAttribute("data-keyboard-secondary-navigation-layout");
     const chatFrame = screen.getByLabelText("Live chat room frame");
     expect(chatFrame).toHaveClass("manager-launcher-body", "live-chat-shell");
     expect(chatFrame).not.toHaveClass("is-sidebar-collapsed");
     const roster = screen.getByLabelText("Live chat members");
     expect(roster).toHaveClass("manager-launcher-grid", "manager-launcher-sidebar", "live-chat-roster");
+    expect(roster).not.toHaveAttribute("data-keyboard-secondary-navigation");
     const rosterMembers = roster.querySelectorAll(".manager-launcher-item.live-chat-roster-member");
     expect(rosterMembers[0]).toBeInTheDocument();
     const rosterToggle = screen.getByRole("button", { name: "Collapse live chat member list" });
     expect(rosterToggle).toHaveClass("manager-launcher-rail-toggle");
+    expect(rosterToggle).not.toHaveAttribute("data-keyboard-secondary-navigation");
     expect(rosterToggle.querySelector(".manager-launcher-rail-toggle-bar")).toBeInTheDocument();
     expect(rosterToggle).toHaveAttribute("aria-expanded", "true");
     expect(document.getElementById("live-chat-roster-members")).not.toHaveAttribute("hidden");
@@ -7114,9 +7118,11 @@ describe("post-login operations app", () => {
     renderLoggedInApp("/manager");
 
     const launcherBody = screen.getByLabelText("Manager launcher workspace frame");
+    const managerLayout = launcherBody.closest(".manager-launcher-main");
     const launcher = screen.getByLabelText("Manager app launcher");
     const collapseRail = screen.getByRole("button", { name: "Collapse manager app launcher" });
 
+    expect(managerLayout).toHaveAttribute("data-keyboard-secondary-navigation-layout", "true");
     expect(launcher).toHaveAttribute("data-keyboard-secondary-navigation", "true");
     expect(collapseRail).toHaveAttribute("data-keyboard-secondary-navigation", "true");
     expect(collapseRail).toHaveAttribute("aria-controls", "manager-launcher-sidebar");
