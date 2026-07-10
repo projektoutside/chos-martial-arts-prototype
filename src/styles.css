@@ -21210,6 +21210,14 @@ html[data-theme="light"] .modal-card {
     linear-gradient(145deg, rgba(255, 253, 248, 0.98), rgba(242, 236, 226, 0.98));
 }
 
+html[data-theme="light"] .testing-update-modal {
+  border-color: rgba(184, 135, 46, 0.52);
+}
+
+html[data-theme="light"] .testing-update-kicker {
+  color: #76520e;
+}
+
 html[data-theme="light"] .manager-starter-program-dialog label {
   color: #172033;
 }
@@ -22778,6 +22786,14 @@ html[data-custom-colors="true"] .manager-compose-submit {
   border-color: color-mix(in srgb, var(--user-visual-border) 72%, transparent);
   color: var(--user-visual-buttonText);
   background: linear-gradient(135deg, var(--user-visual-button), color-mix(in srgb, var(--user-visual-button) 62%, var(--user-visual-primary)));
+}
+
+html[data-custom-colors="true"] .testing-update-modal {
+  border-color: color-mix(in srgb, var(--user-visual-primary) 72%, var(--user-visual-border));
+}
+
+html[data-custom-colors="true"] .testing-update-kicker {
+  color: var(--user-visual-primary);
 }
 
 html[data-custom-colors="true"] .manager-launcher-item.is-selected,
@@ -27012,4 +27028,45 @@ html[data-theme="light"] .student-panel-action-row a + a {
   .manager-shell--student-reference #student-profile-messages-panel .manager-home-feed-item:nth-of-type(n+2) {
     display: none;
   }
+}
+
+.testing-update-modal,
+.modal-backdrop .testing-update-modal {
+  width: min(92vw, 390px);
+  padding: 24px;
+  border-color: rgba(220, 176, 75, 0.72);
+  text-align: left;
+}
+
+.testing-update-kicker {
+  margin: 0 0 6px;
+  color: #e7c56c;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.testing-update-modal h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.testing-update-modal h3 {
+  margin: 8px 0 0;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.testing-update-modal ul {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding-left: 20px;
+  line-height: 1.45;
+}
+
+.testing-update-action {
+  width: 100%;
+  margin-top: 18px;
 }

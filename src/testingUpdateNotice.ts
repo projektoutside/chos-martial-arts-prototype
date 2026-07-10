@@ -12,7 +12,7 @@ function testingUpdateStorageKey(email: string, noticeId: string) {
   return `chos.testingUpdateSeen.v1:${encodeURIComponent(email.trim().toLowerCase())}:${encodeURIComponent(noticeId)}`;
 }
 
-export function hasSeenTestingUpdate(email: string, noticeId = testingUpdateNotice.id) {
+export function hasSeenTestingUpdate(email: string, noticeId: string = testingUpdateNotice.id) {
   if (!email.trim()) return true;
 
   try {
@@ -22,7 +22,7 @@ export function hasSeenTestingUpdate(email: string, noticeId = testingUpdateNoti
   }
 }
 
-export function markTestingUpdateSeen(email: string, noticeId = testingUpdateNotice.id) {
+export function markTestingUpdateSeen(email: string, noticeId: string = testingUpdateNotice.id) {
   if (!email.trim()) return;
 
   try {

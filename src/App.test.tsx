@@ -2660,9 +2660,13 @@ describe("login landing", () => {
     expect(container.querySelector(".authenticated-app-shell")).toHaveClass("is-login-transitioning");
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
     const dialog = await screen.findByRole("dialog", { name: "What's New" });
+    expect(dialog).toHaveClass("testing-update-modal");
     expect(within(dialog).getByRole("heading", { name: "What's New" })).toBeInTheDocument();
     expect(within(dialog).getByRole("heading", { name: "Testing updates are now easier to follow" })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Got it" }));
+    const gotItButton = within(dialog).getByRole("button", { name: "Got it" });
+    expect(gotItButton).toBeVisible();
+    expect(gotItButton).toHaveClass("testing-update-action");
+    fireEvent.click(gotItButton);
     expect(screen.queryByRole("dialog", { name: "What's New" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Profile page header")).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Account type" })).not.toBeInTheDocument();

@@ -185,7 +185,7 @@ function App() {
             <ul>
               {testingUpdateNotice.changes.map((change) => <li key={change}>{change}</li>)}
             </ul>
-            <button onClick={dismissTestingUpdate}>Got it</button>
+            <button className="testing-update-action" type="button" onClick={dismissTestingUpdate}>Got it</button>
           </ModalShell>
         )}
       </PortraitAppShell>
