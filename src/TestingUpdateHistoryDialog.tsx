@@ -1,6 +1,19 @@
+import { useEffect, useRef } from "react";
 import { testingUpdateNotices } from "./testingUpdateNotice";
 
 export function TestingUpdateHistoryDialog({ onClose }: { onClose: () => void }) {
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    dialogRef.current?.focus();
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   return (
     <div
       className="modal-backdrop"
@@ -14,6 +27,8 @@ export function TestingUpdateHistoryDialog({ onClose }: { onClose: () => void })
         role="dialog"
         aria-modal="true"
         aria-labelledby="testing-update-history-title"
+        tabIndex={-1}
+        ref={dialogRef}
       >
         <div className="modal-header">
           <h2 id="testing-update-history-title">App updates</h2>

@@ -37,4 +37,16 @@ describe("TestingUpdateHistoryDialog", () => {
     fireEvent.mouseDown(screen.getByRole("presentation"));
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it("closes on Escape and focuses the dialog on open", () => {
+    const onClose = vi.fn();
+    render(<TestingUpdateHistoryDialog onClose={onClose} />);
+
+    const dialog = screen.getByRole("dialog", { name: "App updates" });
+    expect(dialog).toHaveAttribute("tabindex", "-1");
+    expect(document.activeElement).toBe(dialog);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
