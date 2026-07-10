@@ -23634,7 +23634,7 @@ html[data-touch-input="true"] :is(
   right: max(12px, var(--cho-safe-area-right));
   padding-bottom: 8px;
   pointer-events: none;
-  transform: translateY(-100%);
+  transform: translateY(-50%);
   animation: soft-keyboard-editor-enter var(--motion-fast) var(--motion-ease-out) both;
 }
 

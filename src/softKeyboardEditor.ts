@@ -236,9 +236,10 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     // height while window.innerHeight already reflects the keyboard. Other Android
     // WebViews overlay the keyboard without resizing either viewport, but expose its
     // top edge through the Virtual Keyboard API. The smallest edge is the actual
-    // boundary above the keyboard on Android and iOS.
+    // boundary above the keyboard on Android and iOS. Keep the mirrored editor
+    // comfortably centered within that visible area instead of crowding the keyboard.
     const visibleBottom = Math.min(visualViewportBottom, win.innerHeight, overlayKeyboardTop);
-    root.style.setProperty("--soft-keyboard-editor-top", `${Math.max(0, Math.round(visibleBottom - 8))}px`);
+    root.style.setProperty("--soft-keyboard-editor-top", `${Math.max(0, Math.round(visibleBottom / 2))}px`);
   };
 
   const close = () => {

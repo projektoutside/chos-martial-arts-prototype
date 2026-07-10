@@ -59,7 +59,7 @@ describe("soft keyboard presentation", () => {
     expect(selectors.some((selector) => selector.includes(".operations-footer") && selector.includes('data-soft-keyboard="open"'))).toBe(false);
     expect(layer.get("position")).toBe("fixed");
     expect(layer.get("top")).toContain("--soft-keyboard-editor-top");
-    expect(layer.get("transform")).toBe("translateY(-100%)");
+    expect(layer.get("transform")).toBe("translateY(-50%)");
   });
 
   it("keeps touch editors readable without treating selects as typing controls", () => {

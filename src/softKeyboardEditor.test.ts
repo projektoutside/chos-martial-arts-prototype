@@ -135,7 +135,7 @@ describe("soft keyboard editor helpers", () => {
     expect(document.documentElement.dataset.softKeyboardEditor).toBe("open");
   });
 
-  it("keeps the mirror directly above an Android keyboard when only the layout viewport resizes", () => {
+  it("centers the mirror in the usable phone area when only the layout viewport resizes", () => {
     const source = document.createElement("input");
     document.body.append(source);
     Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 844 });
@@ -151,10 +151,10 @@ describe("soft keyboard editor helpers", () => {
     window.innerHeight = 500;
     window.dispatchEvent(new Event("resize"));
 
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("492px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("250px");
   });
 
-  it("keeps the mirror directly above an overlay keyboard that does not resize either viewport", () => {
+  it("centers the mirror in the usable phone area for an overlay keyboard", () => {
     const source = document.createElement("input");
     document.body.append(source);
     Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 844 });
@@ -173,7 +173,7 @@ describe("soft keyboard editor helpers", () => {
     dispatchPointerDown(source, "touch");
     virtualKeyboard.dispatchEvent(new Event("geometrychange"));
 
-    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("492px");
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("250px");
   });
 
   it("synchronizes edits live and closes from the Done action", () => {
