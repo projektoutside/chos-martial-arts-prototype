@@ -7,6 +7,7 @@ import App from "./App";
 import { buildOperationsBackupSnapshot, type OperationsBackupInput } from "./operationsBackup";
 import { AppStateProvider, useAppState } from "./state";
 import { supabaseBackendInactiveMessage } from "./supabaseAccounts";
+import { markTestingUpdateSeen } from "./testingUpdateNotice";
 import type { AccountSession, StudentRecord } from "./types";
 import { prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
 import serviceWorkerSource from "../public/cho-service-worker.js?raw";
@@ -2649,7 +2650,7 @@ describe("login landing", () => {
     expect(screen.queryByRole("dialog", { name: "Login failed" })).not.toBeInTheDocument();
   });
 
-  it("signs the prototype manager credential directly into staff mode on Live Chat without post-login popups", async () => {
+  it("shows the current testing update after the prototype manager signs in", async () => {
     const { container } = renderLoggedOutApp("/");
 
     fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "Manager123" } });
@@ -2658,11 +2659,28 @@ describe("login landing", () => {
 
     expect(container.querySelector(".authenticated-app-shell")).toHaveClass("is-login-transitioning");
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: "What's New" });
+    expect(within(dialog).getByRole("heading", { name: "What's New" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "Testing updates are now easier to follow" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Got it" }));
+    expect(screen.queryByRole("dialog", { name: "What's New" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Profile page header")).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Account type" })).not.toBeInTheDocument();
     expect(screen.queryByText("Signed in to Cho's manager prototype.")).not.toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toMatchObject({ email: "manager123@chos.prototype", remembered: true });
     expect(JSON.parse(window.localStorage.getItem("chos.accountRoles.v1") ?? "[]")).toContainEqual({ email: "manager123@chos.prototype", role: "staff" });
+  });
+
+  it("does not show a testing update the prototype manager already acknowledged", async () => {
+    markTestingUpdateSeen("manager123@chos.prototype");
+    renderLoggedOutApp("/");
+
+    fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "Manager123" } });
+    fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: prototypeManagerLogin.password } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "What's New" })).not.toBeInTheDocument();
   });
 
   it("keeps unknown credentials on the login screen without granting staff access", () => {

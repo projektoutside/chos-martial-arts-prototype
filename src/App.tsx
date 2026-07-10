@@ -10,6 +10,7 @@ import {
 import { useAppState } from "./state";
 import { isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, signInSupabaseAccount } from "./supabaseAccounts";
 import { initializeAppTheme } from "./theme";
+import { hasSeenTestingUpdate, markTestingUpdateSeen, testingUpdateNotice } from "./testingUpdateNotice";
 import {
   getInitialLaunchPhase,
   getLoginGateState,
@@ -121,6 +122,7 @@ function App() {
   }, []);
   const { session } = useAppState();
   const [launchComplete, setLaunchComplete] = useState(false);
+  const [testingUpdateOpen, setTestingUpdateOpen] = useState(false);
   const loginGateState = getLoginGateState(session);
   const previousLoginGateStateRef = useRef(loginGateState);
   const loginJustCompleted = previousLoginGateStateRef.current === "login" && loginGateState !== "login";
@@ -138,6 +140,15 @@ function App() {
     const timer = window.setTimeout(() => setLoginTransitionActive(false), 760);
     return () => window.clearTimeout(timer);
   }, [loginGateState, loginJustCompleted]);
+
+  useEffect(() => {
+    setTestingUpdateOpen(Boolean(session?.email && !hasSeenTestingUpdate(session.email)));
+  }, [session?.email]);
+
+  const dismissTestingUpdate = useCallback(() => {
+    if (session?.email) markTestingUpdateSeen(session.email);
+    setTestingUpdateOpen(false);
+  }, [session?.email]);
 
   if (loginGateState === "login") {
     return (
@@ -166,6 +177,17 @@ function App() {
             </Suspense>
           )}
         </div>
+        {testingUpdateOpen && (
+          <ModalShell label="What's New" onClose={dismissTestingUpdate} panelClass="modal-card testing-update-modal">
+            <p className="testing-update-kicker">{testingUpdateNotice.date}</p>
+            <h2>What&apos;s New</h2>
+            <h3>{testingUpdateNotice.title}</h3>
+            <ul>
+              {testingUpdateNotice.changes.map((change) => <li key={change}>{change}</li>)}
+            </ul>
+            <button onClick={dismissTestingUpdate}>Got it</button>
+          </ModalShell>
+        )}
       </PortraitAppShell>
       <ToastViewport />
     </>
