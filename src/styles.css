@@ -3160,22 +3160,6 @@ select option { color: #111; }
   }
 }
 
-.login-new-account {
-  min-height: 44px;
-  border: 1px solid #8f101b;
-  border-radius: 13px;
-  color: var(--login-control-ice);
-  background: rgba(8, 12, 20, 0.72);
-  font: 700 0.96rem/1 var(--font-ui);
-  letter-spacing: 0.02em;
-}
-
-.login-new-account:hover,
-.login-new-account:focus-visible {
-  border-color: #c91d2d;
-  background: rgba(32, 59, 84, 0.84);
-}
-
 .login-new-account-content {
   display: grid;
   gap: 14px;

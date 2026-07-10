@@ -545,8 +545,8 @@ function LoginLandingPage({
           <button className="login-submit" type="submit" disabled={loginPending}>
             {loginPending ? "Signing In..." : "Sign In"}
           </button>
-          <button className="login-new-account" type="button" onClick={() => setNewAccountOpen(true)}>
-            New Account
+          <button className="login-create" type="button" onClick={() => setNewAccountOpen(true)}>
+            Create Account
           </button>
         </form>
         <div className="login-divider" aria-hidden="true">
