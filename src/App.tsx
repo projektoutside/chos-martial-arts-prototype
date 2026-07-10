@@ -180,6 +180,7 @@ function App() {
         {testingUpdateOpen && (
           <ModalShell label="What's New" onClose={dismissTestingUpdate} panelClass="modal-card testing-update-modal">
             <p className="testing-update-kicker">{testingUpdateNotice.date}</p>
+            <p className="testing-update-version">Version {testingUpdateNotice.version}</p>
             <h2>What&apos;s New</h2>
             <h3>{testingUpdateNotice.title}</h3>
             <ul>

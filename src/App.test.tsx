@@ -2662,6 +2662,7 @@ describe("login landing", () => {
     const dialog = await screen.findByRole("dialog", { name: "What's New" });
     expect(dialog).toHaveClass("testing-update-modal");
     expect(within(dialog).getByRole("heading", { name: "What's New" })).toBeInTheDocument();
+    expect(within(dialog).getByText("Version 0.1.1")).toBeVisible();
     expect(within(dialog).getByRole("heading", { name: "Testing updates are now easier to follow" })).toBeInTheDocument();
     const gotItButton = within(dialog).getByRole("button", { name: "Got it" });
     expect(gotItButton).toBeVisible();
@@ -6347,6 +6348,17 @@ describe("post-login operations app", () => {
     expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
 
+    expect(screen.getByRole("dialog", { name: "Manager profile settings" })).toBeInTheDocument();
+  });
+
+  it("lets a staff member open App updates from Staff Profile Settings", () => {
+    renderLoggedInApp("/manager?profile=settings", "staff");
+
+    const profileSettings = screen.getByRole("dialog", { name: "Manager profile settings" });
+    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+
+    expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
     expect(screen.getByRole("dialog", { name: "Manager profile settings" })).toBeInTheDocument();
   });
 
