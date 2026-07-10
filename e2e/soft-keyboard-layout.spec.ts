@@ -187,6 +187,24 @@ test("uses a capped multiline mirror without moving the phone app", async ({ pag
   expect(cappedEditorBox!.y + cappedEditorBox!.height).toBeLessThanOrEqual(reducedVisualViewportHeight - 16);
   expect(overflowState.overflowY).toBe("auto");
   expect(overflowState.scrollHeight).toBeGreaterThan(overflowState.clientHeight);
+  const touchScrollTop = await editor.evaluate((element) => {
+    element.scrollTop = 0;
+    const start = new Event("touchstart", { bubbles: true, cancelable: true });
+    Object.defineProperty(start, "touches", { value: [{ clientY: 260 }] });
+    element.dispatchEvent(start);
+    const move = new Event("touchmove", { bubbles: true, cancelable: true });
+    Object.defineProperty(move, "touches", { value: [{ clientY: 140 }] });
+    element.dispatchEvent(move);
+    element.dispatchEvent(new Event("touchend", { bubbles: true }));
+    return element.scrollTop;
+  });
+  expect(touchScrollTop).toBe(120);
+  const wheelScrollTop = await editor.evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 90 }));
+    return element.scrollTop;
+  });
+  expect(wheelScrollTop).toBe(90);
   const during = await readMobileLayout(page);
   expect(during.shell).toEqual(before.shell);
   expect(during.frame).toEqual(before.frame);

@@ -392,6 +392,69 @@ describe("soft keyboard editor helpers", () => {
     expect(Number.parseFloat(editor.style.maxHeight)).toBeLessThanOrEqual(404);
   });
 
+  it("scrolls an overflowing paragraph with finger drags", () => {
+    const source = document.createElement("textarea");
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+    const editor = document.querySelector<HTMLTextAreaElement>(
+      "textarea[data-soft-keyboard-editor-control]:not([hidden])"
+    )!;
+    Object.defineProperties(editor, {
+      scrollHeight: { configurable: true, value: 900 },
+      clientHeight: { configurable: true, value: 300 }
+    });
+    const start = new Event("touchstart", { bubbles: true, cancelable: true });
+    Object.defineProperty(start, "touches", { value: [{ clientY: 250 }] });
+    editor.dispatchEvent(start);
+    const move = new Event("touchmove", { bubbles: true, cancelable: true });
+    Object.defineProperty(move, "touches", { value: [{ clientY: 150 }] });
+    editor.dispatchEvent(move);
+
+    expect(editor.scrollTop).toBe(100);
+    expect(move.defaultPrevented).toBe(true);
+  });
+
+  it("scrolls an overflowing paragraph with a mouse wheel", () => {
+    const source = document.createElement("textarea");
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+    const editor = document.querySelector<HTMLTextAreaElement>(
+      "textarea[data-soft-keyboard-editor-control]:not([hidden])"
+    )!;
+    Object.defineProperties(editor, {
+      scrollHeight: { configurable: true, value: 900 },
+      clientHeight: { configurable: true, value: 300 }
+    });
+    const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 120 });
+    editor.dispatchEvent(wheel);
+
+    expect(editor.scrollTop).toBe(120);
+    expect(wheel.defaultPrevented).toBe(true);
+  });
+
+  it("scrolls an overflowing paragraph by dragging with a mouse", () => {
+    const source = document.createElement("textarea");
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+    const editor = document.querySelector<HTMLTextAreaElement>(
+      "textarea[data-soft-keyboard-editor-control]:not([hidden])"
+    )!;
+    Object.defineProperties(editor, {
+      scrollHeight: { configurable: true, value: 900 },
+      clientHeight: { configurable: true, value: 300 }
+    });
+    editor.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, clientY: 250 }));
+    const move = new MouseEvent("mousemove", { bubbles: true, cancelable: true, clientY: 150 });
+    document.dispatchEvent(move);
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+    expect(editor.scrollTop).toBe(100);
+    expect(move.defaultPrevented).toBe(true);
+  });
+
   it("advances ordinary forms to the next editable field without submitting", () => {
     const form = document.createElement("form");
     const username = document.createElement("input");

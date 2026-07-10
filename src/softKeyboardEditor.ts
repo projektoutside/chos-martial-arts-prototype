@@ -228,6 +228,8 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   let dirty = false;
   let composing = false;
   let editorMaxHeight = Math.max(120, win.innerHeight - 32);
+  let dragStartY: number | null = null;
+  let dragStartScrollTop = 0;
 
   layer.className = "soft-keyboard-editor-layer";
   layer.hidden = true;
@@ -296,6 +298,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     editor = null;
     dirty = false;
     composing = false;
+    dragStartY = null;
     input.hidden = true;
     textarea.hidden = true;
     input.removeAttribute("style");
@@ -314,6 +317,47 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     copyKeyboardEditorSelection(editor, source);
     dirty = true;
     positionLayer();
+  };
+
+  const scrollTextareaBy = (deltaY: number) => {
+    const maximumScrollTop = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+    if (maximumScrollTop <= 0) return false;
+    const nextScrollTop = Math.min(maximumScrollTop, Math.max(0, textarea.scrollTop + deltaY));
+    if (nextScrollTop === textarea.scrollTop) return false;
+    textarea.scrollTop = nextScrollTop;
+    return true;
+  };
+
+  const beginEditorDrag = (clientY: number) => {
+    if (textarea.scrollHeight <= textarea.clientHeight) return;
+    dragStartY = clientY;
+    dragStartScrollTop = textarea.scrollTop;
+  };
+
+  const continueEditorDrag = (clientY: number, event: Event) => {
+    if (dragStartY === null) return;
+    const maximumScrollTop = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+    textarea.scrollTop = Math.min(maximumScrollTop, Math.max(0, dragStartScrollTop + dragStartY - clientY));
+    if (event.cancelable) event.preventDefault();
+  };
+
+  const handleEditorTouchStart = (event: TouchEvent) => {
+    const touch = event.touches[0];
+    if (touch) beginEditorDrag(touch.clientY);
+  };
+  const handleEditorTouchMove = (event: TouchEvent) => {
+    const touch = event.touches[0];
+    if (touch) continueEditorDrag(touch.clientY, event);
+  };
+  const endEditorDrag = () => {
+    dragStartY = null;
+  };
+  const handleEditorMouseDown = (event: MouseEvent) => {
+    if (event.button === 0) beginEditorDrag(event.clientY);
+  };
+  const handleEditorMouseMove = (event: MouseEvent) => continueEditorDrag(event.clientY, event);
+  const handleEditorWheel = (event: WheelEvent) => {
+    if (scrollTextareaBy(event.deltaY) && event.cancelable) event.preventDefault();
   };
 
   const sourceForm = (target: KeyboardEditableElement) => target.closest("form");
@@ -503,6 +547,14 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   textarea.addEventListener("compositionupdate", handleCompositionUpdate);
   input.addEventListener("compositionend", handleCompositionEnd);
   textarea.addEventListener("compositionend", handleCompositionEnd);
+  textarea.addEventListener("touchstart", handleEditorTouchStart, { passive: true });
+  textarea.addEventListener("touchmove", handleEditorTouchMove, { passive: false });
+  textarea.addEventListener("touchend", endEditorDrag);
+  textarea.addEventListener("touchcancel", endEditorDrag);
+  textarea.addEventListener("mousedown", handleEditorMouseDown);
+  textarea.addEventListener("wheel", handleEditorWheel, { passive: false });
+  doc.addEventListener("mousemove", handleEditorMouseMove, true);
+  doc.addEventListener("mouseup", endEditorDrag, true);
   done.addEventListener("click", performEditorAction);
   doc.addEventListener("pointerdown", handlePointerDown, true);
   doc.addEventListener("touchstart", handleTouchStart, { capture: true, passive: false });
@@ -523,6 +575,8 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   return () => {
     close();
     win.clearInterval(healthTimer);
+    doc.removeEventListener("mousemove", handleEditorMouseMove, true);
+    doc.removeEventListener("mouseup", endEditorDrag, true);
     doc.removeEventListener("pointerdown", handlePointerDown, true);
     doc.removeEventListener("touchstart", handleTouchStart, true);
     doc.removeEventListener("click", handleClick, true);
