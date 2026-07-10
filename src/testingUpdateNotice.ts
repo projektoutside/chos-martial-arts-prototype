@@ -8,6 +8,17 @@ export interface TestingUpdateNotice {
 
 export const testingUpdateNotices: readonly TestingUpdateNotice[] = [
   {
+    id: "2026-07-10-new-installed-app-icon",
+    version: "0.1.6",
+    date: "July 10, 2026",
+    title: "A new Cho's app icon",
+    changes: [
+      "The installed app now uses the new gold, navy, and silver Cho's Martial Arts icon.",
+      "The unwanted white checkerboard background has been removed and replaced with clean transparency.",
+      "Android and web app icons now use device-appropriate sizes for a sharper home-screen appearance."
+    ]
+  },
+  {
     id: "2026-07-10-locked-intro-keyboard-anchor",
     version: "0.1.5",
     date: "July 10, 2026",

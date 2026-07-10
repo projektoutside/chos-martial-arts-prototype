@@ -1,7 +1,7 @@
 const fallbackMessagePath = "messages";
 const logoAssetPath = "682e95109aa21_chos-logo.png";
-const appShellCacheName = "chos-operations-shell-v2";
-const appShellPaths = ["", "manifest.webmanifest", logoAssetPath, "icons/icon-192.png", "icons/icon-512.png"];
+const appShellCacheName = "chos-operations-shell-v3";
+const appShellPaths = ["", "manifest.webmanifest", logoAssetPath, "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-192.png", "icons/icon-maskable-512.png"];
 const networkOnlyPaths = new Set(["app-version.json", "cho-service-worker.js"]);
 
 function workerScope() {

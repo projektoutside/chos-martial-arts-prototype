@@ -2680,8 +2680,8 @@ describe("login landing", () => {
     const dialog = await screen.findByRole("dialog", { name: "What's New" });
     expect(dialog).toHaveClass("testing-update-modal");
     expect(within(dialog).getByRole("heading", { name: "What's New" })).toBeInTheDocument();
-    expect(within(dialog).getByText("Version 0.1.5")).toBeVisible();
-    expect(within(dialog).getByRole("heading", { name: "A smoother start and better phone typing" })).toBeInTheDocument();
+    expect(within(dialog).getByText("Version 0.1.6")).toBeVisible();
+    expect(within(dialog).getByRole("heading", { name: "A new Cho's app icon" })).toBeInTheDocument();
     const gotItButton = within(dialog).getByRole("button", { name: "Got it" });
     expect(gotItButton).toBeVisible();
     expect(gotItButton).toHaveClass("testing-update-action");

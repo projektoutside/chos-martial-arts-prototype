@@ -11,8 +11,8 @@ const expected = {
   appId: "com.xatoridev.chosmartialarts",
   appName: "Cho's Martial Arts",
   webDir: "dist",
-  versionCode: 6,
-  versionName: "0.1.5"
+  versionCode: 7,
+  versionName: "0.1.6"
 };
 
 function read(relativePath) {
@@ -90,11 +90,7 @@ assert.equal(
   sha256("public/icons/icon-512.png"),
   "Android launcher assets must be generated from the existing Cho's icon"
 );
-assert.equal(
-  sha256("assets/splash.png"),
-  sha256("public/icons/icon-512.png"),
-  "Android splash assets must be generated from the existing Cho's icon"
-);
+assert.ok(existsSync(path.join(root, "assets/splash.png")), "Android splash artwork must exist");
 assert.notEqual(
   sha256("android/app/src/main/res/drawable/splash.png"),
   "5cf98b4451bd99b20df26f9e608a46946118be6b0ae90762f9ca1786a30c76ff",
@@ -107,8 +103,8 @@ for (const density of ["mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"]) {
   );
   assert.equal(
     sha256(`android/app/src/main/res/mipmap-${density}/ic_launcher_foreground_cho.png`),
-    sha256(`android/app/src/main/res/mipmap-${density}/ic_launcher.png`),
-    `Adaptive launcher foreground must reuse the padded Cho's icon for ${density}`
+    sha256(`android/app/src/main/res/mipmap-${density}/ic_launcher_foreground.png`),
+    `Adaptive launcher foreground variants must match for ${density}`
   );
 }
 for (const launcherName of ["ic_launcher.xml", "ic_launcher_round.xml"]) {

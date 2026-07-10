@@ -13,26 +13,27 @@ describe("testing update acknowledgements", () => {
 
   it("exposes newest-first versioned update history", () => {
     expect(testingUpdateNotices[0]).toMatchObject({
+      id: "2026-07-10-new-installed-app-icon",
+      version: "0.1.6",
+      title: "A new Cho's app icon"
+    });
+    expect(testingUpdateNotices[1]).toMatchObject({
       id: "2026-07-10-locked-intro-keyboard-anchor",
       version: "0.1.5",
       title: "A smoother start and better phone typing"
     });
-    expect(testingUpdateNotices[1]).toMatchObject({
+    expect(testingUpdateNotices[2]).toMatchObject({
       id: "2026-07-10-immersive-mobile-typing",
       version: "0.1.4",
       title: "A cleaner full-screen phone experience"
     });
-    expect(testingUpdateNotices[2]).toMatchObject({
+    expect(testingUpdateNotices[3]).toMatchObject({
       id: "2026-07-10-android-keyboard-first-tap",
       version: "0.1.3",
       title: "Phone typing now opens more reliably"
     });
-    expect(testingUpdateNotices[3]).toMatchObject({
-      id: "2026-07-10-stable-mobile-keyboard",
-      version: "0.1.2",
-      title: "Typing on phones now stays steady"
-    });
-    expect(testingUpdateNotices[4]).toMatchObject({ version: "0.1.1" });
+    expect(testingUpdateNotices[4]).toMatchObject({ version: "0.1.2" });
+    expect(testingUpdateNotices[5]).toMatchObject({ version: "0.1.1" });
     expect(testingUpdateNotices.length).toBeGreaterThan(0);
 
     for (const notice of testingUpdateNotices) {
