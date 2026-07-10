@@ -272,6 +272,44 @@ describe("soft keyboard viewport", () => {
     expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("0px");
   });
 
+  it.each(["touch", "pen"] as const)(
+    "reopens after Android Back when %s re-taps the still-focused input without focusin",
+    (pointerType) => {
+      const input = document.createElement("input");
+      document.body.append(input);
+      cleanup = installSoftKeyboardViewportController(window, document);
+
+      dispatchPointerDown(input, pointerType);
+      input.focus();
+      viewport.height = 500;
+      Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 500 });
+      viewport.dispatchEvent(new Event("resize"));
+      vi.runAllTimers();
+      expect(document.documentElement.dataset.softKeyboard).toBe("open");
+
+      viewport.height = 844;
+      Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 844 });
+      viewport.dispatchEvent(new Event("resize"));
+      vi.runAllTimers();
+      expect(document.activeElement).toBe(input);
+      expect(document.documentElement).not.toHaveAttribute("data-soft-keyboard");
+
+      dispatchPointerDown(input, pointerType);
+      expect(document.activeElement).toBe(input);
+      expect(document.documentElement.dataset.softKeyboard).toBe("opening");
+
+      viewport.height = 500;
+      Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 500 });
+      viewport.dispatchEvent(new Event("resize"));
+      vi.runAllTimers();
+
+      expect(document.documentElement.dataset.softKeyboard).toBe("open");
+      expect(document.documentElement.style.getPropertyValue("--app-stable-viewport-height")).toBe("844px");
+      expect(document.documentElement.style.getPropertyValue("--app-stable-frame-width")).toBe("474.75px");
+      expect(document.documentElement.style.getPropertyValue("--app-keyboard-inset")).toBe("344px");
+    }
+  );
+
   it("keeps a verified layout-resize keyboard session open across editable focus transfer", () => {
     const first = document.createElement("input");
     const second = document.createElement("input");

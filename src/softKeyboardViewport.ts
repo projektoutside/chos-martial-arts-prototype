@@ -120,6 +120,7 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
   let pendingOrdinaryWindowResize = false;
   let pendingFocusModality: KeyboardFocusModality = "programmatic";
   let focusModalityVersion = 0;
+  let openingVersion = 0;
   let softKeyboardSessionActive = false;
   let softKeyboardFocusTarget: HTMLElement | null = null;
 
@@ -255,12 +256,35 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
     scheduleMeasure();
   };
 
-  const handlePointerDown = (event: PointerEvent) => {
-    markFocusModality(event.pointerType === "touch" || event.pointerType === "pen" ? event.pointerType : "mouse");
+  const beginSoftKeyboardOpening = (target: HTMLElement) => {
+    if (root.dataset.softKeyboard === "opening" && softKeyboardFocusTarget === target) return;
+    softKeyboardFocusTarget = target;
+    root.dataset.softKeyboard = "opening";
+    const version = ++openingVersion;
+    scheduleMeasure();
+    setTimer(scheduleMeasure, 80);
+    setTimer(scheduleMeasure, 240);
+    setTimer(() => {
+      if (openingVersion !== version || root.dataset.softKeyboard !== "opening") return;
+      delete root.dataset.softKeyboard;
+      if (!softKeyboardSessionActive) softKeyboardFocusTarget = null;
+    }, 420);
   };
 
-  const handleTouchStart = () => {
+  const beginOpeningForActiveTouchTarget = (target: EventTarget | null) => {
+    if (!touchInputCapable || softKeyboardSessionActive || target !== doc.activeElement) return;
+    if (isKeyboardEditableTarget(target)) beginSoftKeyboardOpening(target);
+  };
+
+  const handlePointerDown = (event: PointerEvent) => {
+    const modality = event.pointerType === "touch" || event.pointerType === "pen" ? event.pointerType : "mouse";
+    markFocusModality(modality);
+    if (modality === "touch" || modality === "pen") beginOpeningForActiveTouchTarget(event.target);
+  };
+
+  const handleTouchStart = (event: TouchEvent) => {
     markFocusModality("touch");
+    beginOpeningForActiveTouchTarget(event.target);
   };
 
   const handleMouseDown = () => {
@@ -278,18 +302,14 @@ export function installSoftKeyboardViewportController(win: Window = window, doc:
     const continuesVerifiedSession = softKeyboardSessionActive;
     const mayOpenSoftKeyboard = !continuesVerifiedSession && touchInputCapable
       && (modality === "touch" || modality === "pen");
-    softKeyboardFocusTarget = continuesVerifiedSession || mayOpenSoftKeyboard ? event.target : null;
-    if (mayOpenSoftKeyboard) root.dataset.softKeyboard = "opening";
-    scheduleMeasure();
-    if (mayOpenSoftKeyboard) {
-      setTimer(scheduleMeasure, 80);
-      setTimer(scheduleMeasure, 240);
-      setTimer(() => {
-        if (root.dataset.softKeyboard === "opening") {
-          delete root.dataset.softKeyboard;
-          if (!softKeyboardSessionActive) softKeyboardFocusTarget = null;
-        }
-      }, 420);
+    if (continuesVerifiedSession) {
+      softKeyboardFocusTarget = event.target;
+      scheduleMeasure();
+    } else if (mayOpenSoftKeyboard) {
+      beginSoftKeyboardOpening(event.target);
+    } else {
+      softKeyboardFocusTarget = null;
+      scheduleMeasure();
     }
   };
 
