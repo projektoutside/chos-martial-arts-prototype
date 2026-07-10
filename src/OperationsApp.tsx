@@ -14011,9 +14011,11 @@ function OperationsLandingRedirect() {
   return <Navigate to={staffLandingPath(landingPage)} replace />;
 }
 
-function StaffOnlyRoute({ children }: { children: ReactNode }) {
-  const { accountRole } = useAppState();
-  return accountRole === "staff" ? <>{children}</> : <Navigate to="/profile" replace />;
+function StaffOnlyRoute({ access, children }: { access: ManagerAccessKey; children: ReactNode }) {
+  const { accountRole, managerAccountAccess } = useAppState();
+  return accountRole === "staff" && managerAccountAccess.allowedTools.includes(access)
+    ? <>{children}</>
+    : <Navigate to="/profile" replace />;
 }
 
 function StaffOrStudentRoute({ children }: { children: ReactNode }) {
@@ -14034,18 +14036,18 @@ export function OperationsApp() {
         <Route path="/" element={<OperationsLandingRedirect />} />
         <Route path="/profile" element={<OperationsHomePage />} />
         <Route path="/manager" element={<ManagerPanelRoute />} />
-        <Route path="/dashboard" element={<StaffOnlyRoute><DashboardPage /></StaffOnlyRoute>} />
-        <Route path="/students" element={<StaffOnlyRoute><StudentsPage /></StaffOnlyRoute>} />
-        <Route path="/classes" element={<StaffOnlyRoute><ClassesPage /></StaffOnlyRoute>} />
-        <Route path="/study-guide" element={<StaffOnlyRoute><ManagerStudyGuidePage /></StaffOnlyRoute>} />
-        <Route path="/schedule" element={<StaffOnlyRoute><SchedulePage /></StaffOnlyRoute>} />
+        <Route path="/dashboard" element={<StaffOnlyRoute access="dashboard"><DashboardPage /></StaffOnlyRoute>} />
+        <Route path="/students" element={<StaffOnlyRoute access="students"><StudentsPage /></StaffOnlyRoute>} />
+        <Route path="/classes" element={<StaffOnlyRoute access="classes"><ClassesPage /></StaffOnlyRoute>} />
+        <Route path="/study-guide" element={<StaffOnlyRoute access="studyGuide"><ManagerStudyGuidePage /></StaffOnlyRoute>} />
+        <Route path="/schedule" element={<StaffOnlyRoute access="scheduling"><SchedulePage /></StaffOnlyRoute>} />
         <Route path="/live-chat" element={<LiveChatPage />} />
-        <Route path="/messages" element={<StaffOnlyRoute><MessagesPage /></StaffOnlyRoute>} />
+        <Route path="/messages" element={<StaffOnlyRoute access="messages"><MessagesPage /></StaffOnlyRoute>} />
         <Route path="/check-ins" element={<StaffOrStudentRoute><CheckInsPage /></StaffOrStudentRoute>} />
-        <Route path="/events" element={<StaffOnlyRoute><EventsPage /></StaffOnlyRoute>} />
-        <Route path="/merchandise" element={<StaffOnlyRoute><MerchandisePage /></StaffOnlyRoute>} />
-        <Route path="/videos" element={<StaffOnlyRoute><ManagerVideosPage /></StaffOnlyRoute>} />
-        <Route path="/reports" element={<StaffOnlyRoute><ReportsPage /></StaffOnlyRoute>} />
+        <Route path="/events" element={<StaffOnlyRoute access="events"><EventsPage /></StaffOnlyRoute>} />
+        <Route path="/merchandise" element={<StaffOnlyRoute access="merchandise"><MerchandisePage /></StaffOnlyRoute>} />
+        <Route path="/videos" element={<StaffOnlyRoute access="videos"><ManagerVideosPage /></StaffOnlyRoute>} />
+        <Route path="/reports" element={<StaffOnlyRoute access="reports"><ReportsPage /></StaffOnlyRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </OperationsShell>

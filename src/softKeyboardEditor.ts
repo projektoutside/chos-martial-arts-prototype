@@ -229,7 +229,8 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
 
   const positionLayer = () => {
     const viewport = win.visualViewport;
-    const visualViewportBottom = (viewport?.offsetTop ?? 0) + (viewport?.height ?? win.innerHeight);
+    const visibleTop = viewport?.offsetTop ?? 0;
+    const visualViewportBottom = visibleTop + (viewport?.height ?? win.innerHeight);
     const keyboardRect = (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.boundingRect;
     const overlayKeyboardTop = keyboardRect && keyboardRect.height > 0 ? keyboardRect.y : Number.POSITIVE_INFINITY;
     // Android WebViews using adjustResize can keep visualViewport at its pre-keyboard
@@ -239,7 +240,8 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     // boundary above the keyboard on Android and iOS. Keep the mirrored editor
     // comfortably centered within that visible area instead of crowding the keyboard.
     const visibleBottom = Math.min(visualViewportBottom, win.innerHeight, overlayKeyboardTop);
-    root.style.setProperty("--soft-keyboard-editor-top", `${Math.max(0, Math.round(visibleBottom / 2))}px`);
+    const visibleMidpoint = visibleTop + Math.max(0, visibleBottom - visibleTop) / 2;
+    root.style.setProperty("--soft-keyboard-editor-top", `${Math.max(0, Math.round(visibleMidpoint))}px`);
   };
 
   const close = () => {

@@ -7760,6 +7760,22 @@ describe("post-login operations app", () => {
     expect(screen.queryByRole("link", { name: "Manager's Panel" })).not.toBeInTheDocument();
   });
 
+  it("redirects limited staff away from operation routes they were not granted", () => {
+    renderManagedStaffApp("/students", {
+      id: "managed-limited-staff",
+      displayName: "Limited Staff",
+      username: "limited.staff",
+      password: "StaffPass123",
+      role: "staff",
+      status: "active",
+      access: ["dashboard"],
+      createdAt: "2026-05-10T00:00:00.000Z"
+    });
+
+    expect(screen.getByLabelText("Staff home page")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Students workspace")).not.toBeInTheDocument();
+  });
+
   it("lets the manager edit their own profile settings", () => {
     renderLoggedInApp("/manager?profile=settings");
 

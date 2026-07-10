@@ -2376,7 +2376,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       ? ownerManagerAccess
       : currentManagedAccount
         ? currentManagedAccount.role === "staff"
-          ? staffManagerAccess
+          ? normalizeManagedAccountAccess(currentManagedAccount.role, currentManagedAccount.access)
           : []
         : currentRegisteredAccount
           ? normalizeRegisteredAccountRole(currentRegisteredAccount.role) === "staff"

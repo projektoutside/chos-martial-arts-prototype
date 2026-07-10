@@ -176,6 +176,24 @@ describe("soft keyboard editor helpers", () => {
     expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("250px");
   });
 
+  it("centers the mirror within a visual viewport that is offset by browser chrome", () => {
+    const source = document.createElement("input");
+    document.body.append(source);
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 844 });
+    const viewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(viewport, {
+      height: { configurable: true, value: 500 },
+      offsetTop: { configurable: true, value: 120 }
+    });
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+    Object.defineProperty(window.navigator, "virtualKeyboard", { configurable: true, value: undefined });
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    dispatchPointerDown(source, "touch");
+
+    expect(document.documentElement.style.getPropertyValue("--soft-keyboard-editor-top")).toBe("370px");
+  });
+
   it("synchronizes edits live and closes from the Done action", () => {
     const source = document.createElement("input");
     source.value = "before";
