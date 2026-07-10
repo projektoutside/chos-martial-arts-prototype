@@ -29,6 +29,8 @@ test("softly reveals the login portrait without moving or scaling it", async ({ 
   await page.goto("/");
   const portrait = page.locator(".login-portrait-stage");
   await expect(portrait).toHaveCount(1);
+  await expect(page.locator(".launch-impact-flash")).toHaveCount(1);
+  await expect(page.locator(".launch-letter-sparks")).toHaveCount(0);
 
   await page.waitForTimeout(2240);
   const opening = await readPortraitFrame(page);

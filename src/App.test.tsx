@@ -3202,6 +3202,14 @@ describe("login landing", () => {
     expect(container.querySelector(".launch-loader")).toBeInTheDocument();
     expect(container.querySelector(".login-portrait-toggle")).toHaveClass("is-above-launch");
   });
+
+  it("keeps the launch impact while removing the white spark particles", () => {
+    const { container } = renderLoggedOutApp("/");
+
+    expect(container.querySelector(".launch-impact-flash")).toBeInTheDocument();
+    expect(container.querySelector(".launch-logo-aura")).toBeInTheDocument();
+    expect(container.querySelector(".launch-letter-sparks")).not.toBeInTheDocument();
+  });
 });
 
 describe("app fullscreen behavior", () => {

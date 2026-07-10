@@ -2446,8 +2446,7 @@ select option { color: #111; }
 .launch-stage-haze,
 .launch-floor-glow,
 .launch-impact-flash,
-.launch-logo-aura,
-.launch-letter-sparks {
+.launch-logo-aura {
   position: absolute;
   pointer-events: none;
 }
@@ -2527,21 +2526,6 @@ select option { color: #111; }
   animation: launchLogoAura 3000ms ease-out both;
 }
 
-.launch-letter-sparks {
-  z-index: 8;
-  inset: 0;
-  opacity: 0;
-  background:
-    radial-gradient(circle at 39% 23%, #fff 0 0.55%, transparent 0.8%),
-    radial-gradient(circle at 52% 40%, #fff 0 0.42%, transparent 0.7%),
-    radial-gradient(circle at 70% 33%, #fff 0 0.48%, transparent 0.76%),
-    radial-gradient(circle at 88% 24%, #fff 0 0.54%, transparent 0.84%),
-    radial-gradient(circle at 59% 79%, #fff 0 0.48%, transparent 0.8%),
-    radial-gradient(circle at 82% 82%, #fff 0 0.45%, transparent 0.75%);
-  filter: drop-shadow(0 0 9px #fff);
-  animation: launchLetterSparkle 3000ms ease-out both;
-}
-
 .launch-loader.is-reduced {
   animation: none;
 }
@@ -2556,8 +2540,7 @@ select option { color: #111; }
 .launch-loader.is-reduced .launch-stage-haze,
 .launch-loader.is-reduced .launch-floor-glow,
 .launch-loader.is-reduced .launch-impact-flash,
-.launch-loader.is-reduced .launch-logo-aura,
-.launch-loader.is-reduced .launch-letter-sparks {
+.launch-loader.is-reduced .launch-logo-aura {
   animation: none;
   opacity: 0;
 }
@@ -3082,13 +3065,6 @@ select option { color: #111; }
   67.3%, 100% { opacity: 0; transform: scale(1.05); }
 }
 
-@keyframes launchLetterSparkle {
-  0%, 37.3% { opacity: 0; transform: translate3d(-1%, 1%, 0) scale(0.94); }
-  49.3% { opacity: 1; transform: translate3d(0, 0, 0) scale(1.02); }
-  64.3% { opacity: 0.34; transform: translate3d(1%, -1%, 0) scale(1); }
-  67.3%, 100% { opacity: 0; transform: translate3d(1%, -1%, 0) scale(1); }
-}
-
 @keyframes launchBackdropHandoff {
   0%, 44% { opacity: 1; }
   58% { opacity: 0.76; }
@@ -3207,7 +3183,6 @@ select option { color: #111; }
   .launch-floor-glow,
   .launch-impact-flash,
   .launch-logo-aura,
-  .launch-letter-sparks,
   .launch-fighter-frame,
   .auth-logo,
   .authenticated-app-shell.is-login-transitioning .manager-shell,

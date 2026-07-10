@@ -320,7 +320,6 @@ function LaunchLogoAnimation({ onReveal, onComplete }: { onReveal: () => void; o
         {!prefersReducedMotion && phase !== "final-logo" && <img className="launch-fighter-frame" src={frameSrc} alt="" />}
         <div className="launch-impact-flash"></div>
         <div className="launch-logo-aura"></div>
-        <div className="launch-letter-sparks"></div>
       </div>
     </section>
   );
