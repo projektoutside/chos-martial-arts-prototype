@@ -3162,7 +3162,7 @@ select option { color: #111; }
 
 .login-new-account {
   min-height: 44px;
-  border: 1px solid rgba(184, 217, 242, 0.5);
+  border: 1px solid #8f101b;
   border-radius: 13px;
   color: var(--login-control-ice);
   background: rgba(8, 12, 20, 0.72);
@@ -3172,7 +3172,7 @@ select option { color: #111; }
 
 .login-new-account:hover,
 .login-new-account:focus-visible {
-  border-color: rgba(184, 217, 242, 0.86);
+  border-color: #c91d2d;
   background: rgba(32, 59, 84, 0.84);
 }
 
