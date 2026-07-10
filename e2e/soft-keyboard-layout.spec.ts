@@ -245,6 +245,34 @@ test("removes the hovering editor when the phone keyboard is dismissed", async (
   await expect(page.locator(".soft-keyboard-editor-layer:not([hidden])")).toHaveCount(0);
 });
 
+test("removes the hovering editor on outside taps and Back navigation", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "chromium-desktop", "Mobile dismissal coverage runs on touch devices.");
+
+  await page.setViewportSize(mobileLayoutViewport);
+  await page.goto("/");
+  await expect(page.locator(".launch-loader")).toHaveCount(0);
+  await page.evaluate(() => {
+    const outside = document.createElement("button");
+    outside.type = "button";
+    outside.textContent = "Outside target";
+    document.querySelector(".login-panel")?.append(outside);
+  });
+
+  const root = page.locator("html");
+  const username = page.locator(".auth-gate input[placeholder='Username']");
+  await username.tap();
+  await expect(root).toHaveAttribute("data-soft-keyboard-editor", "open");
+  await page.getByRole("button", { name: "Outside target" }).tap();
+  await expect(root).not.toHaveAttribute("data-soft-keyboard-editor");
+
+  await page.evaluate(() => window.history.pushState({}, "", "?typing-test=1"));
+  await username.tap();
+  await expect(root).toHaveAttribute("data-soft-keyboard-editor", "open");
+  await page.goBack();
+  await expect(root).not.toHaveAttribute("data-soft-keyboard-editor");
+  await expect(page.locator(".soft-keyboard-editor-layer:not([hidden])")).toHaveCount(0);
+});
+
 test("uses the full device height even when safe-area insets are present", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "chromium-desktop", "Full-device phone geometry runs on touch devices.");
 

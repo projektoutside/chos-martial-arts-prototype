@@ -306,6 +306,34 @@ describe("soft keyboard editor helpers", () => {
     expect(source).not.toHaveAttribute("data-soft-keyboard-source-active");
   });
 
+  it("closes the hovering editor when the user taps outside it", () => {
+    const source = document.createElement("input");
+    const outside = document.createElement("button");
+    outside.textContent = "Outside";
+    document.body.append(source, outside);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+
+    dispatchPointerDown(outside, "touch");
+
+    expect(document.documentElement.dataset.softKeyboardEditor).toBeUndefined();
+    expect(document.querySelector(".soft-keyboard-editor-layer")).toHaveAttribute("hidden");
+    expect(source).not.toHaveAttribute("data-soft-keyboard-source-active");
+  });
+
+  it("closes the hovering editor on browser Back navigation", () => {
+    const source = document.createElement("input");
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+    dispatchPointerDown(source, "touch");
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    expect(document.documentElement.dataset.softKeyboardEditor).toBeUndefined();
+    expect(document.querySelector(".soft-keyboard-editor-layer")).toHaveAttribute("hidden");
+    expect(source).not.toHaveAttribute("data-soft-keyboard-source-active");
+  });
+
   it("synchronizes edits live and closes from the Done action", () => {
     const source = document.createElement("input");
     source.value = "before";

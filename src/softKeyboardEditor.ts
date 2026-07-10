@@ -382,18 +382,21 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
     const target = resolveKeyboardEditableTarget(event.target);
     if (target) open(target, event);
+    else close();
   };
 
   const handleTouchStart = (event: TouchEvent) => {
     if (layer.contains(event.target as Node)) return;
     const target = resolveKeyboardEditableTarget(event.target);
     if (target) open(target, event);
+    else close();
   };
 
   const handleClick = (event: MouseEvent) => {
     if (!mobileEditorEnabled || layer.contains(event.target as Node)) return;
     const target = resolveKeyboardEditableTarget(event.target);
     if (target) open(target, event);
+    else close();
   };
 
   const handleFocusIn = (event: FocusEvent) => {
@@ -458,6 +461,9 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   doc.addEventListener(SOFT_KEYBOARD_CHANGE_EVENT, handleSoftKeyboardChange);
   win.addEventListener("resize", positionLayer);
   win.addEventListener("orientationchange", handleOrientationChange);
+  win.addEventListener("popstate", close);
+  win.addEventListener("hashchange", close);
+  win.addEventListener("pagehide", close);
   win.visualViewport?.addEventListener("resize", positionLayer);
   win.visualViewport?.addEventListener("scroll", positionLayer);
   (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.addEventListener("geometrychange", positionLayer);
@@ -474,6 +480,9 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     doc.removeEventListener(SOFT_KEYBOARD_CHANGE_EVENT, handleSoftKeyboardChange);
     win.removeEventListener("resize", positionLayer);
     win.removeEventListener("orientationchange", handleOrientationChange);
+    win.removeEventListener("popstate", close);
+    win.removeEventListener("hashchange", close);
+    win.removeEventListener("pagehide", close);
     win.visualViewport?.removeEventListener("resize", positionLayer);
     win.visualViewport?.removeEventListener("scroll", positionLayer);
     (win.navigator as VirtualKeyboardNavigator).virtualKeyboard?.removeEventListener("geometrychange", positionLayer);
