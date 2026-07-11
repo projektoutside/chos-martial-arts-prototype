@@ -29,7 +29,7 @@ jobs:
     environment: google-play-stable
     env:
       PACKAGE_NAME: com.xatoridev.chosmartialarts
-      PLAY_TRACK: client-stable
+      PLAY_TRACK: internal
       ANDROID_VERSION_CODE: ${{ inputs.version_code }}
       ANDROID_VERSION_NAME: ${{ inputs.version_name }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}

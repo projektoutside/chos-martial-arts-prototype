@@ -1,8 +1,8 @@
 import { fileURLToPath } from "node:url";
 
 const destinations = {
-  stable: { packageName: "com.xatoridev.chosmartialarts", track: "client-stable" },
-  testing: { packageName: "com.xatoridev.chosmartialarts.testing", track: "client-preview" }
+  stable: { packageName: "com.xatoridev.chosmartialarts", track: "internal" },
+  testing: { packageName: "com.xatoridev.chosmartialarts.testing", track: "internal" }
 };
 
 export function validatePlayReleaseInput(input) {
@@ -10,7 +10,7 @@ export function validatePlayReleaseInput(input) {
   const destination = destinations[input.variant];
   if (!destination) errors.push("Variant must be stable or testing.");
   if (destination && input.packageName !== destination.packageName) errors.push("Package name does not match the selected variant.");
-  if (destination && input.track !== destination.track) errors.push(`Track must be the private ${destination.track} closed-testing track.`);
+  if (destination && input.track !== destination.track) errors.push(`Track must be the private ${destination.track} testing track.`);
   if (!/^\d+$/.test(input.versionCode) || Number(input.versionCode) < 1) errors.push("Version code must be a positive integer.");
   if (!input.versionName?.trim()) errors.push("Version name is required.");
   if (!input.releaseNotes?.trim()) errors.push("Release notes are required.");

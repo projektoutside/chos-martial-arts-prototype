@@ -4,10 +4,10 @@
 
 | App | Package | Play track | Purpose |
 | --- | --- | --- | --- |
-| Cho's Martial Arts | `com.xatoridev.chosmartialarts` | `client-stable` | Approved launch-candidate features |
-| Cho's Testing | `com.xatoridev.chosmartialarts.testing` | `client-preview` | Fake-data feature demonstrations |
+| Cho's Martial Arts | `com.xatoridev.chosmartialarts` | `internal` | Approved launch-candidate features |
+| Cho's Testing | `com.xatoridev.chosmartialarts.testing` | `internal` | Fake-data feature demonstrations |
 
-Both tracks are private closed-testing tracks. Never select Production or Open testing for this workflow.
+Both current tracks are private internal-testing tracks. Never select Production or Open testing for this workflow. Google locks closed testing on a new personal developer account until the full app-information setup is finished; migrate to named closed tracks after that gate is completed.
 
 ## Current verified Play state (2026-07-11)
 
@@ -17,6 +17,10 @@ Both tracks are private closed-testing tracks. Never select Production or Open t
 - Existing internal release: version `0.1.6`, version code `7`, released July 10, 2026.
 - Existing internal tester list: `Cho Internal Testers` with two users.
 - Existing internal opt-in URL: `https://play.google.com/apps/internaltest/4701284583253394780`.
+- Cho's Testing Play app ID: `4975434196214883269`.
+- Cho's Testing internal track ID: `4700873525934874832`.
+- Cho's Testing version `0.1.0-testing` / code `1` was published to the two-user `Cho Internal Testers` list on July 11, 2026.
+- Cho's Testing opt-in URL: `https://play.google.com/apps/internaltest/4700873525934874832`.
 - Play currently displays the temporary name `com.xatoridev.chosmartialarts (unreviewed)` until required app setup is completed and reviewed.
 - The existing app uses the local upload key stored outside Git. Both new bundles must continue using this key unless Google Play explicitly performs an upload-key reset.
 
@@ -24,12 +28,11 @@ Both tracks are private closed-testing tracks. Never select Production or Open t
 
 ### Cho's Martial Arts
 
-1. Open Test and release > Testing > Closed testing.
-2. Create a track named `client-stable`.
-3. Attach the existing `Cho Internal Testers` email list.
+1. Open Test and release > Testing > Internal testing.
+2. Verify the `Cho Internal Testers` email list is attached.
 4. Create the first release with the signed stable AAB.
 5. Confirm the package is `com.xatoridev.chosmartialarts` and the version code is greater than every prior upload.
-6. Add plain-language release notes and roll out only to `client-stable`.
+6. Add plain-language release notes and roll out only to `internal`.
 7. Record the closed-test opt-in URL.
 
 ### Cho's Testing
@@ -38,9 +41,9 @@ Both tracks are private closed-testing tracks. Never select Production or Open t
 2. Select App (not Game), Free, and complete the owner-confirmed declarations shown by Play.
 3. Upload the signed demo AAB once manually so Play permanently registers `com.xatoridev.chosmartialarts.testing`.
 4. Enroll in Play App Signing when prompted; retain the same local upload key outside Git.
-5. Create the closed track `client-preview` and attach `Cho Internal Testers`.
+5. Use the private internal track and attach `Cho Internal Testers`.
 6. Confirm the `TEST` launcher badge and the `Cho's Testing` name.
-7. Add testing release notes and roll out only to `client-preview`.
+7. Add testing release notes and roll out only to `internal`.
 8. Record the separate closed-test opt-in URL.
 
 ## Owner-confirmed declarations
@@ -70,7 +73,7 @@ Add stable environment variables:
 - `VITE_SUPABASE_URL=https://zfuwbbepsnmmlpgfkmhz.supabase.co`
 - `VITE_SUPABASE_PUBLISHABLE_KEY=<browser-safe Cho publishable key>`
 
-Keep `PLAY_UPLOAD_ENABLED=false` until both first manual releases, track names, service-account permissions, and dry-run artifacts are verified. Then set it to `true` separately in each protected environment.
+Keep `PLAY_UPLOAD_ENABLED=false` until both first manual releases, the `internal` destinations, service-account permissions, and dry-run artifacts are verified. Then set it to `true` separately in each protected environment.
 
 ## Service-account access
 
@@ -114,4 +117,3 @@ For every release record:
 - Real-device installation result.
 
 Never record tester email addresses, upload-key passwords, or service-account JSON in Git.
-
