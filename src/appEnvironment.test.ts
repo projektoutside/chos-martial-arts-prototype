@@ -27,6 +27,7 @@ describe("resolveAppEnvironment", () => {
       displayName: "Cho's Testing",
       demo: true,
       supabaseUrl: "",
+      supabasePublicKey: "",
       capabilities: {
         supabase: false,
         sms: false,
@@ -60,5 +61,15 @@ describe("resolveAppEnvironment", () => {
       VITE_APP_VARIANT: "stable",
       VITE_SUPABASE_URL: "https://foreign-project.supabase.co"
     }))).toThrow("Stable builds may only use the approved Cho Supabase project");
+  });
+
+  it("does not expose a Supabase URL or key to testing consumers", async () => {
+    const result = resolveAppEnvironment(env({
+      VITE_APP_VARIANT: "testing",
+      VITE_SUPABASE_URL: "https://zfuwbbepsnmmlpgfkmhz.supabase.co",
+      VITE_SUPABASE_PUBLISHABLE_KEY: "stable-key"
+    }));
+    expect(result.supabaseUrl).toBe("");
+    expect(result.supabasePublicKey).toBe("");
   });
 });

@@ -1,5 +1,6 @@
 import type { AccountRole, ManagedAccount, ManagerAccessKey } from "./types";
 import { isDeveloperAccountEnabled, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
+import { resolveAppEnvironment } from "./appEnvironment";
 
 type SupabasePasswordResponse = {
   access_token: string;
@@ -88,11 +89,11 @@ class SupabaseBackendInactiveError extends Error {
 }
 
 function supabaseUrl() {
-  return import.meta.env.VITE_SUPABASE_URL?.trim() ?? "";
+  return resolveAppEnvironment(import.meta.env).supabaseUrl;
 }
 
 function supabasePublicKey() {
-  return (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY ?? "").trim();
+  return resolveAppEnvironment(import.meta.env).supabasePublicKey;
 }
 
 async function readSupabaseResponseText(response: Response) {

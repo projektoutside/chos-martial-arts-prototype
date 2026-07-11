@@ -7,6 +7,7 @@ export interface AppEnvironment {
   displayName: "Cho's Martial Arts" | "Cho's Testing";
   demo: boolean;
   supabaseUrl: string;
+  supabasePublicKey: string;
   capabilities: Readonly<Record<RemoteCapability, boolean>>;
 }
 
@@ -33,7 +34,7 @@ function productionVariant(env: ImportMetaEnv): AppVariant {
   throw new Error("VITE_APP_VARIANT must be stable or testing for production builds.");
 }
 
-function approvedStableSupabaseUrl(rawUrl: string | undefined) {
+function approvedStableSupabaseUrl(rawUrl: string | undefined, enforceApprovedHost: boolean) {
   const url = rawUrl?.trim() ?? "";
   if (!url) return "";
   let hostname = "";
@@ -42,7 +43,7 @@ function approvedStableSupabaseUrl(rawUrl: string | undefined) {
   } catch {
     throw new Error("Stable builds require a valid Cho Supabase URL.");
   }
-  if (hostname !== approvedChoSupabaseHost) {
+  if (enforceApprovedHost && hostname !== approvedChoSupabaseHost) {
     throw new Error("Stable builds may only use the approved Cho Supabase project.");
   }
   return url.replace(/\/+$/, "");
@@ -57,6 +58,7 @@ export function resolveAppEnvironment(env: ImportMetaEnv): AppEnvironment {
       displayName: "Cho's Testing",
       demo: true,
       supabaseUrl: "",
+      supabasePublicKey: "",
       capabilities: disabledCapabilities
     };
   }
@@ -66,7 +68,8 @@ export function resolveAppEnvironment(env: ImportMetaEnv): AppEnvironment {
     kind: "stable",
     displayName: "Cho's Martial Arts",
     demo: false,
-    supabaseUrl: approvedStableSupabaseUrl(env.VITE_SUPABASE_URL),
+    supabaseUrl: approvedStableSupabaseUrl(env.VITE_SUPABASE_URL, env.PROD),
+    supabasePublicKey: (env.VITE_SUPABASE_PUBLISHABLE_KEY ?? env.VITE_SUPABASE_ANON_KEY ?? "").trim(),
     capabilities: stableCapabilities
   };
 }

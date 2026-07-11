@@ -10,6 +10,7 @@ import {
 import { useSoftKeyboardEditor } from "./softKeyboardEditor";
 import { useAppState } from "./state";
 import { isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, signInSupabaseAccount } from "./supabaseAccounts";
+import { DemoEnvironmentBadge } from "./DemoEnvironmentBadge";
 import { initializeAppTheme } from "./theme";
 import { hasSeenTestingUpdate, markTestingUpdateSeen, testingUpdateNotice } from "./testingUpdateNotice";
 import {
@@ -201,6 +202,7 @@ function PortraitAppShell({ children }: { children: ReactNode }) {
   useSoftKeyboardViewport();
   return (
     <div className="portrait-app-shell" data-testid="portrait-app-shell" data-orientation-lock="portrait-primary" aria-label="Cho's Martial Arts portrait app frame">
+      <DemoEnvironmentBadge />
       <div className="portrait-app-frame">
         {children}
       </div>
