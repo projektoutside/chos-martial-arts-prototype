@@ -10,7 +10,8 @@ test("defines stable and testing Android identities", () => {
   assert.match(gradle, /demo\s*\{[\s\S]*applicationId\s+["']com\.xatoridev\.chosmartialarts\.testing["']/);
 });
 
-test("keeps independent version codes and names", () => {
-  assert.match(gradle, /stable\s*\{[\s\S]*versionCode\s+7[\s\S]*versionName\s+["']0\.1\.6["']/);
-  assert.match(gradle, /demo\s*\{[\s\S]*versionCode\s+1[\s\S]*versionName\s+["']0\.1\.0-testing["']/);
+test("keeps independent default versions with release overrides", () => {
+  assert.match(gradle, /releaseVersionCode\s*=\s*\(System\.getenv\(['"]ANDROID_VERSION_CODE['"]\)/);
+  assert.match(gradle, /stable\s*\{[\s\S]*versionCode releaseVersionCode > 0 \? releaseVersionCode : 7[\s\S]*versionName releaseVersionName \?: ["']0\.1\.6["']/);
+  assert.match(gradle, /demo\s*\{[\s\S]*versionCode releaseVersionCode > 0 \? releaseVersionCode : 1[\s\S]*versionName releaseVersionName \?: ["']0\.1\.0-testing["']/);
 });

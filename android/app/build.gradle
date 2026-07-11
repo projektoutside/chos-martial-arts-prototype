@@ -1,5 +1,8 @@
 apply plugin: 'com.android.application'
 
+def releaseVersionCode = (System.getenv('ANDROID_VERSION_CODE') ?: '0') as Integer
+def releaseVersionName = System.getenv('ANDROID_VERSION_NAME') ?: ''
+
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
@@ -35,14 +38,14 @@ android {
         stable {
             dimension "environment"
             applicationId "com.xatoridev.chosmartialarts"
-            versionCode 7
-            versionName "0.1.6"
+            versionCode releaseVersionCode > 0 ? releaseVersionCode : 7
+            versionName releaseVersionName ?: "0.1.6"
         }
         demo {
             dimension "environment"
             applicationId "com.xatoridev.chosmartialarts.testing"
-            versionCode 1
-            versionName "0.1.0-testing"
+            versionCode releaseVersionCode > 0 ? releaseVersionCode : 1
+            versionName releaseVersionName ?: "0.1.0-testing"
         }
     }
     buildTypes {
