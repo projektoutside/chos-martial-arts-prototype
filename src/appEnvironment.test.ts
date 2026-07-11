@@ -41,6 +41,7 @@ describe("resolveAppEnvironment", () => {
   it("accepts the approved Cho Supabase host for stable builds", () => {
     const result = resolveAppEnvironment(env({
       VITE_APP_VARIANT: "stable",
+      VITE_APPROVED_SUPABASE_HOST: "zfuwbbepsnmmlpgfkmhz.supabase.co",
       VITE_SUPABASE_URL: "https://zfuwbbepsnmmlpgfkmhz.supabase.co"
     }));
 
@@ -59,8 +60,16 @@ describe("resolveAppEnvironment", () => {
   it("rejects a foreign Supabase host in a stable build", () => {
     expect(() => resolveAppEnvironment(env({
       VITE_APP_VARIANT: "stable",
+      VITE_APPROVED_SUPABASE_HOST: "zfuwbbepsnmmlpgfkmhz.supabase.co",
       VITE_SUPABASE_URL: "https://foreign-project.supabase.co"
     }))).toThrow("Stable builds may only use the approved Cho Supabase project");
+  });
+
+  it("requires an explicit approved Supabase host for stable production builds", () => {
+    expect(() => resolveAppEnvironment(env({
+      VITE_APP_VARIANT: "stable",
+      VITE_SUPABASE_URL: "https://zfuwbbepsnmmlpgfkmhz.supabase.co"
+    }))).toThrow("VITE_APPROVED_SUPABASE_HOST is required");
   });
 
   it("does not expose a Supabase URL or key to testing consumers", async () => {

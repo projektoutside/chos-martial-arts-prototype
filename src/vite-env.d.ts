@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_APP_VARIANT?: "stable" | "testing";
+  readonly VITE_APPROVED_SUPABASE_HOST?: string;
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;

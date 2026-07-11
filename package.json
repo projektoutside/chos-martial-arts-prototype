@@ -9,12 +9,16 @@
     "build": "tsc -b && vite build",
     "build:pages": "npm run build && node scripts/write-build-version.mjs && node scripts/copy-spa-fallback.mjs",
     "build:cloudflare": "npm run build && node scripts/write-build-version.mjs && node scripts/prepare-cloudflare-pages.mjs",
-    "build:android": "npm run build && cap sync android && node scripts/verify-android-release.mjs",
+    "build:android": "npm run build:android:stable",
+    "build:android:stable": "node scripts/build-android-variant.mjs stable",
+    "build:android:testing": "node scripts/build-android-variant.mjs testing",
     "preview": "vite preview",
     "preview:network": "vite preview --host 0.0.0.0",
     "test": "vitest run",
     "test:e2e:keyboard": "playwright test e2e/soft-keyboard-layout.spec.ts",
-    "verify:android": "node scripts/verify-android-release.mjs"
+    "verify:android": "node scripts/verify-android-release.mjs",
+    "verify:android:variants": "node --test scripts/verify-android-variant.test.mjs",
+    "verify:demo-artifact": "node scripts/verify-demo-artifact.mjs dist"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
