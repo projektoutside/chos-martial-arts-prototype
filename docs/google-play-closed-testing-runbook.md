@@ -60,13 +60,14 @@ Play declarations are legal and policy statements. Confirm them from the behavio
 
 ## GitHub protected environments
 
-Create `google-play-stable` and `google-play-testing` under Repository Settings > Environments. Add these secrets to both environments:
+Create `google-play-stable` and `google-play-testing` under Repository Settings > Environments. Add these upload-signing secrets to both environments:
 
 - `ANDROID_UPLOAD_KEYSTORE_BASE64`
 - `ANDROID_UPLOAD_STORE_PASSWORD`
 - `ANDROID_UPLOAD_KEY_ALIAS`
 - `ANDROID_UPLOAD_KEY_PASSWORD`
-- `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`
+
+Google Play authentication is keyless. The workflows request short-lived credentials through GitHub OIDC, so no Google service-account JSON secret is stored.
 
 Add stable environment variables:
 
@@ -77,11 +78,13 @@ Keep `PLAY_UPLOAD_ENABLED=false` until both first manual releases, the `internal
 
 ## Service-account access
 
-1. Enable the Google Play Android Developer API in the selected Google Cloud project.
-2. Create a release-only service account.
-3. In Play Console > Users and permissions, invite the service-account email.
-4. Grant only the app/release permissions needed for the two Cho packages; do not grant financial or account-owner access.
-5. Store the JSON key only in the protected GitHub environment secret.
+1. Google Cloud project: `xatori-play-releases-2026` (project number `736416642065`), with no billing account attached.
+2. The Google Play Android Developer API is enabled.
+3. Release-only service account: `xatori-play-release@xatori-play-releases-2026.iam.gserviceaccount.com`.
+4. Workload Identity provider: `projects/736416642065/locations/global/workloadIdentityPools/xatori-github-actions/providers/github-actions`.
+5. The provider accepts only `xatori-dev/chos-martial-arts-operations-app` and verifies GitHub owner ID `290580977`.
+6. The repository identity may impersonate only the release service account; credentials are short-lived and no downloadable private key exists.
+7. Play Console grants that service account access only to the two Cho packages with read-only app information and `Release apps to testing tracks`. It has no production, financial, order, policy, or account-admin permission.
 
 ## Releasing
 
