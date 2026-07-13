@@ -215,7 +215,11 @@ export function subscribeToPrivateChatChanges({ onChange, onMessage, onStatus, c
       channel = activeClient.channel(`private-chat:${channelSequence}`);
       channel.on("postgres_changes", { event: "*", schema: "public", table: "private_chat_rooms" }, onChange);
       channel.on("postgres_changes", { event: "*", schema: "public", table: "private_chat_room_members" }, onChange);
-      if (roomId && onMessage) channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "private_chat_messages", filter: `room_id=eq.${roomId}` }, (payload) => onMessage(mapMessage((payload as { new: MessageRow }).new)));
+      if (onMessage) channel.on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "private_chat_messages", ...(roomId ? { filter: `room_id=eq.${roomId}` } : {}) },
+        (payload) => onMessage(mapMessage((payload as { new: MessageRow }).new))
+      );
       channel.subscribe((status, error) => onStatus?.(status, error?.message));
       if (cleaned && channel) void activeClient.removeChannel(channel);
     } catch (error) { if (!cleaned) onStatus?.("CHANNEL_ERROR", error instanceof Error ? error.message : "Private chat subscription failed."); }

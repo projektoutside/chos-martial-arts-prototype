@@ -4558,13 +4558,19 @@ describe("post-login operations app", () => {
     expect(messagesTab).toHaveAttribute("aria-selected", "true");
   });
 
-  it("does not expose local-only custom live chat room creation", () => {
+  it("places secure private room creation to the right of Cho's Room and Mentions", () => {
     renderLoggedInApp("/live-chat");
 
     const roomTabs = screen.getByRole("tablist", { name: "Live chat rooms" });
     expect(within(roomTabs).queryByRole("button", { name: "Create Room" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Create chat room" })).not.toBeInTheDocument();
     expect(within(roomTabs).getByRole("tab", { name: "Cho's Room" })).toHaveAttribute("aria-selected", "true");
+    expect(within(roomTabs).getByRole("tab", { name: /Mentions/i })).toBeInTheDocument();
+
+    const createRoomButton = screen.getByRole("button", { name: "Create Room" });
+    expect(roomTabs.compareDocumentPosition(createRoomButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(createRoomButton);
+    expect(screen.getByRole("dialog", { name: "Create chat room" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Room name" })).toBeRequired();
   });
 
   it("does not submit a local preview message when Supabase sign-in is unavailable", () => {
