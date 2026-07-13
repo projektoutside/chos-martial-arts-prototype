@@ -1,0 +1,98 @@
+name: Release Cho's Martial Arts to Google Play
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: New Play version code (must never be reused)
+        required: true
+        type: string
+      version_name:
+        description: Stable version name, for example 0.1.7
+        required: true
+        type: string
+      release_notes:
+        description: Client-facing summary of this stable update
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: google-play-cho-stable
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: google-play-stable
+    env:
+      PACKAGE_NAME: com.xatoridev.chosmartialarts
+      PLAY_TRACK: internal
+      ANDROID_VERSION_CODE: ${{ inputs.version_code }}
+      ANDROID_VERSION_NAME: ${{ inputs.version_name }}
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      RELEASE_NOTES: ${{ inputs.release_notes }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate to Google Cloud without a stored key
+        if: vars.PLAY_UPLOAD_ENABLED == 'true'
+        id: google-auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          project_id: xatori-play-releases-2026
+          workload_identity_provider: projects/736416642065/locations/global/workloadIdentityPools/xatori-github-actions/providers/github-actions
+          service_account: xatori-play-release@xatori-play-releases-2026.iam.gserviceaccount.com
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - run: npm ci
+      - name: Validate private destination
+        run: node scripts/validate-play-release-input.mjs stable "$PACKAGE_NAME" "$PLAY_TRACK" "$ANDROID_VERSION_CODE" "$ANDROID_VERSION_NAME" "$RELEASE_NOTES"
+      - run: npm run test
+      - name: Verify stable Cho backend
+        shell: bash
+        run: |
+          test "$VITE_SUPABASE_URL" = "https://zfuwbbepsnmmlpgfkmhz.supabase.co"
+          test -n "$VITE_SUPABASE_PUBLISHABLE_KEY"
+      - name: Restore Android upload key
+        shell: bash
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 --decode > android/upload-key.jks
+          printf 'storeFile=upload-key.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$ANDROID_UPLOAD_STORE_PASSWORD" "$ANDROID_UPLOAD_KEY_ALIAS" "$ANDROID_UPLOAD_KEY_PASSWORD" > android/key.properties
+      - run: npm run build:android:stable
+      - name: Save release notes
+        shell: bash
+        run: |
+          mkdir -p play-whats-new
+          printf '%s\n' "$RELEASE_NOTES" > play-whats-new/whatsnew-en-US
+      - name: Upload build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: chos-stable-${{ inputs.version_code }}-${{ github.sha }}
+          path: android/app/build/outputs/bundle/stableRelease/app-stable-release.aab
+          if-no-files-found: error
+      - name: Upload to private Play internal testing
+        if: vars.PLAY_UPLOAD_ENABLED == 'true'
+        uses: r0adkll/upload-google-play@935ef9c68bb393a8e6116b1575626a7f5be3a7fb
+        with:
+          serviceAccountJson: ${{ steps.google-auth.outputs.credentials_file_path }}
+          packageName: ${{ env.PACKAGE_NAME }}
+          releaseFiles: android/app/build/outputs/bundle/stableRelease/app-stable-release.aab
+          tracks: ${{ env.PLAY_TRACK }}
+          status: completed
+          whatsNewDirectory: play-whats-new

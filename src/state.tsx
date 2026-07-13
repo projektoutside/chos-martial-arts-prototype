@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { childUsernameFromName, normalizeChildUsername } from "./childAccountUtils";
 import { isSafeMerchandiseImageDataUrl, isSafeStudyMaterialFile, isSafeTrainingVideoFile } from "./contentSafety";
 import { getProduct, studio } from "./data";
+import { isDemoEnvironment } from "./appEnvironment";
+import { createDemoState, demoStorageKey } from "./demoData";
 import { parseOperationsBackupSnapshot, type OperationsBackupData } from "./operationsBackup";
 import { getClassReminderCandidates, getLeadCandidates, getMerchandiseTargetStock, getStudentCelebrationEvents, getStudentProfileIssues, hasGuardianSmsConsent, hasStaffSmsConsent, hasStudentSmsConsent, isAttendanceGapFollowUpDue, isBeltTestInviteDue, isLowStockMerchandiseItem, isMilestoneEncouragementDue, isMissedClassFollowUpDue, isNewStudentCheckInDue, isPausedStudentReviewDue, isProfileUpdateRequestDue, isQueuedMessageDeliverable, isStaleOneTimeScheduledClass, isTrialConversionDue } from "./operationsReports";
 import { buildStudentBeltProgress } from "./studentProgress";
@@ -45,7 +47,7 @@ import type {
 } from "./types";
 import { applyCoupon, calculateTotals, createOrder, estimateSmsSegments, hasSmsOptOutLanguage, isPrototypeDeveloperEmail, isPrototypeManagerOwnerEmail, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
 
-const keys = {
+const stableKeys = {
   cart: "chos.cart.v1",
   orders: "chos.orders.v1",
   bookings: "chos.bookings.v1",
@@ -78,6 +80,10 @@ const keys = {
   studyGuideMaterials: "chos.operations.studyGuideMaterials.v1"
 } as const;
 
+const keys = Object.fromEntries(
+  Object.entries(stableKeys).map(([name, key]) => [name, isDemoEnvironment() ? demoStorageKey(key) : key])
+) as typeof stableKeys;
+
 const studentPrototypeDataResetKey = "chos.prototype.studentDataReset.v1";
 const retiredStudentScopedStoragePrefixes = [
   "chos.beltCase.student.",
@@ -92,7 +98,7 @@ const retiredStudentScopedStorageFragments = [
   "parent123@chos.prototype"
 ];
 
-const seedStudents: StudentRecord[] = [];
+const seedStudents: StudentRecord[] = isDemoEnvironment() ? createDemoState().students : [];
 
 const seedScheduledClasses: ScheduledClass[] = [
   { id: "schedule-youth-beginners", title: "Youth Beginners", date: "2026-05-18", time: "5:00 PM", type: "class", notes: "Beginner martial arts fundamentals." }

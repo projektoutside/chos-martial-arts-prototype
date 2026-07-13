@@ -1,22 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTwilioSupabaseMessagingUrls,
-  choStagingSupabaseProjectRef,
   isSupabaseTwilioMessagingEndpoint,
   isTwilioRelayHealthReady,
   twilioConsentSyncUrlForRelayEndpoint
 } from "./twilioSupabaseMessaging";
 
 describe("twilio Supabase messaging URLs", () => {
-  it("builds the staging Twilio relay, health, consent, and webhook URLs", () => {
-    expect(choStagingSupabaseProjectRef).toBe("zfuwbbepsnmmlpgfkmhz");
-    expect(buildTwilioSupabaseMessagingUrls()).toEqual({
+  it("builds the configured Twilio relay, health, consent, and webhook URLs", () => {
+    expect(buildTwilioSupabaseMessagingUrls("https://zfuwbbepsnmmlpgfkmhz.supabase.co")).toEqual({
       baseUrl: "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/twilio-messaging",
       healthUrl: "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/twilio-messaging/health",
       sendUrl: "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/twilio-messaging/send",
       consentUrl: "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/twilio-messaging/consent",
       inboundWebhookUrl: "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/twilio-messaging/inbound",
       statusCallbackUrlTemplate: "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/twilio-messaging/status/{messageId}"
+    });
+  });
+
+  it("does not invent a stable relay when no backend is configured", () => {
+    expect(buildTwilioSupabaseMessagingUrls()).toEqual({
+      baseUrl: "",
+      healthUrl: "",
+      sendUrl: "",
+      consentUrl: "",
+      inboundWebhookUrl: "",
+      statusCallbackUrlTemplate: ""
     });
   });
 

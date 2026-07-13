@@ -15016,6 +15016,8 @@ describe("post-login operations app", () => {
   });
 
   it("queues a Compose blast, syncs consent, and sends through the Supabase Twilio relay after health is ready", async () => {
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "GET") {
         return {

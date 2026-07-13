@@ -10,6 +10,6 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
-    exclude: [...configDefaults.exclude, "e2e/**", ".worktrees/**"]
+    exclude: [...configDefaults.exclude, "e2e/**", ".worktrees/**", "scripts/**/*.test.mjs"]
   }
 });

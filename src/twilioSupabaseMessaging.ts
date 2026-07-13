@@ -1,6 +1,5 @@
 import type { TwilioRelayHealthReadinessChecks } from "./twilioRelayContract";
 
-export const choStagingSupabaseProjectRef = "zfuwbbepsnmmlpgfkmhz";
 export const twilioMessagingFunctionName = "twilio-messaging";
 
 export type TwilioSupabaseMessagingUrls = {
@@ -13,12 +12,15 @@ export type TwilioSupabaseMessagingUrls = {
 };
 
 function cleanSupabaseUrl(supabaseUrl?: string) {
-  const cleanUrl = supabaseUrl?.trim().replace(/\/+$/, "");
-  return cleanUrl || `https://${choStagingSupabaseProjectRef}.supabase.co`;
+  return supabaseUrl?.trim().replace(/\/+$/, "") ?? "";
 }
 
 export function buildTwilioSupabaseMessagingUrls(supabaseUrl?: string): TwilioSupabaseMessagingUrls {
-  const baseUrl = `${cleanSupabaseUrl(supabaseUrl)}/functions/v1/${twilioMessagingFunctionName}`;
+  const cleanUrl = cleanSupabaseUrl(supabaseUrl);
+  if (!cleanUrl) {
+    return { baseUrl: "", healthUrl: "", sendUrl: "", consentUrl: "", inboundWebhookUrl: "", statusCallbackUrlTemplate: "" };
+  }
+  const baseUrl = `${cleanUrl}/functions/v1/${twilioMessagingFunctionName}`;
   return {
     baseUrl,
     healthUrl: `${baseUrl}/health`,
