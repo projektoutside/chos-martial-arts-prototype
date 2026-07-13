@@ -5334,6 +5334,7 @@ function LiveChatRoomFrame({
     if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
     setIsManageRoomOpen(false);
     setActiveRoomId(liveChatDefaultRoomId);
+    setLiveStatusMessage("Private room deleted. Cho's Room is active.");
     await refreshPrivateRooms();
   };
 
@@ -5343,6 +5344,7 @@ function LiveChatRoomFrame({
     if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
     setIsManageRoomOpen(false);
     setActiveRoomId(liveChatDefaultRoomId);
+    setLiveStatusMessage("You left the private room. Cho's Room is active.");
     await refreshPrivateRooms();
   };
 
