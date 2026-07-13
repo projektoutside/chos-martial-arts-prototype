@@ -31,11 +31,11 @@ as $$
   where p.id = auth.uid();
 $$;
 
-create or replace function public.acknowledge_my_welcome()
+create or replace function private.acknowledge_my_welcome_impl()
 returns table (welcome_seen_at timestamptz)
 language sql
-security invoker
-set search_path = public
+security definer
+set search_path = public, auth
 as $$
   update public.profiles
   set welcome_seen_at = coalesce(profiles.welcome_seen_at, now()),
@@ -44,7 +44,18 @@ as $$
   returning profiles.welcome_seen_at;
 $$;
 
+create or replace function public.acknowledge_my_welcome()
+returns table (welcome_seen_at timestamptz)
+language sql
+security invoker
+set search_path = private, public
+as $$
+  select * from private.acknowledge_my_welcome_impl();
+$$;
+
 revoke all on function public.get_my_profile_onboarding() from public, anon;
 revoke all on function public.acknowledge_my_welcome() from public, anon;
+revoke all on function private.acknowledge_my_welcome_impl() from public, anon;
 grant execute on function public.get_my_profile_onboarding() to authenticated, service_role;
 grant execute on function public.acknowledge_my_welcome() to authenticated, service_role;
+grant execute on function private.acknowledge_my_welcome_impl() to authenticated, service_role;
