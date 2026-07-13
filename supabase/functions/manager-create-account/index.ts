@@ -103,12 +103,11 @@ Deno.serve(async (req: Request) => {
   if (
     callerProfileError ||
     !callerProfile ||
-    callerProfile.username !== "manager123" ||
     callerProfile.role !== "staff" ||
     callerProfile.status !== "active" ||
     callerProfile.is_owner !== true
   ) {
-    return jsonResponse({ error: "Only the Manager123 owner account can manage accounts." }, 403);
+    return jsonResponse({ error: "Only an active Developer or Manager owner account can manage accounts." }, 403);
   }
 
   let body: AccountRequest;
@@ -137,7 +136,7 @@ Deno.serve(async (req: Request) => {
   if (!isStrongPassword(password)) {
     return jsonResponse({ error: passwordPolicyMessage }, 400);
   }
-  if (username === "manager123" || username === "dev123" || username.endsWith(".child")) {
+  if (username === "manager123" || username === "manager1" || username === "dev123" || username.endsWith(".child")) {
     return jsonResponse({ error: "That username is reserved." }, 400);
   }
   if (role === "student" && !studentId) {
@@ -178,6 +177,7 @@ Deno.serve(async (req: Request) => {
     role,
     status,
     is_owner: false,
+    welcome_seen_at: null,
     phone,
     title,
     notes,

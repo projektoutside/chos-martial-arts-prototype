@@ -9859,8 +9859,8 @@ function CreateAccountsPage() {
   }) => {
     if (!isSupabaseAuthConfigured()) return "local";
     if (!readSupabaseAuthSession()) {
-      showFormMessage("Sign into Supabase Manager123 before creating live accounts.");
-      showToast("Supabase Manager123 sign-in required before creating live accounts.");
+      showFormMessage("Sign into an authorized Supabase Developer or Manager account before creating live accounts.");
+      showToast("Supabase Developer or Manager sign-in required before creating live accounts.");
       return "handled";
     }
     setIsCreatingAccount(true);
@@ -10094,7 +10094,7 @@ function CreateAccountsPage() {
   const activeManagedAccounts = managedAccounts.filter((account) => account.status !== "inactive");
   const liveSupabaseAccountsEnabled = isSupabaseAuthConfigured();
   const createAccountPageText = liveSupabaseAccountsEnabled
-    ? "Create live Supabase sign-in profiles for staff, students, and parents. A Manager123 Supabase session is required before a live account is created."
+    ? "Create live Supabase sign-in profiles for staff, students, and parents. An authorized Developer or Manager Supabase session is required before a live account is created."
     : "Create local sign-in credentials for staff, students, and parents. Manager and Developer are the only accounts that can open this creator.";
   const creatorInstructions = liveSupabaseAccountsEnabled
     ? "Choose the role, set the username and password, then create the account in Supabase for the family or staff member."

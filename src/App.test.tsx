@@ -5156,7 +5156,7 @@ describe("post-login operations app", () => {
       fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "RemotePass123!" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
 
-      expect(await screen.findByText("Sign into Supabase Manager123 before creating live accounts.")).toBeInTheDocument();
+      expect(await screen.findByText("Sign into an authorized Supabase Developer or Manager account before creating live accounts.")).toBeInTheDocument();
       expect(fetchMock).not.toHaveBeenCalled();
       expect(window.localStorage.getItem("chos.managedAccounts.v1")).toBeNull();
       expect(window.localStorage.getItem("chos.accounts.v1")).toBeNull();
@@ -5199,7 +5199,7 @@ describe("post-login operations app", () => {
       renderLoggedInApp("/manager?tool=create");
       const createAccountCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/functions/v1/manager-create-account"));
 
-      expect(screen.getByText("Create live Supabase sign-in profiles for staff, students, and parents. A Manager123 Supabase session is required before a live account is created.")).toBeInTheDocument();
+      expect(screen.getByText("Create live Supabase sign-in profiles for staff, students, and parents. An authorized Developer or Manager Supabase session is required before a live account is created.")).toBeInTheDocument();
       expect(screen.getByText("Choose the role, set the username and password, then create the account in Supabase for the family or staff member.")).toBeInTheDocument();
       expect(screen.queryByText(/Create local sign-in credentials/)).not.toBeInTheDocument();
 
