@@ -2,9 +2,10 @@ import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 const repositoryName = process.env.GITHUB_REPOSITORY?.split("/")[1];
+const isCloudflarePagesBuild = process.env.CLOUDFLARE_PAGES === "true";
 
 export default defineConfig({
-  base: repositoryName ? `/${repositoryName}/` : "/",
+  base: repositoryName && !isCloudflarePagesBuild ? `/${repositoryName}/` : "/",
   plugins: [react()],
   test: {
     environment: "jsdom",
