@@ -87,6 +87,6 @@ jobs:
           serviceAccountJson: ${{ steps.google-auth.outputs.credentials_file_path }}
           packageName: ${{ env.PACKAGE_NAME }}
           releaseFiles: android/app/build/outputs/bundle/demoRelease/app-demo-release.aab
-          tracks: ${{ env.PLAY_TRACK }}
+          track: ${{ env.PLAY_TRACK }}
           status: completed
           whatsNewDirectory: play-whats-new
