@@ -1,3 +1,5 @@
+begin;
+
 create table public.private_chat_rooms (
   id uuid primary key default gen_random_uuid(),
   name text not null check (length(trim(name)) between 1 and 80),
@@ -24,8 +26,17 @@ create table public.private_chat_messages (
   created_at timestamptz not null default now()
 );
 
+create table public.private_chat_access_events (
+  id bigint generated always as identity primary key,
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  room_id uuid not null,
+  event_type text not null check (event_type in ('created', 'membership_changed', 'removed', 'left', 'deleted')),
+  created_at timestamptz not null default now()
+);
+
 create index private_chat_room_members_profile_idx on public.private_chat_room_members (profile_id, room_id);
 create index private_chat_messages_room_created_idx on public.private_chat_messages (room_id, created_at desc);
+create index private_chat_access_events_profile_created_idx on public.private_chat_access_events (profile_id, created_at desc);
 
 create trigger set_private_chat_rooms_updated_at
   before update on public.private_chat_rooms
@@ -184,6 +195,10 @@ begin
   select created_room_id, member_id
   from unnest(array_append(normalized_invitees, current_profile_id)) member_id;
 
+  insert into public.private_chat_access_events (profile_id, room_id, event_type)
+  select member_id, created_room_id, 'created'
+  from unnest(array_append(normalized_invitees, current_profile_id)) member_id;
+
   return created_room_id;
 end;
 $$;
@@ -198,6 +213,7 @@ declare
   current_profile_id uuid := (select auth.uid());
   invited_profile_id uuid;
   normalized_invitees uuid[];
+  previous_member_ids uuid[];
 begin
   if not private.is_private_chat_creator(room_id) then
     raise exception 'Only the room creator can manage this room.';
@@ -217,12 +233,21 @@ begin
     perform private.require_active_private_chat_profile(invited_profile_id);
   end loop;
 
+  select coalesce(array_agg(profile_id), '{}'::uuid[]) into previous_member_ids
+  from public.private_chat_room_members where private_chat_room_members.room_id = update_private_chat_room.room_id;
+
   update public.private_chat_rooms set name = trim(room_name) where id = room_id;
   delete from public.private_chat_room_members
   where private_chat_room_members.room_id = update_private_chat_room.room_id
     and profile_id <> current_profile_id;
   insert into public.private_chat_room_members (room_id, profile_id)
   select update_private_chat_room.room_id, member_id from unnest(normalized_invitees) member_id;
+
+  insert into public.private_chat_access_events (profile_id, room_id, event_type)
+  select member_id, update_private_chat_room.room_id,
+    case when member_id = any(array_append(normalized_invitees, current_profile_id)) then 'membership_changed' else 'removed' end
+  from unnest(previous_member_ids || array_append(normalized_invitees, current_profile_id)) member_id
+  group by member_id;
 end;
 $$;
 
@@ -236,6 +261,9 @@ begin
   if not private.is_private_chat_creator(room_id) then
     raise exception 'Only the room creator can delete this room.';
   end if;
+  insert into public.private_chat_access_events (profile_id, room_id, event_type)
+  select profile_id, delete_private_chat_room.room_id, 'deleted'
+  from public.private_chat_room_members where private_chat_room_members.room_id = delete_private_chat_room.room_id;
   delete from public.private_chat_rooms where id = room_id;
 end;
 $$;
@@ -256,12 +284,15 @@ begin
   if not found then
     raise exception 'You are not a member of this room.';
   end if;
+  insert into public.private_chat_access_events (profile_id, room_id, event_type)
+  values ((select auth.uid()), room_id, 'left');
 end;
 $$;
 
 alter table public.private_chat_rooms enable row level security;
 alter table public.private_chat_room_members enable row level security;
 alter table public.private_chat_messages enable row level security;
+alter table public.private_chat_access_events enable row level security;
 
 create policy "Members can read private chat rooms"
   on public.private_chat_rooms for select to authenticated
@@ -281,13 +312,19 @@ create policy "Members can send private chat messages"
     and sender_name = (select display_name from public.profiles where id = (select auth.uid()) and status = 'active')
     and sender_role = (select role from public.profiles where id = (select auth.uid()) and status = 'active')
   );
+create policy "Profiles can read their private chat access events"
+  on public.private_chat_access_events for select to authenticated
+  using (profile_id = (select auth.uid()));
 
 revoke all on public.private_chat_rooms from anon, authenticated;
 revoke all on public.private_chat_room_members from anon, authenticated;
 revoke all on public.private_chat_messages from anon, authenticated;
+revoke all on public.private_chat_access_events from anon, authenticated;
 grant select on public.private_chat_rooms, public.private_chat_room_members to authenticated;
 grant select, insert on public.private_chat_messages to authenticated;
+grant select on public.private_chat_access_events to authenticated;
 grant all on public.private_chat_rooms, public.private_chat_room_members, public.private_chat_messages to service_role;
+grant all on public.private_chat_access_events to service_role;
 
 revoke all on function private.is_private_chat_member(uuid) from public;
 revoke all on function private.is_private_chat_creator(uuid) from public;
@@ -298,6 +335,12 @@ revoke all on function public.create_private_chat_room(text, uuid[]) from public
 revoke all on function public.update_private_chat_room(uuid, text, uuid[]) from public;
 revoke all on function public.delete_private_chat_room(uuid) from public;
 revoke all on function public.leave_private_chat_room(uuid) from public;
+revoke all on function public.list_private_chat_invitees() from anon;
+revoke all on function public.list_private_chat_rooms() from anon;
+revoke all on function public.create_private_chat_room(text, uuid[]) from anon;
+revoke all on function public.update_private_chat_room(uuid, text, uuid[]) from anon;
+revoke all on function public.delete_private_chat_room(uuid) from anon;
+revoke all on function public.leave_private_chat_room(uuid) from anon;
 
 grant execute on function private.is_private_chat_member(uuid) to authenticated, service_role;
 grant execute on function private.is_private_chat_creator(uuid) to authenticated, service_role;
@@ -328,6 +371,12 @@ begin
   ) then
     alter publication supabase_realtime add table public.private_chat_messages;
   end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'private_chat_access_events'
+  ) then
+    alter publication supabase_realtime add table public.private_chat_access_events;
+  end if;
 end $$;
 
 do $$
@@ -340,3 +389,5 @@ begin
   assert to_regprocedure('public.delete_private_chat_room(uuid)') is not null;
   assert to_regprocedure('public.leave_private_chat_room(uuid)') is not null;
 end $$;
+
+commit;

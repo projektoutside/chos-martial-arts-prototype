@@ -213,8 +213,7 @@ export function subscribeToPrivateChatChanges({ onChange, onMessage, onStatus, c
       if (cleaned) return;
       channelSequence += 1;
       channel = activeClient.channel(`private-chat:${channelSequence}`);
-      channel.on("postgres_changes", { event: "*", schema: "public", table: "private_chat_rooms" }, onChange);
-      channel.on("postgres_changes", { event: "*", schema: "public", table: "private_chat_room_members" }, onChange);
+      channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "private_chat_access_events" }, onChange);
       if (onMessage) channel.on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "private_chat_messages", ...(roomId ? { filter: `room_id=eq.${roomId}` } : {}) },

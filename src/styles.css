@@ -8317,14 +8317,13 @@ html[data-theme="light"] .live-chat-page {
     font-size: 2rem;
   }
 
-  .live-chat-controls,
   .live-chat-composer {
     grid-template-columns: 1fr;
     align-items: stretch;
   }
 
   .live-chat-controls {
-    display: grid;
+    display: flex;
   }
 
   .live-chat-tabs {
@@ -8355,6 +8354,14 @@ html[data-theme="light"] .live-chat-page {
   .live-chat-room-color-options {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+
+.portrait-app-frame .live-chat-create-room-modal {
+  width: min(440px, calc(100% - 20px));
+}
+
+.portrait-app-frame .live-chat-create-room-layout {
+  grid-template-columns: 1fr;
 }
 
 @media (max-width: 520px) {
