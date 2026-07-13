@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearSupabaseAuthSession,
+  acknowledgeSupabaseWelcome,
   changeSupabaseAccountPassword,
   createSupabaseManagedAccount,
   getSupabaseBrowserConfig,
+  fetchSupabaseProfileOnboarding,
   isSupabaseAuthConfigured,
   isChoSupabaseProjectUrlAllowed,
   isSupabaseBackendInactiveError,
@@ -41,6 +43,57 @@ describe("supabase account adapter", () => {
     vi.restoreAllMocks();
     globalThis.fetch = originalFetch;
     window.localStorage.clear();
+  });
+
+  it("loads the signed-in user's authoritative first-login profile", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "manager-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "manager-user-id",
+      projectRef: "project",
+      authEmail: "manager1@accounts.chosmartialarts.app"
+    }));
+    const fetchMock = vi.fn(async () => jsonResponse([{
+      username: "manager1",
+      display_name: "Manager",
+      role: "staff",
+      status: "active",
+      is_owner: true,
+      welcome_seen_at: null
+    }]));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(fetchSupabaseProfileOnboarding()).resolves.toEqual({
+      ok: true,
+      profile: {
+        username: "manager1",
+        displayName: "Manager",
+        role: "staff",
+        status: "active",
+        isOwner: true,
+        welcomeSeenAt: null
+      }
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/rest/v1/rpc/get_my_profile_onboarding",
+      expect.objectContaining({ method: "POST", headers: expect.objectContaining({ Authorization: "Bearer manager-access-token" }) })
+    );
+  });
+
+  it("acknowledges welcome for only the bearer identity without sending secrets", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "staff-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "staff-user-id",
+      projectRef: "project"
+    }));
+    const fetchMock = vi.fn(async () => jsonResponse([{ welcome_seen_at: "2026-07-13T20:20:00.000Z" }]));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(acknowledgeSupabaseWelcome()).resolves.toEqual({ ok: true, welcomeSeenAt: "2026-07-13T20:20:00.000Z" });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(String(init?.body ?? "")).not.toMatch(/password|user.?id/i);
+    expect(init).toEqual(expect.objectContaining({ method: "POST", body: "{}" }));
   });
 
   it("normalizes local usernames and maps Manager123 to the owner Auth email", () => {

@@ -71,6 +71,23 @@ export type SupabasePasswordChangeResult =
   | { status: "ok" }
   | { status: "error"; message: string };
 
+export type SupabaseProfileOnboarding = {
+  username: string;
+  displayName: string;
+  role: AccountRole;
+  status: "active" | "inactive";
+  isOwner: boolean;
+  welcomeSeenAt: string | null;
+};
+
+type ProfileOnboardingResult =
+  | { ok: true; profile: SupabaseProfileOnboarding }
+  | { ok: false; reason: "session" | "profile" | "network"; message: string };
+
+type AcknowledgeWelcomeResult =
+  | { ok: true; welcomeSeenAt: string }
+  | { ok: false; reason: "session" | "profile" | "network"; message: string };
+
 const supabaseSessionStorageKey = "chos.supabase.auth.v1";
 const managerUsername = prototypeManagerLogin.username.toLowerCase();
 const supabaseAccountAuthDomain = "accounts.chosmartialarts.app";
@@ -220,6 +237,50 @@ export function readSupabaseAuthSession() {
     clearSupabaseAuthSession();
     return undefined;
   }
+}
+
+async function callProfileRpc(path: string) {
+  const session = readSupabaseAuthSession();
+  if (!session) return { response: undefined, reason: "session" as const };
+  try {
+    const response = await fetch(`${supabaseUrl().replace(/\/+$/, "")}/rest/v1/rpc/${path}`, {
+      method: "POST",
+      headers: {
+        apikey: supabasePublicKey(),
+        Authorization: `Bearer ${session.accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: "{}"
+    });
+    return { response };
+  } catch {
+    return { response: undefined, reason: "network" as const };
+  }
+}
+
+export async function fetchSupabaseProfileOnboarding(): Promise<ProfileOnboardingResult> {
+  const result = await callProfileRpc("get_my_profile_onboarding");
+  if (!result.response) {
+    return { ok: false, reason: result.reason ?? "network", message: result.reason === "session" ? "Your session has expired." : "Could not load your account." };
+  }
+  if (!result.response.ok) return { ok: false, reason: "profile", message: "Could not load your account." };
+  const rows = await result.response.json() as Array<Record<string, unknown>>;
+  const row = rows[0];
+  if (!row || typeof row.username !== "string" || typeof row.display_name !== "string" || !["staff", "student", "guardian"].includes(String(row.role)) || !["active", "inactive"].includes(String(row.status)) || typeof row.is_owner !== "boolean" || !(row.welcome_seen_at === null || typeof row.welcome_seen_at === "string")) {
+    return { ok: false, reason: "profile", message: "Your account profile is incomplete." };
+  }
+  return { ok: true, profile: { username: row.username, displayName: row.display_name, role: row.role as AccountRole, status: row.status as "active" | "inactive", isOwner: row.is_owner, welcomeSeenAt: row.welcome_seen_at as string | null } };
+}
+
+export async function acknowledgeSupabaseWelcome(): Promise<AcknowledgeWelcomeResult> {
+  const result = await callProfileRpc("acknowledge_my_welcome");
+  if (!result.response) return { ok: false, reason: result.reason ?? "network", message: "Could not save your welcome progress." };
+  if (!result.response.ok) return { ok: false, reason: "profile", message: "Could not save your welcome progress." };
+  const rows = await result.response.json() as Array<{ welcome_seen_at?: unknown }>;
+  const timestamp = rows[0]?.welcome_seen_at;
+  return typeof timestamp === "string"
+    ? { ok: true, welcomeSeenAt: timestamp }
+    : { ok: false, reason: "profile", message: "Could not save your welcome progress." };
 }
 
 async function fetchSupabaseProfile(userId: string, accessToken: string) {
