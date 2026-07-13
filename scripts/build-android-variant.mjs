@@ -10,6 +10,12 @@ const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
 const gradleCommand = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
 const env = { ...process.env, VITE_APP_VARIANT: variant };
 if (variant === "stable") env.VITE_APPROVED_SUPABASE_HOST = "zfuwbbepsnmmlpgfkmhz.supabase.co";
+if (variant === "testing") {
+  delete env.VITE_SUPABASE_URL;
+  delete env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  delete env.VITE_SUPABASE_ANON_KEY;
+  delete env.VITE_APPROVED_SUPABASE_HOST;
+}
 
 function run(command, args, cwd = process.cwd()) {
   const result = spawnSync(command, args, { cwd, env, stdio: "inherit", shell: process.platform === "win32" });
