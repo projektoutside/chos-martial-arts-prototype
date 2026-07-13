@@ -8,6 +8,18 @@ import {
 import type { AccountRole } from "./types";
 
 export const privateChatRoomNameMaxLength = 80;
+export const privateChatRoomColorOptions = [
+  { name: "Purple", value: "#8a63f2" },
+  { name: "Crimson", value: "#c94b62" },
+  { name: "Emerald", value: "#2ea66f" },
+  { name: "Ocean", value: "#2f80c9" },
+  { name: "Amber", value: "#c58a2a" },
+  { name: "Rose", value: "#c25b91" },
+  { name: "Teal", value: "#218f91" },
+  { name: "Slate", value: "#66758f" }
+] as const;
+export type PrivateChatRoomColor = typeof privateChatRoomColorOptions[number]["value"];
+export const defaultPrivateChatRoomColor: PrivateChatRoomColor = "#8a63f2";
 
 export type PrivateChatMember = {
   profileId: string;
@@ -19,6 +31,7 @@ export type PrivateChatMember = {
 export type PrivateChatRoom = {
   id: string;
   name: string;
+  tabColor: PrivateChatRoomColor;
   creatorId: string;
   createdAt: string;
   updatedAt: string;
@@ -39,7 +52,7 @@ export type PrivateChatMessage = {
 };
 
 type RoomRow = {
-  id: string; name: string; creator_id: string; created_at: string; updated_at: string;
+  id: string; name: string; tab_color: PrivateChatRoomColor; creator_id: string; created_at: string; updated_at: string;
   members: Array<{ profile_id: string; display_name: string; role: AccountRole; joined_at: string }>;
 };
 type InviteeRow = { id: string; display_name: string; role: AccountRole };
@@ -84,18 +97,19 @@ function failure(error: unknown, fallback: string): LiveChatResult<never> {
   return { status: "error", message };
 }
 
-function validateRoomInput(name: string, memberIds: string[]) {
+function validateRoomInput(name: string, memberIds: string[], tabColor: PrivateChatRoomColor) {
   const normalizedName = name.trim();
   if (!normalizedName) return { ok: false as const, message: "Enter a room name." };
   if (normalizedName.length > privateChatRoomNameMaxLength) return { ok: false as const, message: `Room names must be ${privateChatRoomNameMaxLength} characters or fewer.` };
   const normalizedMemberIds = [...new Set(memberIds.filter(Boolean))];
   if (!normalizedMemberIds.length) return { ok: false as const, message: "Invite at least one person to the room." };
-  return { ok: true as const, name: normalizedName, memberIds: normalizedMemberIds };
+  if (!privateChatRoomColorOptions.some((option) => option.value === tabColor)) return { ok: false as const, message: "Choose an approved room tab color." };
+  return { ok: true as const, name: normalizedName, memberIds: normalizedMemberIds, tabColor };
 }
 
 function mapRoom(row: RoomRow): PrivateChatRoom {
   return {
-    id: row.id, name: row.name, creatorId: row.creator_id, createdAt: row.created_at, updatedAt: row.updated_at,
+    id: row.id, name: row.name, tabColor: row.tab_color, creatorId: row.creator_id, createdAt: row.created_at, updatedAt: row.updated_at,
     members: (row.members ?? []).map((member) => ({
       profileId: member.profile_id, displayName: member.display_name, role: member.role, joinedAt: member.joined_at
     }))
@@ -139,23 +153,23 @@ async function roomMutation(name: string, params: Record<string, unknown>, clien
   } catch (error) { return failure(error, "The private room could not be updated."); }
 }
 
-export async function createPrivateChatRoom({ name, memberIds, client }: { name: string; memberIds: string[]; client?: PrivateChatClient }): Promise<LiveChatResult<string>> {
-  const validation = validateRoomInput(name, memberIds);
+export async function createPrivateChatRoom({ name, memberIds, tabColor, client }: { name: string; memberIds: string[]; tabColor: PrivateChatRoomColor; client?: PrivateChatClient }): Promise<LiveChatResult<string>> {
+  const validation = validateRoomInput(name, memberIds, tabColor);
   if (!validation.ok) return { status: "error", message: validation.message };
   const activeClient = clientOrDefault(client);
   if (!activeClient) return { status: "unavailable", message: "Supabase sign-in required to create private rooms." };
   try {
-    const response = await activeClient.rpc<string>("create_private_chat_room", { room_name: validation.name, invited_profile_ids: validation.memberIds });
+    const response = await activeClient.rpc<string>("create_private_chat_room", { room_name: validation.name, invited_profile_ids: validation.memberIds, room_tab_color: validation.tabColor });
     if (response.error) return failure(response.error, "The private room could not be created.");
     if (!response.data) return { status: "error", message: "The new private room was not returned." };
     return { status: "ok", data: response.data };
   } catch (error) { return failure(error, "The private room could not be created."); }
 }
 
-export async function updatePrivateChatRoom({ roomId, name, memberIds, client }: { roomId: string; name: string; memberIds: string[]; client?: PrivateChatClient }) {
-  const validation = validateRoomInput(name, memberIds);
+export async function updatePrivateChatRoom({ roomId, name, memberIds, tabColor, client }: { roomId: string; name: string; memberIds: string[]; tabColor: PrivateChatRoomColor; client?: PrivateChatClient }) {
+  const validation = validateRoomInput(name, memberIds, tabColor);
   if (!validation.ok) return { status: "error" as const, message: validation.message };
-  return roomMutation("update_private_chat_room", { room_id: roomId, room_name: validation.name, invited_profile_ids: validation.memberIds }, client);
+  return roomMutation("update_private_chat_room", { room_id: roomId, room_name: validation.name, invited_profile_ids: validation.memberIds, room_tab_color: validation.tabColor }, client);
 }
 
 export async function deletePrivateChatRoom({ roomId, client }: { roomId: string; client?: PrivateChatClient }) {

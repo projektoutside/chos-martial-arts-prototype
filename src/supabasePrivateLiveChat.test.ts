@@ -33,7 +33,7 @@ describe("Supabase private live chat adapter", () => {
   it("maps authorized rooms and active invitees", async () => {
     const rpc = vi.fn(async (name: string) => name === "list_private_chat_rooms"
       ? { data: [{
-          id: "room-1", name: "Black Belt Team", creator_id: "creator-1",
+          id: "room-1", name: "Black Belt Team", tab_color: "#2ea66f", creator_id: "creator-1",
           created_at: "2026-07-13T16:00:00.000Z", updated_at: "2026-07-13T16:00:00.000Z",
           members: [{ profile_id: "member-1", display_name: "Talia Brooks", role: "student", joined_at: "2026-07-13T16:00:00.000Z" }]
         }], error: null }
@@ -42,7 +42,7 @@ describe("Supabase private live chat adapter", () => {
 
     await expect(fetchPrivateChatRooms({ client })).resolves.toMatchObject({
       status: "ok",
-      data: [{ id: "room-1", name: "Black Belt Team", creatorId: "creator-1", members: [{ profileId: "member-1", displayName: "Talia Brooks" }] }]
+      data: [{ id: "room-1", name: "Black Belt Team", tabColor: "#2ea66f", creatorId: "creator-1", members: [{ profileId: "member-1", displayName: "Talia Brooks" }] }]
     });
     await expect(fetchPrivateChatInvitees({ client })).resolves.toEqual({
       status: "ok", data: [{ id: "member-1", displayName: "Talia Brooks", role: "student" }]
@@ -53,23 +53,24 @@ describe("Supabase private live chat adapter", () => {
     const rpc = vi.fn(async () => ({ data: "room-1", error: null }));
     const client = { rpc } as unknown as PrivateChatClient;
 
-    await expect(createPrivateChatRoom({ name: " ", memberIds: ["member-1"], client })).resolves.toMatchObject({ status: "error" });
-    await expect(createPrivateChatRoom({ name: "Team", memberIds: [], client })).resolves.toMatchObject({ status: "error" });
+    await expect(createPrivateChatRoom({ name: " ", memberIds: ["member-1"], tabColor: "#8a63f2", client })).resolves.toMatchObject({ status: "error" });
+    await expect(createPrivateChatRoom({ name: "Team", memberIds: [], tabColor: "#8a63f2", client })).resolves.toMatchObject({ status: "error" });
+    await expect(createPrivateChatRoom({ name: "Team", memberIds: ["member-1"], tabColor: "#ffffff" as "#8a63f2", client })).resolves.toEqual({ status: "error", message: "Choose an approved room tab color." });
     expect(rpc).not.toHaveBeenCalled();
 
-    await createPrivateChatRoom({ name: "  Team  ", memberIds: ["member-1", "member-1"], client });
-    expect(rpc).toHaveBeenCalledWith("create_private_chat_room", { room_name: "Team", invited_profile_ids: ["member-1"] });
+    await createPrivateChatRoom({ name: "  Team  ", memberIds: ["member-1", "member-1"], tabColor: "#2f80c9", client });
+    expect(rpc).toHaveBeenCalledWith("create_private_chat_room", { room_name: "Team", invited_profile_ids: ["member-1"], room_tab_color: "#2f80c9" });
   });
 
   it("uses creator-only update RPC and self-leave RPC", async () => {
     const rpc = vi.fn(async () => ({ data: null, error: null }));
     const client = { rpc } as unknown as PrivateChatClient;
 
-    await updatePrivateChatRoom({ roomId: "room-1", name: "Leadership", memberIds: ["member-1"], client });
+    await updatePrivateChatRoom({ roomId: "room-1", name: "Leadership", memberIds: ["member-1"], tabColor: "#c94b62", client });
     await leavePrivateChatRoom({ roomId: "room-1", client });
 
     expect(rpc).toHaveBeenNthCalledWith(1, "update_private_chat_room", {
-      room_id: "room-1", room_name: "Leadership", invited_profile_ids: ["member-1"]
+      room_id: "room-1", room_name: "Leadership", invited_profile_ids: ["member-1"], room_tab_color: "#c94b62"
     });
     expect(rpc).toHaveBeenNthCalledWith(2, "leave_private_chat_room", { room_id: "room-1" });
   });
