@@ -66,6 +66,21 @@ import {
   type LiveChatMessage
 } from "./supabaseLiveChat";
 import {
+  createPrivateChatRoom,
+  deletePrivateChatRoom,
+  fetchPrivateChatInvitees,
+  fetchPrivateChatMessages,
+  fetchPrivateChatRooms,
+  leavePrivateChatRoom,
+  sendPrivateChatMessage,
+  subscribeToPrivateChatChanges,
+  updatePrivateChatRoom,
+  type PrivateChatInvitee,
+  type PrivateChatMessage,
+  type PrivateChatRoom
+} from "./supabasePrivateLiveChat";
+import { CreatePrivateRoomDialog, ManagePrivateRoomDialog } from "./PrivateLiveChatDialogs";
+import {
   getBeltJourneyStats,
   resolveBeltRank
 } from "./beltCase";
@@ -4954,6 +4969,20 @@ function appendUniqueLiveChatMessage(messages: LiveChatMessage[], message: LiveC
   return [...messages, message].sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
 }
 
+function privateChatMessageToLiveChatMessage(message: PrivateChatMessage): LiveChatMessage {
+  return {
+    id: message.id,
+    roomKey: message.roomId,
+    senderUserId: message.senderId,
+    senderName: message.senderName,
+    senderRole: message.senderRole,
+    senderAvatarPath: message.senderAvatarPath,
+    messageKind: "user",
+    body: message.body,
+    createdAt: message.createdAt
+  };
+}
+
 const liveChatFeedBottomThresholdPx = 36;
 
 function getLiveChatFeedBottomScrollTop(feed: HTMLElement) {
@@ -5011,7 +5040,23 @@ function LiveChatRoomFrame({
     student: sessionStudent
   }));
   const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
-  const chatRooms = liveChatDefaultRooms;
+  const [privateRooms, setPrivateRooms] = useState<PrivateChatRoom[]>([]);
+  const [privateMessages, setPrivateMessages] = useState<Record<string, PrivateChatMessage[]>>({});
+  const [privateInvitees, setPrivateInvitees] = useState<PrivateChatInvitee[]>([]);
+  const [isCreateRoomOpen, setIsCreateRoomOpen] = useState(false);
+  const [isManageRoomOpen, setIsManageRoomOpen] = useState(false);
+  const [isLoadingInvitees, setIsLoadingInvitees] = useState(false);
+  const [privateRoomError, setPrivateRoomError] = useState("");
+  const createRoomButtonRef = useRef<HTMLButtonElement | null>(null);
+  const chatRooms = useMemo<LiveChatRoom[]>(() => [
+    ...liveChatDefaultRooms,
+    ...privateRooms.map((room, index) => ({
+      id: room.id,
+      name: room.name,
+      color: liveChatRoomColorOptions[(index + 1) % liveChatRoomColorOptions.length].value,
+      invitedMemberIds: room.members.map((member) => member.profileId)
+    }))
+  ], [privateRooms]);
   const [activeRoomId, setActiveRoomId] = useState(liveChatDefaultRoomId);
   const [messageText, setMessageText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -5043,15 +5088,23 @@ function LiveChatRoomFrame({
   }, [isDeveloper, profileAvatarPath]);
   const previewMessages = sessionPreviewMessages;
   const defaultRoomMessages = chatMessages.length ? chatMessages : previewMessages;
-  const mentionMessages = defaultRoomMessages.filter((message) => liveChatMessageMentionsManager(message, managerProfile));
+  const privateRoomLiveMessages = Object.values(privateMessages).flat().map(privateChatMessageToLiveChatMessage);
+  const mentionMessages = [...defaultRoomMessages, ...privateRoomLiveMessages]
+    .filter((message) => liveChatMessageMentionsManager(message, managerProfile))
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
   const isMentionsView = activeRoomId === liveChatMentionsRoomId;
   const activeRoom = chatRooms.find((room) => room.id === activeRoomId) ?? chatRooms[0];
-  const activeRoomMessages = activeRoom?.isDefault ? defaultRoomMessages : [];
+  const activePrivateRoom = privateRooms.find((room) => room.id === activeRoomId);
+  const activeRoomMessages = activeRoom?.isDefault ? defaultRoomMessages : (privateMessages[activeRoomId] ?? []).map(privateChatMessageToLiveChatMessage);
   const filteredMessages = isMentionsView ? mentionMessages : activeRoomMessages;
   const activeRoomEmptyMessage = isMentionsView
     ? "No manager mentions yet."
-    : "No live messages yet.";
-  const onlineCount = Math.max(rosterMembers.length, 1);
+    : activePrivateRoom ? `${activePrivateRoom.name} has no messages yet.` : "No live messages yet.";
+  const currentProfileId = readSupabaseAuthSession()?.userId ?? "";
+  const displayedRosterMembers = activePrivateRoom
+    ? activePrivateRoom.members.map((member) => ({ id: member.profileId, name: member.displayName, detail: liveChatRoleLabel(member.role, false, false), avatarSrc: publicAsset("assets/CheetahProfilePic/Cheetah.png") }))
+    : rosterMembers;
+  const onlineCount = Math.max(displayedRosterMembers.length, 1);
   const isComposerInputDisabled = isSending;
   const isSendDisabled = isSending || !isLiveReady;
   const rosterId = `${idPrefix}-roster-members`;
@@ -5164,6 +5217,45 @@ function LiveChatRoomFrame({
     };
   }, [notifyIncomingLiveChatMessage]);
 
+  const refreshPrivateRooms = useCallback(async () => {
+    const roomsResult = await fetchPrivateChatRooms();
+    if (roomsResult.status !== "ok") {
+      if (roomsResult.status === "error") setPrivateRoomError(roomsResult.message);
+      return;
+    }
+    setPrivateRooms(roomsResult.data);
+    const authorizedIds = new Set(roomsResult.data.map((room) => room.id));
+    setPrivateMessages((current) => Object.fromEntries(Object.entries(current).filter(([roomId]) => authorizedIds.has(roomId))));
+    if (activeRoomId !== liveChatDefaultRoomId && activeRoomId !== liveChatMentionsRoomId && !authorizedIds.has(activeRoomId)) {
+      setActiveRoomId(liveChatDefaultRoomId);
+      setIsManageRoomOpen(false);
+    }
+    const loadedMessages = await Promise.all(roomsResult.data.map(async (room) => [room.id, await fetchPrivateChatMessages({ roomId: room.id })] as const));
+    setPrivateMessages(Object.fromEntries(loadedMessages.filter((entry) => entry[1].status === "ok").map(([roomId, result]) => [roomId, result.status === "ok" ? result.data : []])));
+  }, [activeRoomId]);
+
+  useEffect(() => {
+    if (!isLiveReady) {
+      setPrivateRooms([]);
+      setPrivateMessages({});
+      return;
+    }
+    void refreshPrivateRooms();
+    const subscription = subscribeToPrivateChatChanges({
+      onChange: () => { void refreshPrivateRooms(); },
+      onMessage: (message) => {
+        setPrivateMessages((current) => ({
+          ...current,
+          [message.roomId]: current[message.roomId]?.some((existing) => existing.id === message.id)
+            ? current[message.roomId]
+            : [...(current[message.roomId] ?? []), message]
+        }));
+        notifyIncomingLiveChatMessage(privateChatMessageToLiveChatMessage(message));
+      }
+    });
+    return subscription.cleanup;
+  }, [isLiveReady, notifyIncomingLiveChatMessage, refreshPrivateRooms]);
+
   useLayoutEffect(() => {
     const feed = messageFeedRef.current;
     if (!feed) return;
@@ -5189,6 +5281,73 @@ function LiveChatRoomFrame({
     isMessageFeedPinnedToBottomRef.current = isLiveChatFeedNearBottom(feed);
   };
 
+  const loadPrivateInvitees = async () => {
+    setIsLoadingInvitees(true);
+    const result = await fetchPrivateChatInvitees();
+    setIsLoadingInvitees(false);
+    if (result.status !== "ok") {
+      setPrivateRoomError(result.message);
+      return false;
+    }
+    setPrivateInvitees(result.data);
+    return true;
+  };
+
+  const openCreateRoomDialog = () => {
+    setPrivateRoomError("");
+    setIsCreateRoomOpen(true);
+    void loadPrivateInvitees();
+  };
+
+  const closeCreateRoomDialog = () => {
+    setIsCreateRoomOpen(false);
+    window.setTimeout(() => createRoomButtonRef.current?.focus(), 0);
+  };
+
+  const handleCreatePrivateRoom = async (input: { name: string; memberIds: string[] }) => {
+    setPrivateRoomError("");
+    const result = await createPrivateChatRoom(input);
+    if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
+    await refreshPrivateRooms();
+    setActiveRoomId(result.data);
+    setIsCreateRoomOpen(false);
+    setLiveStatusMessage(`${input.name} created as a private room.`);
+  };
+
+  const openManageRoomDialog = () => {
+    setPrivateRoomError("");
+    setIsManageRoomOpen(true);
+    void loadPrivateInvitees();
+  };
+
+  const handleUpdatePrivateRoom = async (input: { name: string; memberIds: string[] }) => {
+    if (!activePrivateRoom) return;
+    const result = await updatePrivateChatRoom({ roomId: activePrivateRoom.id, ...input });
+    if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
+    await refreshPrivateRooms();
+    setIsManageRoomOpen(false);
+  };
+
+  const handleDeletePrivateRoom = async () => {
+    if (!activePrivateRoom) return;
+    const result = await deletePrivateChatRoom({ roomId: activePrivateRoom.id });
+    if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
+    setIsManageRoomOpen(false);
+    setActiveRoomId(liveChatDefaultRoomId);
+    setLiveStatusMessage("Private room deleted. Cho's Room is active.");
+    await refreshPrivateRooms();
+  };
+
+  const handleLeavePrivateRoom = async () => {
+    if (!activePrivateRoom) return;
+    const result = await leavePrivateChatRoom({ roomId: activePrivateRoom.id });
+    if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
+    setIsManageRoomOpen(false);
+    setActiveRoomId(liveChatDefaultRoomId);
+    setLiveStatusMessage("You left the private room. Cho's Room is active.");
+    await refreshPrivateRooms();
+  };
+
   const sendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSendError("");
@@ -5201,21 +5360,15 @@ function LiveChatRoomFrame({
 
     const targetRoom = isMentionsView ? chatRooms[0] : activeRoom;
 
-    if (targetRoom && !targetRoom.isDefault) {
-      setSendError("Only Cho's Room is available until additional rooms can save to Supabase.");
-      return;
-    }
-
     if (!isLiveReady) {
       setSendError("Live chat storage is unavailable. Messages are only sent when Supabase live chat is connected.");
       return;
     }
 
     setIsSending(true);
-    const result = await sendLiveChatMessage({
-      body: validation.body,
-      senderAvatarPath: managerProfile.photoDataUrl ? undefined : profileAvatarPath
-    });
+    const result = targetRoom && !targetRoom.isDefault
+      ? await sendPrivateChatMessage({ roomId: targetRoom.id, body: validation.body, senderAvatarPath: managerProfile.photoDataUrl ? undefined : profileAvatarPath })
+      : await sendLiveChatMessage({ body: validation.body, senderAvatarPath: managerProfile.photoDataUrl ? undefined : profileAvatarPath });
     setIsSending(false);
 
     if (result.status !== "ok") {
@@ -5224,7 +5377,15 @@ function LiveChatRoomFrame({
       return;
     }
 
-    setChatMessages((currentMessages) => appendUniqueLiveChatMessage(currentMessages, result.data));
+    if (targetRoom && !targetRoom.isDefault) {
+      const privateMessage = result.data as PrivateChatMessage;
+      setPrivateMessages((current) => ({
+        ...current,
+        [targetRoom.id]: current[targetRoom.id]?.some((message) => message.id === privateMessage.id) ? current[targetRoom.id] : [...(current[targetRoom.id] ?? []), privateMessage]
+      }));
+    } else {
+      setChatMessages((currentMessages) => appendUniqueLiveChatMessage(currentMessages, result.data as LiveChatMessage));
+    }
     setMessageText("");
   };
 
@@ -5238,7 +5399,7 @@ function LiveChatRoomFrame({
           data-orientation="vertical"
           hidden={isRosterCollapsed}
         >
-            {rosterMembers.map((member) => (
+            {displayedRosterMembers.map((member) => (
               <article className="manager-launcher-item live-chat-roster-member" key={member.id} aria-label={`${member.name}, ${member.detail}`}>
                 <span className="manager-launcher-graphic live-chat-roster-avatar">
                   <img className="manager-launcher-image live-chat-roster-image" src={member.avatarSrc} alt="" draggable="false" />
@@ -5272,6 +5433,11 @@ function LiveChatRoomFrame({
                 </div>
               </div>
               <p className="live-chat-status-copy" aria-live="polite">{isLoading ? "Loading live messages..." : formatLiveChatHeaderStatus(liveStatusMessage)}</p>
+              {activePrivateRoom && (
+                <button className="private-chat-manage-button" type="button" onClick={openManageRoomDialog}>
+                  {activePrivateRoom.creatorId === currentProfileId ? "Manage Room" : "Room Members"} · {activePrivateRoom.members.length}
+                </button>
+              )}
             </div>
             <div className="live-chat-controls">
               <div className="live-chat-tabs live-chat-room-tabs" role="tablist" aria-label="Live chat rooms">
@@ -5305,6 +5471,10 @@ function LiveChatRoomFrame({
                   </button>
                 </div>
               </div>
+              <button ref={createRoomButtonRef} className="live-chat-create-room-button live-chat-create-room-button--compact" type="button" onClick={openCreateRoomDialog}>
+                <Plus size={15} aria-hidden="true" />
+                <span>Create Room</span>
+              </button>
             </div>
           </div>
 
@@ -5345,6 +5515,27 @@ function LiveChatRoomFrame({
             </span>
           </div>
         </section>
+        <CreatePrivateRoomDialog
+          open={isCreateRoomOpen}
+          invitees={privateInvitees}
+          isLoadingInvitees={isLoadingInvitees}
+          error={privateRoomError}
+          onClose={closeCreateRoomDialog}
+          onCreate={handleCreatePrivateRoom}
+        />
+        {activePrivateRoom && (
+          <ManagePrivateRoomDialog
+            open={isManageRoomOpen}
+            room={activePrivateRoom}
+            currentProfileId={currentProfileId}
+            invitees={privateInvitees}
+            error={privateRoomError}
+            onClose={() => setIsManageRoomOpen(false)}
+            onUpdate={handleUpdatePrivateRoom}
+            onDelete={handleDeletePrivateRoom}
+            onLeave={handleLeavePrivateRoom}
+          />
+        )}
     </div>
   );
 }
