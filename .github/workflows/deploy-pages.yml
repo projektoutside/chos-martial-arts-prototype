@@ -61,6 +61,8 @@ jobs:
       - name: Build Cloudflare Pages artifact
         env:
           CLOUDFLARE_PAGES: "true"
+          VITE_APP_VARIANT: "stable"
+          VITE_APPROVED_SUPABASE_HOST: "zfuwbbepsnmmlpgfkmhz.supabase.co"
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_ENABLE_DEVELOPER_ACCOUNT: ${{ vars.VITE_ENABLE_DEVELOPER_ACCOUNT }}
