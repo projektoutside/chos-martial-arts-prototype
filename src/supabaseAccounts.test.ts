@@ -465,7 +465,7 @@ describe("supabase account adapter", () => {
       email: "no-session@example.com"
     })).toEqual({
       status: "error",
-      message: "Sign into the Supabase Manager123 owner account before syncing created accounts."
+      message: "Sign into an authorized Supabase Developer or Manager account before syncing created accounts."
     });
   });
 
@@ -488,7 +488,7 @@ describe("supabase account adapter", () => {
       email: "jordan@example.com"
     })).resolves.toEqual({
       status: "error",
-      message: "Sign into the Supabase Manager123 owner account before syncing created accounts."
+      message: "Sign into an authorized Supabase Developer or Manager account before syncing created accounts."
     });
     expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
   });
