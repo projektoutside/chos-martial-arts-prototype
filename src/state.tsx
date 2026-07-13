@@ -768,7 +768,7 @@ function hasSupabaseAuthSessionForAppSession(normalizedEmail: string) {
 function validatePrototypeSession(session: AccountSession | undefined) {
   if (!session?.email) return undefined;
   const normalizedEmail = session.email.toLowerCase();
-  if (isSupabaseAuthConfigured() && !isPrototypeDeveloperEmail(normalizedEmail) && normalizedEmail !== prototypeManagerLogin.email.toLowerCase() && !hasSupabaseAuthSessionForAppSession(normalizedEmail)) return undefined;
+  if (isSupabaseAuthConfigured() && !isPrototypeDeveloperEmail(normalizedEmail) && !hasSupabaseAuthSessionForAppSession(normalizedEmail)) return undefined;
   if (isPrototypeManagerOwnerEmail(normalizedEmail)) return session;
   if (isPrototypeDeveloperEmail(normalizedEmail)) return session;
   const managedAccounts = readStoredArray<ManagedAccount>(keys.managedAccounts);
