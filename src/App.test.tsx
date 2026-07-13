@@ -4573,6 +4573,9 @@ describe("post-login operations app", () => {
     fireEvent.click(createRoomButton);
     expect(screen.getByRole("dialog", { name: "Create chat room" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Room name" })).toBeRequired();
+    expect(screen.getByRole("radiogroup", { name: "Tab color" })).toBeInTheDocument();
+    expect(screen.getAllByRole("radio")).toHaveLength(8);
+    expect(screen.getByRole("radio", { name: "Purple" })).toBeChecked();
   });
 
   it("does not submit a local preview message when Supabase sign-in is unavailable", () => {

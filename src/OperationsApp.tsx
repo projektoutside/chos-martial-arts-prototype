@@ -77,7 +77,8 @@ import {
   updatePrivateChatRoom,
   type PrivateChatInvitee,
   type PrivateChatMessage,
-  type PrivateChatRoom
+  type PrivateChatRoom,
+  type PrivateChatRoomColor
 } from "./supabasePrivateLiveChat";
 import { CreatePrivateRoomDialog, ManagePrivateRoomDialog } from "./PrivateLiveChatDialogs";
 import {
@@ -5050,10 +5051,10 @@ function LiveChatRoomFrame({
   const createRoomButtonRef = useRef<HTMLButtonElement | null>(null);
   const chatRooms = useMemo<LiveChatRoom[]>(() => [
     ...liveChatDefaultRooms,
-    ...privateRooms.map((room, index) => ({
+    ...privateRooms.map((room) => ({
       id: room.id,
       name: room.name,
-      color: liveChatRoomColorOptions[(index + 1) % liveChatRoomColorOptions.length].value,
+      color: room.tabColor,
       invitedMemberIds: room.members.map((member) => member.profileId)
     }))
   ], [privateRooms]);
@@ -5304,7 +5305,7 @@ function LiveChatRoomFrame({
     window.setTimeout(() => createRoomButtonRef.current?.focus(), 0);
   };
 
-  const handleCreatePrivateRoom = async (input: { name: string; memberIds: string[] }) => {
+  const handleCreatePrivateRoom = async (input: { name: string; memberIds: string[]; tabColor: PrivateChatRoomColor }) => {
     setPrivateRoomError("");
     const result = await createPrivateChatRoom(input);
     if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
@@ -5320,7 +5321,7 @@ function LiveChatRoomFrame({
     void loadPrivateInvitees();
   };
 
-  const handleUpdatePrivateRoom = async (input: { name: string; memberIds: string[] }) => {
+  const handleUpdatePrivateRoom = async (input: { name: string; memberIds: string[]; tabColor: PrivateChatRoomColor }) => {
     if (!activePrivateRoom) return;
     const result = await updatePrivateChatRoom({ roomId: activePrivateRoom.id, ...input });
     if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
