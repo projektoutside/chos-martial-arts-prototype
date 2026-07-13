@@ -305,6 +305,7 @@ async function fetchSupabaseProfile(userId: string, accessToken: string) {
 
 function sessionEmailForProfile(profile: SupabaseProfileResponse) {
   const normalizedUsername = normalizeSupabaseUsername(profile.username);
+  if (normalizedUsername === "manager1") return "manager1@chos.prototype";
   if (normalizedUsername === managerUsername) return prototypeManagerLogin.email;
   if (normalizedUsername === prototypeDeveloperLogin.username.toLowerCase()) return prototypeDeveloperLogin.email;
   return profile.username;

@@ -7,6 +7,7 @@ import {
   generateIcs,
   getInitialLaunchPhase,
   getLoginGateState,
+  isPrototypeManagerOwnerEmail,
   prototypeDeveloperLogin,
   prototypeManagerLogin,
   searchSite,
@@ -130,6 +131,11 @@ describe("login landing utilities", () => {
 
     expect(prototypeManagerLogin.password).toMatch(strongPasswordPattern);
     expect(prototypeDeveloperLogin.password).toMatch(strongPasswordPattern);
+  });
+
+  it("recognizes the live Manager1 session as a full-access owner", () => {
+    expect(isPrototypeManagerOwnerEmail("manager1")).toBe(true);
+    expect(isPrototypeManagerOwnerEmail("manager1@chos.prototype")).toBe(true);
   });
 
   it("selects the reduced-motion launch phase", () => {

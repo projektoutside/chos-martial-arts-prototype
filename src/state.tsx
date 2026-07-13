@@ -755,7 +755,11 @@ function hasValidManagedStudentLink(account: Pick<ManagedAccount, "role" | "stud
 function hasSupabaseAuthSessionForAppSession(normalizedEmail: string) {
   const session = readSupabaseAuthSession();
   if (!session?.authEmail) return false;
-  const expectedUsername = normalizedEmail === prototypeManagerLogin.email.toLowerCase() ? prototypeManagerLogin.username : normalizedEmail;
+  const expectedUsername = normalizedEmail === prototypeManagerLogin.email.toLowerCase()
+    ? prototypeManagerLogin.username
+    : normalizedEmail === "manager1@chos.prototype"
+      ? "manager1"
+      : normalizedEmail;
   if (session.authEmail === supabaseAuthEmailForUsername(expectedUsername)) return true;
   clearSupabaseAuthSession();
   return false;
@@ -764,9 +768,7 @@ function hasSupabaseAuthSessionForAppSession(normalizedEmail: string) {
 function validatePrototypeSession(session: AccountSession | undefined) {
   if (!session?.email) return undefined;
   const normalizedEmail = session.email.toLowerCase();
-  if (isSupabaseAuthConfigured() && !isPrototypeDeveloperEmail(normalizedEmail) && !hasSupabaseAuthSessionForAppSession(normalizedEmail)) {
-    return undefined;
-  }
+  if (isSupabaseAuthConfigured()) return hasSupabaseAuthSessionForAppSession(normalizedEmail) ? session : undefined;
   if (normalizedEmail === prototypeManagerLogin.email.toLowerCase()) return session;
   if (isPrototypeDeveloperEmail(normalizedEmail)) return session;
   const managedAccounts = readStoredArray<ManagedAccount>(keys.managedAccounts);
@@ -800,6 +802,7 @@ function readPrototypeSession() {
 
 function inferBuiltInPrototypeAccountRole(email: string): AccountRole | undefined {
   const normalizedEmail = email.toLowerCase();
+  if (normalizedEmail === "manager1" || normalizedEmail === "manager1@chos.prototype") return "staff";
   if (normalizedEmail === prototypeManagerLogin.email.toLowerCase()) return "staff";
   if (isPrototypeDeveloperEmail(normalizedEmail)) return "staff";
   return undefined;

@@ -290,7 +290,10 @@ export function isPrototypeDeveloperEmail(email?: string) {
 
 export function isPrototypeManagerOwnerEmail(email?: string) {
   const normalizedEmail = email?.trim().toLowerCase();
-  return normalizedEmail === prototypeManagerLogin.email.toLowerCase() || isPrototypeDeveloperEmail(normalizedEmail);
+  return normalizedEmail === prototypeManagerLogin.email.toLowerCase()
+    || normalizedEmail === "manager1"
+    || normalizedEmail === "manager1@chos.prototype"
+    || isPrototypeDeveloperEmail(normalizedEmail);
 }
 
 export function profileAvatarPathForSession(email?: string) {
