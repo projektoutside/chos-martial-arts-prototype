@@ -7691,10 +7691,10 @@ html[data-theme="light"] .live-chat-page {
 }
 
 .live-chat-create-room-button {
-  min-height: 44px;
+  min-height: 34px;
   border: 1px solid rgba(103, 232, 148, 0.52);
   border-radius: 999px;
-  padding: 0 17px;
+  padding: 0 11px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -7702,9 +7702,14 @@ html[data-theme="light"] .live-chat-page {
   background: linear-gradient(135deg, #2f9e5b, #177844);
   box-shadow: 0 9px 20px rgba(20, 120, 67, 0.28);
   font-family: var(--font-ui);
-  font-size: 0.86rem;
+  font-size: 0.72rem;
   font-weight: 900;
   cursor: pointer;
+}
+
+.live-chat-create-room-button--compact {
+  margin-left: auto;
+  align-self: center;
 }
 
 .private-chat-manage-button {
@@ -7730,8 +7735,8 @@ html[data-theme="light"] .live-chat-page {
 }
 
 .live-chat-create-room-button svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
   flex: 0 0 auto;
 }
 
@@ -24000,15 +24005,23 @@ html[data-touch-input="true"] :is(
 .portrait-app-frame .live-chat-controls {
   width: 100%;
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 7px;
+  display: flex;
+  gap: 6px;
   align-items: center;
-  justify-content: stretch;
+  justify-content: flex-start;
 }
 
 .portrait-app-frame .live-chat-tabs {
+  width: auto;
+  flex: 1 1 auto;
   min-width: 0;
+}
+
+.portrait-app-frame .live-chat-create-room-button--compact {
+  min-height: 34px;
+  padding: 0 9px;
+  flex: 0 0 auto;
+  font-size: 0.68rem;
 }
 
 .portrait-app-frame .live-chat-tabs button {

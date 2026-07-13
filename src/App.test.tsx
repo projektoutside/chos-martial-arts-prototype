@@ -4567,6 +4567,8 @@ describe("post-login operations app", () => {
     expect(within(roomTabs).getByRole("tab", { name: /Mentions/i })).toBeInTheDocument();
 
     const createRoomButton = screen.getByRole("button", { name: "Create Room" });
+    expect(createRoomButton).toHaveClass("live-chat-create-room-button--compact");
+    expect(createRoomButton.parentElement).toHaveClass("live-chat-controls");
     expect(roomTabs.compareDocumentPosition(createRoomButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(createRoomButton);
     expect(screen.getByRole("dialog", { name: "Create chat room" })).toBeInTheDocument();

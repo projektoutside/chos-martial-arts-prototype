@@ -5471,7 +5471,7 @@ function LiveChatRoomFrame({
                   </button>
                 </div>
               </div>
-              <button ref={createRoomButtonRef} className="live-chat-create-room-button" type="button" onClick={openCreateRoomDialog}>
+              <button ref={createRoomButtonRef} className="live-chat-create-room-button live-chat-create-room-button--compact" type="button" onClick={openCreateRoomDialog}>
                 <Plus size={15} aria-hidden="true" />
                 <span>Create Room</span>
               </button>
