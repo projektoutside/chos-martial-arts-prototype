@@ -9,7 +9,8 @@ import {
 } from "./softKeyboardViewport";
 import { useSoftKeyboardEditor } from "./softKeyboardEditor";
 import { useAppState } from "./state";
-import { isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, signInSupabaseAccount } from "./supabaseAccounts";
+import { acknowledgeSupabaseWelcome, fetchSupabaseProfileOnboarding, isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, readSupabaseAuthSession, signInSupabaseAccount, type SupabaseProfileOnboarding } from "./supabaseAccounts";
+import { FirstLoginWelcomeDialog } from "./FirstLoginWelcomeDialog";
 import { DemoEnvironmentBadge } from "./DemoEnvironmentBadge";
 import { initializeAppTheme } from "./theme";
 import { hasSeenTestingUpdate, markTestingUpdateSeen, testingUpdateNotice } from "./testingUpdateNotice";
@@ -125,6 +126,9 @@ function App() {
   const { session } = useAppState();
   const [launchComplete, setLaunchComplete] = useState(false);
   const [testingUpdateOpen, setTestingUpdateOpen] = useState(false);
+  const [welcomeProfile, setWelcomeProfile] = useState<SupabaseProfileOnboarding | null>(null);
+  const [welcomePending, setWelcomePending] = useState(false);
+  const [welcomeError, setWelcomeError] = useState("");
   const loginGateState = getLoginGateState(session);
   const previousLoginGateStateRef = useRef(loginGateState);
   const loginJustCompleted = previousLoginGateStateRef.current === "login" && loginGateState !== "login";
@@ -146,6 +150,28 @@ function App() {
   useEffect(() => {
     setTestingUpdateOpen(Boolean(session?.email && !hasSeenTestingUpdate(session.email)));
   }, [session?.email]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!session?.email || !isSupabaseAuthConfigured() || !readSupabaseAuthSession()) {
+      setWelcomeProfile(null);
+      return () => { cancelled = true; };
+    }
+    void fetchSupabaseProfileOnboarding().then((result) => {
+      if (cancelled) return;
+      setWelcomeProfile(result.ok && result.profile.status === "active" && !result.profile.welcomeSeenAt ? result.profile : null);
+    });
+    return () => { cancelled = true; };
+  }, [session?.email]);
+
+  const acknowledgeWelcome = useCallback(async () => {
+    setWelcomePending(true);
+    setWelcomeError("");
+    const result = await acknowledgeSupabaseWelcome();
+    setWelcomePending(false);
+    if (result.ok) setWelcomeProfile(null);
+    else setWelcomeError(result.message);
+  }, []);
 
   const dismissTestingUpdate = useCallback(() => {
     if (session?.email) markTestingUpdateSeen(session.email);
@@ -179,7 +205,7 @@ function App() {
             </Suspense>
           )}
         </div>
-        {testingUpdateOpen && (
+        {testingUpdateOpen && !welcomeProfile && (
           <ModalShell label="What's New" onClose={dismissTestingUpdate} panelClass="modal-card testing-update-modal">
             <p className="testing-update-kicker">{testingUpdateNotice.date}</p>
             <p className="testing-update-version">Version {testingUpdateNotice.version}</p>
@@ -190,6 +216,9 @@ function App() {
             </ul>
             <button className="testing-update-action" type="button" onClick={dismissTestingUpdate}>Got it</button>
           </ModalShell>
+        )}
+        {welcomeProfile && (
+          <FirstLoginWelcomeDialog profile={welcomeProfile} pending={welcomePending} error={welcomeError} onAcknowledge={() => void acknowledgeWelcome()} />
         )}
       </PortraitAppShell>
       <ToastViewport />
@@ -348,7 +377,6 @@ function LoginLandingPage({
   const [loginFailedOpen, setLoginFailedOpen] = useState(false);
   const [loginFailedMessage, setLoginFailedMessage] = useState(defaultLoginFailedMessage);
   const [loginPending, setLoginPending] = useState(false);
-  const [newAccountOpen, setNewAccountOpen] = useState(false);
   const supabaseConfigured = isSupabaseAuthConfigured();
   const loginLandingStyle = { "--login-bg-image": `url("${publicAsset("NewFinalBackground.png")}")` } as CSSProperties;
 
@@ -547,9 +575,7 @@ function LoginLandingPage({
           <button className="login-submit" type="submit" disabled={loginPending}>
             {loginPending ? "Signing In..." : "Sign In"}
           </button>
-          <button className="login-create" type="button" onClick={() => setNewAccountOpen(true)}>
-            Create Account
-          </button>
+          <p className="login-invite-only-note">Accounts are created by a Cho&apos;s administrator.</p>
         </form>
         <div className="login-divider" aria-hidden="true">
           <span></span>
@@ -568,17 +594,6 @@ function LoginLandingPage({
             <button className="btn btn-red login-failed-action" type="button" onClick={() => setLoginFailedOpen(false)}>
               Try Again
             </button>
-          </div>
-        </ModalShell>
-      )}
-      {newAccountOpen && (
-        <ModalShell label="New account" onClose={() => setNewAccountOpen(false)} panelClass="modal-card login-new-account-modal">
-          <div className="login-new-account-content">
-            <h2>New Account</h2>
-            <p>A Manager, Staff member, or Developer must create and activate your account before you can sign in.</p>
-            <p>They will give you a default username and password for your first sign-in.</p>
-            <p>After your first sign-in, your Manager or Staff member can help you update your account details.</p>
-            <button className="btn btn-red" type="button" onClick={() => setNewAccountOpen(false)}>Return to Sign In</button>
           </div>
         </ModalShell>
       )}

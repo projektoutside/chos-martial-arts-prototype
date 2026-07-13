@@ -2881,18 +2881,15 @@ describe("login landing", () => {
     expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create Account" })).not.toBeInTheDocument();
+    expect(screen.getByText("Accounts are created by a Cho's administrator.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign in as Guest" })).not.toBeInTheDocument();
   });
 
-  it("explains that a Manager, Staff member, or Developer creates new accounts", () => {
+  it("does not expose the retired public account creation dialog", () => {
     renderLoggedOutApp("/");
-
-    fireEvent.click(screen.getByRole("button", { name: "Create Account" }));
-
-    const dialog = screen.getByRole("dialog", { name: "New account" });
-    expect(within(dialog).getByText("A Manager, Staff member, or Developer must create and activate your account before you can sign in.")).toBeInTheDocument();
-    expect(within(dialog).getByText("They will give you a default username and password for your first sign-in.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "New account" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/default username and password/i)).not.toBeInTheDocument();
   });
 
   it("signs the gated developer credential into owner mode on Live Chat", async () => {
@@ -2941,6 +2938,19 @@ describe("login landing", () => {
           created_at: "2026-06-09T00:00:00.000Z"
         }]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
+      if (requestUrl.includes("/rest/v1/rpc/get_my_profile_onboarding")) {
+        return new Response(JSON.stringify([{
+          username: "dev123",
+          display_name: "Developer",
+          role: "staff",
+          status: "active",
+          is_owner: true,
+          welcome_seen_at: null
+        }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.includes("/rest/v1/rpc/acknowledge_my_welcome")) {
+        return new Response(JSON.stringify([{ welcome_seen_at: "2026-07-13T20:22:00.000Z" }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
       if (requestUrl.includes("/rest/v1/live_chat_messages")) {
         return new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -2956,6 +2966,9 @@ describe("login landing", () => {
       fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
       expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
+      expect(await screen.findByRole("dialog", { name: "Welcome to Cho's Martial Arts" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Enter Cho's App" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Welcome to Cho's Martial Arts" })).not.toBeInTheDocument());
       expect(fetchMock).toHaveBeenCalledWith(
         "https://zfuwbbepsnmmlpgfkmhz.supabase.co/auth/v1/token?grant_type=password",
         expect.objectContaining({

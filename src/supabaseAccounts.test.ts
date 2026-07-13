@@ -91,7 +91,7 @@ describe("supabase account adapter", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     await expect(acknowledgeSupabaseWelcome()).resolves.toEqual({ ok: true, welcomeSeenAt: "2026-07-13T20:20:00.000Z" });
-    const [, init] = fetchMock.mock.calls[0];
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(String(init?.body ?? "")).not.toMatch(/password|user.?id/i);
     expect(init).toEqual(expect.objectContaining({ method: "POST", body: "{}" }));
   });
