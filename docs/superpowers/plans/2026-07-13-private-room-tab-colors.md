@@ -23,7 +23,7 @@
 
 ## File Structure
 
-- Create `supabase/migrations/20260713210000_private_chat_room_tab_colors.sql`: persisted column, allowlist constraint, expanded private implementations, public wrappers, and grants.
+- Create `supabase/migrations/20260713185711_private_chat_room_tab_colors.sql`: persisted column, allowlist constraint, expanded private implementations, public wrappers, and grants.
 - Modify `src/supabasePrivateLiveChat.ts`: palette contract, validation, room mapping, and RPC arguments.
 - Modify `src/supabasePrivateLiveChat.test.ts`: adapter mapping and mutation coverage.
 - Modify `src/PrivateLiveChatDialogs.tsx`: reusable color radiogroup and create/manage state.
@@ -37,7 +37,7 @@
 ### Task 1: Persist and Secure the Approved Room Color
 
 **Files:**
-- Create: `supabase/migrations/20260713210000_private_chat_room_tab_colors.sql`
+- Create: `supabase/migrations/20260713185711_private_chat_room_tab_colors.sql`
 
 **Interfaces:**
 - Consumes: existing `private_chat_rooms`, `private.create_private_chat_room_impl`, `private.update_private_chat_room_impl`, and public security-invoker wrappers.
@@ -89,7 +89,7 @@ Expected: migration succeeds, lint reports no new errors, existing rows read `#8
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260713210000_private_chat_room_tab_colors.sql
+git add supabase/migrations/20260713185711_private_chat_room_tab_colors.sql
 git commit -m "feat: persist private room tab colors"
 ```
 
@@ -326,7 +326,7 @@ Expected: 39+ test files pass, both Android bundles build, the demo scan reports
 
 Run the repository's established Supabase migration command against project `zfuwbbepsnmmlpgfkmhz`, then run database lint/advisor checks.
 
-Expected: migration `20260713210000_private_chat_room_tab_colors.sql` is recorded once, RPC grants remain authenticated-only, and no new security findings appear.
+Expected: migration `20260713185711_private_chat_room_tab_colors.sql` is recorded once, RPC grants remain authenticated-only, and no new security findings appear.
 
 - [ ] **Step 3: Deploy a Cloudflare preview and perform browser QA**
 
@@ -348,7 +348,7 @@ Review the final diff for authorization regression, invalid-color bypass, unread
 - [ ] **Step 5: Commit any verification fixes**
 
 ```bash
-git add supabase/migrations/20260713210000_private_chat_room_tab_colors.sql src/supabasePrivateLiveChat.ts src/supabasePrivateLiveChat.test.ts src/PrivateLiveChatDialogs.tsx src/PrivateLiveChatDialogs.test.tsx src/OperationsApp.tsx src/App.test.tsx src/styles.css
+git add supabase/migrations/20260713185711_private_chat_room_tab_colors.sql src/supabasePrivateLiveChat.ts src/supabasePrivateLiveChat.test.ts src/PrivateLiveChatDialogs.tsx src/PrivateLiveChatDialogs.test.tsx src/OperationsApp.tsx src/App.test.tsx src/styles.css
 git commit -m "fix: harden private room tab colors"
 ```
 
