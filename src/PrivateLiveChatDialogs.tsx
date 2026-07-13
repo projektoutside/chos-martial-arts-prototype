@@ -1,6 +1,12 @@
-import { Search, Trash2, UserPlus, Users, X } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import type { PrivateChatInvitee, PrivateChatRoom } from "./supabasePrivateLiveChat";
+import { Check, Search, Trash2, UserPlus, Users, X } from "lucide-react";
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import {
+  defaultPrivateChatRoomColor,
+  privateChatRoomColorOptions,
+  type PrivateChatInvitee,
+  type PrivateChatRoom,
+  type PrivateChatRoomColor
+} from "./supabasePrivateLiveChat";
 
 function roleLabel(role: PrivateChatInvitee["role"]) {
   return role === "staff" ? "Staff" : role === "student" ? "Student" : "Parent / Guardian";
@@ -52,21 +58,51 @@ function DialogShell({ label, eyebrow, title, onClose, children }: { label: stri
   );
 }
 
+function RoomTabColorPicker({ value, roomName, onChange }: {
+  value: PrivateChatRoomColor;
+  roomName: string;
+  onChange: (value: PrivateChatRoomColor) => void;
+}) {
+  return (
+    <fieldset className="private-chat-color-picker">
+      <legend>Tab color</legend>
+      <div className="private-chat-color-options" role="radiogroup" aria-label="Tab color">
+        {privateChatRoomColorOptions.map((option) => (
+          <label
+            className={`private-chat-color-option${value === option.value ? " is-selected" : ""}`}
+            key={option.value}
+            style={{ "--private-chat-swatch": option.value } as CSSProperties}
+          >
+            <input type="radio" name="private-room-tab-color" value={option.value} checked={value === option.value} onChange={() => onChange(option.value)} />
+            <span className="private-chat-color-swatch" aria-hidden="true">{value === option.value && <Check size={14} />}</span>
+            <span>{option.name}</span>
+          </label>
+        ))}
+      </div>
+      <div className="private-chat-tab-preview">
+        <span>Room tab preview</span>
+        <strong data-testid="room-tab-color-preview" style={{ "--live-chat-room-tab-color": value } as CSSProperties}>{roomName.trim() || "Room name"}</strong>
+      </div>
+    </fieldset>
+  );
+}
+
 export function CreatePrivateRoomDialog({ open, invitees, isLoadingInvitees, error, onClose, onCreate }: {
   open: boolean; invitees: PrivateChatInvitee[]; isLoadingInvitees: boolean; error: string; onClose: () => void;
-  onCreate: (input: { name: string; memberIds: string[] }) => Promise<void>;
+  onCreate: (input: { name: string; memberIds: string[]; tabColor: PrivateChatRoomColor }) => Promise<void>;
 }) {
   const [name, setName] = useState("");
+  const [tabColor, setTabColor] = useState<PrivateChatRoomColor>(defaultPrivateChatRoomColor);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState(false);
-  useEffect(() => { if (open) { setName(""); setSelectedIds(new Set()); setPending(false); } }, [open]);
+  useEffect(() => { if (open) { setName(""); setTabColor(defaultPrivateChatRoomColor); setSelectedIds(new Set()); setPending(false); } }, [open]);
   if (!open) return null;
   const toggle = (id: string) => setSelectedIds((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim() || !selectedIds.size || pending) return;
     setPending(true);
-    try { await onCreate({ name: name.trim(), memberIds: [...selectedIds] }); } finally { setPending(false); }
+    try { await onCreate({ name: name.trim(), memberIds: [...selectedIds], tabColor }); } finally { setPending(false); }
   };
   return (
     <DialogShell label="Create chat room" eyebrow="Private Live Chat" title="Create Room" onClose={onClose}>
@@ -74,6 +110,7 @@ export function CreatePrivateRoomDialog({ open, invitees, isLoadingInvitees, err
         <div className="live-chat-create-room-layout">
           <section className="live-chat-create-room-settings" aria-label="Room settings">
             <label className="manager-compose-field"><span>Room name</span><input autoFocus required aria-label="Room name" maxLength={80} value={name} onChange={(event) => setName(event.target.value)} placeholder="Leadership Team" /></label>
+            <RoomTabColorPicker value={tabColor} roomName={name} onChange={setTabColor} />
             <p className="private-chat-dialog-help"><UserPlus size={16} /> Choose at least one active Cho's account. You can change members later.</p>
           </section>
           {isLoadingInvitees ? <p>Loading active accounts...</p> : <PersonPicker invitees={invitees} selectedIds={selectedIds} onToggle={toggle} />}
@@ -87,15 +124,17 @@ export function CreatePrivateRoomDialog({ open, invitees, isLoadingInvitees, err
 
 export function ManagePrivateRoomDialog({ open, room, currentProfileId, invitees, error, onClose, onUpdate, onDelete, onLeave }: {
   open: boolean; room: PrivateChatRoom; currentProfileId: string; invitees: PrivateChatInvitee[]; error: string; onClose: () => void;
-  onUpdate: (input: { name: string; memberIds: string[] }) => Promise<void>; onDelete: () => Promise<void>; onLeave: () => Promise<void>;
+  onUpdate: (input: { name: string; memberIds: string[]; tabColor: PrivateChatRoomColor }) => Promise<void>; onDelete: () => Promise<void>; onLeave: () => Promise<void>;
 }) {
   const isCreator = room.creatorId === currentProfileId;
   const [name, setName] = useState(room.name);
+  const [tabColor, setTabColor] = useState<PrivateChatRoomColor>(room.tabColor);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(room.members.filter((member) => member.profileId !== room.creatorId).map((member) => member.profileId)));
   const [pending, setPending] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"delete" | "leave" | null>(null);
   useEffect(() => {
     setName(room.name);
+    setTabColor(room.tabColor);
     setSelectedIds(new Set(room.members.filter((member) => member.profileId !== room.creatorId).map((member) => member.profileId)));
     setConfirmAction(null);
   }, [room]);
@@ -105,9 +144,9 @@ export function ManagePrivateRoomDialog({ open, room, currentProfileId, invitees
   return (
     <DialogShell label="Manage private room" eyebrow="Private Live Chat" title={room.name} onClose={onClose}>
       {isCreator ? (
-        <form onSubmit={(event) => { event.preventDefault(); void act(() => onUpdate({ name: name.trim(), memberIds: [...selectedIds] })); }}>
+        <form onSubmit={(event) => { event.preventDefault(); void act(() => onUpdate({ name: name.trim(), memberIds: [...selectedIds], tabColor })); }}>
           <div className="live-chat-create-room-layout">
-            <section className="live-chat-create-room-settings"><label className="manager-compose-field"><span>Room name</span><input aria-label="Room name" maxLength={80} value={name} onChange={(event) => setName(event.target.value)} /></label><p className="private-chat-dialog-help"><Users size={16} /> Only you can manage this room.</p></section>
+            <section className="live-chat-create-room-settings"><label className="manager-compose-field"><span>Room name</span><input aria-label="Room name" maxLength={80} value={name} onChange={(event) => setName(event.target.value)} /></label><RoomTabColorPicker value={tabColor} roomName={name} onChange={setTabColor} /><p className="private-chat-dialog-help"><Users size={16} /> Only you can manage this room.</p></section>
             <PersonPicker invitees={invitees} selectedIds={selectedIds} onToggle={toggle} />
           </div>
           {error && <p className="live-chat-error" role="alert">{error}</p>}
