@@ -27471,3 +27471,46 @@ html[data-custom-colors="true"] .testing-update-history-modal > ol > li > div {
   background: rgba(255, 245, 231, 0.96);
   color: #733b00;
 }
+.first-login-welcome-backdrop {
+  z-index: 1500;
+  background: rgba(4, 10, 24, 0.86);
+  backdrop-filter: blur(5px);
+}
+
+.first-login-welcome-dialog {
+  width: min(92vw, 440px);
+  padding: clamp(1.4rem, 5vw, 2.1rem);
+  text-align: center;
+  border-color: rgba(213, 177, 79, 0.52);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48);
+}
+
+.first-login-welcome-eyebrow {
+  margin: 0 0 0.4rem;
+  color: #d9b95d;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+}
+
+.first-login-welcome-dialog h2,
+.first-login-welcome-name {
+  margin: 0 0 0.75rem;
+}
+
+.first-login-welcome-name {
+  color: #f4d980;
+  font-size: 1.18rem;
+  font-weight: 800;
+}
+
+.first-login-welcome-dialog .primary-button {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.first-login-welcome-error {
+  color: #ffb7bf;
+  font-weight: 700;
+}
