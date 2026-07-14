@@ -601,6 +601,8 @@ function useStoredState<T>(
   const localDisabled = Boolean(options?.localDisabled);
   const remoteFallback = options?.remoteFallback ?? fallback;
   const [value, setValue] = useState<T>(() => (remoteBacked || localDisabled ? remoteFallback : readStorage<T>(key, fallback)));
+  const localMutationVersionRef = useRef(0);
+  const remoteWriteChainRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     if (remoteBacked) {
@@ -612,9 +614,11 @@ function useStoredState<T>(
           cancelled = true;
         };
       }
+      const hydrationMutationVersion = localMutationVersionRef.current;
       void fetchSupabaseAppStateItem<T>(key).then((result) => {
         if (cancelled) return;
         if (result.status !== "ok") return;
+        if (localMutationVersionRef.current !== hydrationMutationVersion) return;
         if (result.data === undefined) {
           if (remoteFallback !== undefined) void persistSupabaseAppStateItem(key, remoteFallback);
           return;
@@ -637,14 +641,14 @@ function useStoredState<T>(
     (next: T | ((previous: T) => T)) => {
       setValue((previous) => {
         const resolved = typeof next === "function" ? (next as (previous: T) => T)(previous) : next;
+        localMutationVersionRef.current += 1;
         if (remoteBacked) {
           removeStorage(key);
           if (useRemoteAppState) {
-            if (resolved === undefined) {
-              void deleteSupabaseAppStateItem(key);
-            } else {
-              void persistSupabaseAppStateItem(key, resolved);
-            }
+            remoteWriteChainRef.current = remoteWriteChainRef.current.then(async () => {
+              if (resolved === undefined) await deleteSupabaseAppStateItem(key);
+              else await persistSupabaseAppStateItem(key, resolved);
+            });
           }
         } else if (localDisabled) {
           removeStorage(key);
@@ -1693,6 +1697,15 @@ function mergeHydratedMessageLogs(remoteLogs: readonly MessageLog[], currentLogs
   return merged;
 }
 
+function mergeHydratedDirectMessages(remoteMessages: readonly DirectMessage[], currentMessages: readonly DirectMessage[]) {
+  const seenIds = new Set<string>();
+  return [...currentMessages, ...remoteMessages].filter((message) => {
+    if (!message.id || seenIds.has(message.id)) return false;
+    seenIds.add(message.id);
+    return true;
+  });
+}
+
 function cleanNonnegativeInteger(value: number | undefined, fallback: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(0, Math.floor(value as number));
@@ -1889,6 +1902,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const directMessagesRef = useRef(directMessages);
   const supabaseDirectMessagesPersistedIdsRef = useRef<Set<string>>(new Set());
   const supabaseDirectMessagesHydratedRef = useRef(false);
+  const supabaseDirectMessagesLocallyMutatedBeforeHydrationRef = useRef(false);
   const leadReviewsRef = useRef(leadReviews);
   const managedAccountsRef = useRef(managedAccounts);
   const childAccountsRef = useRef(childAccounts);
@@ -1901,6 +1915,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const markMessageLogsLocallyMutated = useCallback(() => {
     if (supabaseMessagesRemoteBacked && !supabaseMessageLogsHydratedRef.current) {
       supabaseMessageLogsLocallyMutatedBeforeHydrationRef.current = true;
+    }
+  }, [supabaseMessagesRemoteBacked]);
+
+  const markDirectMessagesLocallyMutated = useCallback(() => {
+    if (supabaseMessagesRemoteBacked && !supabaseDirectMessagesHydratedRef.current) {
+      supabaseDirectMessagesLocallyMutatedBeforeHydrationRef.current = true;
     }
   }, [supabaseMessagesRemoteBacked]);
 
@@ -2176,6 +2196,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     supabaseMessageLogsHydratedRef.current = false;
     supabaseMessageLogsLocallyMutatedBeforeHydrationRef.current = false;
     supabaseDirectMessagesHydratedRef.current = false;
+    supabaseDirectMessagesLocallyMutatedBeforeHydrationRef.current = false;
     if (!supabaseMessagesRemoteBacked) {
       supabaseMessageLogsPersistedIdsRef.current = new Set();
       supabaseDirectMessagesPersistedIdsRef.current = new Set();
@@ -2186,10 +2207,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     void Promise.all([fetchSupabaseDirectMessages(), fetchSupabaseMessageLogs()]).then(([directMessagesResult, messageLogsResult]) => {
       if (cancelled) return;
       if (directMessagesResult.status === "ok") {
-        supabaseDirectMessagesPersistedIdsRef.current = new Set(directMessagesResult.data.map((message) => message.id));
+        const hydratedDirectMessages = supabaseDirectMessagesLocallyMutatedBeforeHydrationRef.current
+          ? mergeHydratedDirectMessages(directMessagesResult.data, directMessagesRef.current)
+          : directMessagesResult.data;
+        supabaseDirectMessagesPersistedIdsRef.current = new Set(hydratedDirectMessages.map((message) => message.id));
         supabaseDirectMessagesHydratedRef.current = true;
-        directMessagesRef.current = directMessagesResult.data;
-        setDirectMessages(directMessagesResult.data);
+        supabaseDirectMessagesLocallyMutatedBeforeHydrationRef.current = false;
+        directMessagesRef.current = hydratedDirectMessages;
+        setDirectMessages(hydratedDirectMessages);
         removeStorage(keys.directMessages);
       }
       if (messageLogsResult.status === "ok") {
@@ -2909,6 +2934,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         setManagedAccounts((current) =>
           current.map((account) => (account.role === "student" && account.studentId === studentId ? { ...account, ...managedStudentAccountDetails(updatedStudent), status: "inactive" } : account))
         );
+        markDirectMessagesLocallyMutated();
         setDirectMessages((current) => current.filter((message) => !isDirectMessageLinkedToStudent(message, studentId)));
       } else {
         const shouldReactivateLinkedStudentLogin = !wasCurrentEnrollment;
@@ -2920,11 +2946,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           )
         );
         setMessageLogs((current) => current.map((message) => retargetQueuedMessageForStudent(message, existing, updatedStudent)));
+        markDirectMessagesLocallyMutated();
         setDirectMessages((current) => current.map((message) => retargetDirectMessageForStudent(message, updatedStudent)));
       }
       return updatedStudent;
     },
-    [setCheckIns, setDirectMessages, setManagedAccounts, setMessageLogs, setStudents, updateScheduledClassesState]
+    [markDirectMessagesLocallyMutated, setCheckIns, setDirectMessages, setManagedAccounts, setMessageLogs, setStudents, updateScheduledClassesState]
   );
 
   const deleteOperationsStudent = useCallback(
@@ -2941,13 +2968,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       updateManagedAccountsState((current) => current.map((account) => (account.studentId === studentId ? { ...account, status: "inactive", studentId: undefined } : account)));
       const nextDirectMessages = directMessagesRef.current.filter((message) => !isDirectMessageLinkedToStudent(message, studentId));
       directMessagesRef.current = nextDirectMessages;
+      markDirectMessagesLocallyMutated();
       setDirectMessages(nextDirectMessages);
       const nextMessageLogs = messageLogsRef.current.filter((item) => !isMessageLogLinkedToStudent(item, existing));
       messageLogsRef.current = nextMessageLogs;
       setMessageLogs(nextMessageLogs);
       return existing;
     },
-    [setCheckIns, setDirectMessages, setMessageLogs, setStudents, updateManagedAccountsState, updateScheduledClassesState]
+    [markDirectMessagesLocallyMutated, setCheckIns, setDirectMessages, setMessageLogs, setStudents, updateManagedAccountsState, updateScheduledClassesState]
   );
 
   const cleanScheduledClass = useCallback((scheduledClass: ScheduledClassInput) => {
@@ -3375,6 +3403,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       textAutomationRunsRef.current = restoredTextAutomationRuns;
       setTextAutomationRuns(restoredTextAutomationRuns);
       directMessagesRef.current = restoredDirectMessages;
+      markDirectMessagesLocallyMutated();
       setDirectMessages(restoredDirectMessages);
       updateStudioEventsState(snapshot.data.studioEvents as StudioEvent[]);
       updateMerchandiseItemsState(snapshot.data.merchandiseItems as MerchandiseItem[]);
@@ -3405,6 +3434,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     [
       childAccounts,
       accounts,
+      markDirectMessagesLocallyMutated,
       managedAccounts,
       session,
       setAccountRoles,
@@ -4182,11 +4212,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       };
       const nextDirectMessages = [...directMessagesRef.current, createdMessage];
       directMessagesRef.current = nextDirectMessages;
+      markDirectMessagesLocallyMutated();
       setDirectMessages(nextDirectMessages);
       if (supabaseMessagesRemoteBacked) void persistSupabaseDirectMessages([createdMessage]);
       return { imported: 1, optedOut: 0, optedIn: 0, ignored: 0 };
     },
-    [recordSmsOptOut, setDirectMessages, supabaseMessagesRemoteBacked]
+    [markDirectMessagesLocallyMutated, recordSmsOptOut, setDirectMessages, supabaseMessagesRemoteBacked]
   );
 
   const sendDirectMessage = useCallback(
@@ -4211,11 +4242,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       if (existingMessage) return existingMessage;
       const nextDirectMessages = [...directMessagesRef.current, createdMessage];
       directMessagesRef.current = nextDirectMessages;
+      markDirectMessagesLocallyMutated();
       setDirectMessages(nextDirectMessages);
       if (supabaseMessagesRemoteBacked) void persistSupabaseDirectMessages([createdMessage]);
       return createdMessage;
     },
-    [setDirectMessages, supabaseMessagesRemoteBacked]
+    [markDirectMessagesLocallyMutated, setDirectMessages, supabaseMessagesRemoteBacked]
   );
 
   const value: AppState = {

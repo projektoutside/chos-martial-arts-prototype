@@ -6,7 +6,7 @@ This app keeps the browser on publishable Supabase credentials only. Manager sig
 
 1. Create or connect the Cho's Supabase project. Current staging is `chos-martial-arts-operations-app-staging` / `zfuwbbepsnmmlpgfkmhz`.
 2. Apply the migrations in `supabase/migrations`.
-3. Deploy `supabase/functions/manager-create-account/index.ts` when Manager123 owner-created live staff, student, and parent accounts are in scope for that environment. The function uses `verify_jwt = false` because it performs its own bearer-token, Supabase Auth user, owner-profile, and password-policy checks; do not deploy it without those checks.
+3. Deploy `supabase/functions/manager-create-account/index.ts` when administrator-created live staff, student, and parent accounts are in scope. Set the Edge Function secret `INVITE_REDIRECT_URL` to an allow-listed app URL (for production, `https://chos-martial-arts-operations-app.pages.dev/`). The function uses `verify_jwt = false` because it performs its own bearer-token, Supabase Auth user, and active-owner-profile checks; do not deploy it without those checks. It keeps the service-role key server-side, invites the user's real email through Supabase Auth, and persists a pending invitation until Auth confirms the email.
 4. Set the deployed app env vars:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_PUBLISHABLE_KEY`

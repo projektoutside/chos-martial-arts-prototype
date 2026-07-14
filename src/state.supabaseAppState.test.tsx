@@ -197,6 +197,38 @@ describe("Supabase-backed app state provider", () => {
     expect(window.localStorage.getItem("chos.operations.students.v1")).toBeNull();
   });
 
+  it("does not overwrite a local app-state mutation when remote hydration returns late", async () => {
+    const studentHydration = deferred<Response>();
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const requestUrl = new URL(String(url));
+      if (requestUrl.pathname === "/rest/v1/app_state_items") {
+        if (init?.method === "POST") return emptyResponse();
+        const requestedKey = requestUrl.searchParams.get("key")?.replace(/^eq\./, "");
+        if (requestedKey === "chos.operations.students.v1") return studentHydration.promise;
+        return jsonResponse([]);
+      }
+      if (requestUrl.pathname === "/rest/v1/direct_messages" || requestUrl.pathname === "/rest/v1/message_logs") {
+        return jsonResponse([]);
+      }
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    render(
+      <AppStateProvider>
+        <Harness />
+      </AppStateProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Student" }));
+    await waitFor(() => expect(screen.getByTestId("students")).not.toHaveTextContent(""));
+
+    studentHydration.resolve(jsonResponse([{ key: "chos.operations.students.v1", value: [] }]));
+
+    await waitFor(() => expect(screen.getByTestId("students")).not.toHaveTextContent(""));
+    expect(screen.getByTestId("students")).toHaveTextContent("student-");
+  });
+
   it("keeps report-queued message logs when Supabase message hydration returns late", async () => {
     const remoteStudent: StudentRecord = {
       id: "student-remote-risk",

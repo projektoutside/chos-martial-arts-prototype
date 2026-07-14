@@ -9,7 +9,8 @@ import {
 } from "./softKeyboardViewport";
 import { useSoftKeyboardEditor } from "./softKeyboardEditor";
 import { useAppState } from "./state";
-import { acknowledgeSupabaseWelcome, fetchSupabaseProfileOnboarding, isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, readSupabaseAuthSession, signInSupabaseAccount, type SupabaseProfileOnboarding } from "./supabaseAccounts";
+import { acknowledgeSupabaseWelcome, completeSupabaseInvitePassword, fetchSupabaseProfileOnboarding, isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, readSupabaseAuthSession, readSupabaseInviteCallback, signInSupabaseAccount, type SupabaseProfileOnboarding } from "./supabaseAccounts";
+import { validateAccountPasswordChange } from "./accountPassword";
 import { FirstLoginWelcomeDialog } from "./FirstLoginWelcomeDialog";
 import { DemoEnvironmentBadge } from "./DemoEnvironmentBadge";
 import { initializeAppTheme } from "./theme";
@@ -377,6 +378,10 @@ function LoginLandingPage({
   const [loginFailedOpen, setLoginFailedOpen] = useState(false);
   const [loginFailedMessage, setLoginFailedMessage] = useState(defaultLoginFailedMessage);
   const [loginPending, setLoginPending] = useState(false);
+  const [passwordSetup, setPasswordSetup] = useState(() => readSupabaseInviteCallback());
+  const [setupPassword, setSetupPassword] = useState("");
+  const [setupConfirmation, setSetupConfirmation] = useState("");
+  const [setupMessage, setSetupMessage] = useState("");
   const supabaseConfigured = isSupabaseAuthConfigured();
   const loginLandingStyle = { "--login-bg-image": `url("${publicAsset("NewFinalBackground.png")}")` } as CSSProperties;
 
@@ -519,6 +524,24 @@ function LoginLandingPage({
     failLogin("Check the username and password.");
   };
 
+  const submitPasswordSetup = async (event: FormEvent) => {
+    event.preventDefault();
+    const validationMessage = validateAccountPasswordChange(setupPassword, setupConfirmation);
+    if (validationMessage) {
+      setSetupMessage(validationMessage);
+      return;
+    }
+    setLoginPending(true);
+    const result = await completeSupabaseInvitePassword(setupPassword);
+    setLoginPending(false);
+    if (result.status !== "ok") {
+      setSetupMessage(result.status === "not-configured" ? "Account setup is unavailable." : result.message);
+      return;
+    }
+    setSetupMessage("Password saved. Sign in with your email and new password.");
+    setPasswordSetup({ status: "none" });
+  };
+
   return (
     <section
       ref={loginLandingRef}
@@ -548,9 +571,11 @@ function LoginLandingPage({
         <form className="login-panel" onSubmit={submitLogin}>
           <label ref={usernameFieldRef} className="login-field">
             <User size={34} aria-hidden="true" />
-            <span className="sr-only">Username</span>
+            <span className="sr-only">Email or username</span>
             <input
               autoComplete="username"
+              inputMode="email"
+              aria-label="Email or username"
               placeholder="Username"
               value={loginForm.username}
               onChange={(event) => setLoginForm({ ...loginForm, username: event.target.value })}
@@ -575,7 +600,8 @@ function LoginLandingPage({
           <button className="login-submit" type="submit" disabled={loginPending}>
             {loginPending ? "Signing In..." : "Sign In"}
           </button>
-          <p className="login-invite-only-note">Accounts are created by a Cho&apos;s administrator.</p>
+          <p className="login-invite-only-note">Invited users sign in with their email. Legacy usernames still work.</p>
+          {setupMessage && <p className="login-invite-only-note" role="status">{setupMessage}</p>}
         </form>
         <div className="login-divider" aria-hidden="true">
           <span></span>
@@ -597,20 +623,69 @@ function LoginLandingPage({
           </div>
         </ModalShell>
       )}
+      {passwordSetup.status === "ready" && (
+        <ModalShell label="Set your password" onClose={() => undefined} panelClass="modal-card login-failed-modal">
+          <form className="login-failed-content" onSubmit={submitPasswordSetup}>
+            <h2>Set your password</h2>
+            <p>Create a strong password to finish accepting your Cho&apos;s invitation.</p>
+            <label>New password<input aria-label="New password" type="password" autoComplete="new-password" value={setupPassword} onChange={(event) => setSetupPassword(event.target.value)} /></label>
+            <label>Confirm new password<input aria-label="Confirm new password" type="password" autoComplete="new-password" value={setupConfirmation} onChange={(event) => setSetupConfirmation(event.target.value)} /></label>
+            {setupMessage && <p className="login-error" role="alert">{setupMessage}</p>}
+            <button className="btn btn-red login-failed-action" type="submit" disabled={loginPending}>{loginPending ? "Saving..." : "Save Password"}</button>
+          </form>
+        </ModalShell>
+      )}
+      {passwordSetup.status === "error" && (
+        <ModalShell label="Invitation link problem" onClose={() => setPasswordSetup({ status: "none" })} panelClass="modal-card login-failed-modal">
+          <div className="login-failed-content"><h2>Invitation link problem</h2><p>{passwordSetup.message}</p><button className="btn btn-red login-failed-action" type="button" onClick={() => setPasswordSetup({ status: "none" })}>Return to Sign In</button></div>
+        </ModalShell>
+      )}
     </section>
   );
 }
 
 function ModalShell({ label, onClose, panelClass, children }: { label: string; onClose: () => void; panelClass: string; children: ReactNode }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      const panel = panelRef.current;
+      if (!panel) return;
+      const openDialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]'));
+      if (openDialogs.at(-1) !== panel) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+      ).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel || !panel.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     panelRef.current?.focus();
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, []);
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className={panelClass} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} ref={panelRef}>

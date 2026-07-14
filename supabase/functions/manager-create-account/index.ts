@@ -7,10 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 
-const accountAuthDomain = "accounts.chosmartialarts.app";
 const allowedRoles = new Set(["staff", "student", "guardian"]);
 const allowedStatuses = new Set(["active", "inactive"]);
-const passwordPolicyMessage = "Use at least 12 characters with uppercase, lowercase, a number, and a symbol.";
 const allowedAccess = new Set([
   "dashboard",
   "messages",
@@ -27,7 +25,6 @@ const allowedAccess = new Set([
 type AccountRequest = {
   displayName?: unknown;
   username?: unknown;
-  password?: unknown;
   role?: unknown;
   status?: unknown;
   email?: unknown;
@@ -57,17 +54,9 @@ function normalizeUsername(value: unknown) {
     .replace(/^[._-]+|[._-]+$/g, "");
 }
 
-function authEmailForUsername(username: string) {
-  return `${username}@${accountAuthDomain}`;
-}
-
 function normalizeAccess(value: unknown, role: string) {
   if (role !== "staff" || !Array.isArray(value)) return [];
   return [...new Set(value.filter((item): item is string => typeof item === "string" && allowedAccess.has(item)))];
-}
-
-function isStrongPassword(password: string) {
-  return password.length >= 12 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
 }
 
 Deno.serve(async (req: Request) => {
@@ -77,8 +66,9 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const inviteRedirectUrl = Deno.env.get("INVITE_REDIRECT_URL") ?? "";
 
-  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+  if (!supabaseUrl || !anonKey || !serviceRoleKey || !inviteRedirectUrl) {
     return jsonResponse({ error: "Supabase function secrets are not configured." }, 500);
   }
 
@@ -119,22 +109,18 @@ Deno.serve(async (req: Request) => {
 
   const username = normalizeUsername(body.username);
   const displayName = cleanString(body.displayName);
-  const password = cleanString(body.password);
   const role = allowedRoles.has(cleanString(body.role)) ? cleanString(body.role) : "";
   const status = allowedStatuses.has(cleanString(body.status)) ? cleanString(body.status) : "active";
-  const contactEmail = cleanString(body.email).toLowerCase() || null;
+  const contactEmail = cleanString(body.email).toLowerCase();
   const phone = cleanString(body.phone) || null;
   const title = cleanString(body.title) || null;
   const notes = cleanString(body.notes) || null;
   const studentId = cleanString(body.studentId) || null;
   const access = normalizeAccess(body.access, role);
-  const authEmail = authEmailForUsername(username);
+  const authEmail = contactEmail;
 
-  if (!username || username.length < 3 || !displayName || !password || !role) {
-    return jsonResponse({ error: "Display name, username, password, and role are required." }, 400);
-  }
-  if (!isStrongPassword(password)) {
-    return jsonResponse({ error: passwordPolicyMessage }, 400);
+  if (!username || username.length < 3 || !displayName || !contactEmail || !role) {
+    return jsonResponse({ error: "Display name, username, email, and role are required." }, 400);
   }
   if (username === "manager123" || username === "manager1" || username === "dev123" || username.endsWith(".child")) {
     return jsonResponse({ error: "That username is reserved." }, 400);
@@ -152,20 +138,21 @@ Deno.serve(async (req: Request) => {
   if (existingProfileError) return jsonResponse({ error: "Could not check existing profiles." }, 500);
   if (existingProfile) return jsonResponse({ error: "An account with that username already exists." }, 409);
 
-  const { data: createdUser, error: createUserError } = await adminClient.auth.admin.createUser({
-    email: authEmail,
-    password,
-    email_confirm: true,
-    user_metadata: {
-      username,
-      role,
-      display_name: displayName,
-      contact_email: contactEmail
+  const { data: createdUser, error: createUserError } = await adminClient.auth.admin.inviteUserByEmail(
+    authEmail,
+    {
+      redirectTo: inviteRedirectUrl,
+      data: {
+        username,
+        role,
+        display_name: displayName,
+        contact_email: contactEmail
+      }
     }
-  });
+  );
 
   if (createUserError || !createdUser.user) {
-    return jsonResponse({ error: createUserError?.message ?? "Could not create Supabase Auth user." }, 400);
+    return jsonResponse({ error: createUserError?.message ?? "Could not send the account invitation." }, 400);
   }
 
   const profileRow = {
@@ -178,6 +165,9 @@ Deno.serve(async (req: Request) => {
     status,
     is_owner: false,
     welcome_seen_at: null,
+    invitation_status: "pending",
+    invited_at: new Date().toISOString(),
+    invitation_accepted_at: null,
     phone,
     title,
     notes,
@@ -188,11 +178,16 @@ Deno.serve(async (req: Request) => {
 
   const { error: profileError } = await adminClient.from("profiles").insert(profileRow);
   if (profileError) {
-    await adminClient.auth.admin.deleteUser(createdUser.user.id).catch(() => undefined);
+    const { error: rollbackError } = await adminClient.auth.admin.deleteUser(createdUser.user.id);
+    if (rollbackError) {
+      return jsonResponse({
+        error: "Profile creation failed and the incomplete invitation could not be removed. Contact an administrator."
+      }, 500);
+    }
     return jsonResponse({ error: profileError.message }, 400);
   }
 
-  await adminClient.from("account_creation_audit").insert({
+  const { error: auditError } = await adminClient.from("account_creation_audit").insert({
     created_by: authData.user.id,
     created_user_id: createdUser.user.id,
     created_username: username,
@@ -203,12 +198,26 @@ Deno.serve(async (req: Request) => {
     user_agent: req.headers.get("user-agent")
   });
 
+  if (auditError) {
+    const { error: rollbackError } = await adminClient.auth.admin.deleteUser(createdUser.user.id);
+    if (rollbackError) {
+      return jsonResponse({
+        error: "Account audit failed and the incomplete account could not be removed. Contact an administrator."
+      }, 500);
+    }
+    return jsonResponse({ error: "Could not record account creation. No account was created." }, 500);
+  }
+
   return jsonResponse({
+    email: authEmail,
+    invited: true,
+    invitationStatus: "pending",
     account: {
       id: createdUser.user.id,
       username,
       role,
-      status
+      status,
+      invitationStatus: "pending"
     }
   });
 });

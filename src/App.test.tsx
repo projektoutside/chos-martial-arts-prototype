@@ -2668,6 +2668,33 @@ describe("login landing", () => {
     expect(screen.queryByRole("dialog", { name: "Login failed" })).not.toBeInTheDocument();
   });
 
+  it("traps keyboard focus inside the Login failed popup", () => {
+    renderLoggedOutApp("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Login failed" });
+    const tryAgain = within(dialog).getByRole("button", { name: "Try Again" });
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(tryAgain).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(tryAgain).toHaveFocus();
+  });
+
+  it("restores focus after the Login failed popup closes", () => {
+    renderLoggedOutApp("/");
+    const signIn = screen.getByRole("button", { name: "Sign In" });
+    signIn.focus();
+    fireEvent.click(signIn);
+
+    const dialog = screen.getByRole("dialog", { name: "Login failed" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Try Again" }));
+
+    expect(signIn).toHaveFocus();
+  });
+
   it("shows the current testing update after the prototype manager signs in", async () => {
     const { container } = renderLoggedOutApp("/");
 
@@ -2882,7 +2909,7 @@ describe("login landing", () => {
     expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Create Account" })).not.toBeInTheDocument();
-    expect(screen.getByText("Accounts are created by a Cho's administrator.")).toBeInTheDocument();
+    expect(screen.getByText("Invited users sign in with their email. Legacy usernames still work.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign in as Guest" })).not.toBeInTheDocument();
   });
 
@@ -5152,8 +5179,7 @@ describe("post-login operations app", () => {
 
       fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Remote Staff" } });
       fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "remote.staff" } });
-      fireEvent.change(screen.getByLabelText("Staff password"), { target: { value: "RemotePass123!" } });
-      fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "RemotePass123!" } });
+      fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "remote.staff@example.test" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
 
       expect(await screen.findByText("Sign into an authorized Supabase Developer or Manager account before creating live accounts.")).toBeInTheDocument();
@@ -5185,6 +5211,9 @@ describe("post-login operations app", () => {
       }
       const body = JSON.parse(String(init?.body ?? "{}"));
       return new Response(JSON.stringify({
+        email: body.email,
+        invited: true,
+        invitationStatus: "pending",
         account: {
           id: `${body.role}-remote-id`,
           username: body.username,
@@ -5200,13 +5229,11 @@ describe("post-login operations app", () => {
       const createAccountCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/functions/v1/manager-create-account"));
 
       expect(screen.getByText("Create live Supabase sign-in profiles for staff, students, and parents. An authorized Developer or Manager Supabase session is required before a live account is created.")).toBeInTheDocument();
-      expect(screen.getByText("Choose the role, set the username and password, then create the account in Supabase for the family or staff member.")).toBeInTheDocument();
+      expect(screen.getByText("Enter the user's real email and profile details. They will receive a secure invitation to create their own password.")).toBeInTheDocument();
       expect(screen.queryByText(/Create local sign-in credentials/)).not.toBeInTheDocument();
 
       fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Remote Staff" } });
       fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "remote.staff" } });
-      fireEvent.change(screen.getByLabelText("Staff password"), { target: { value: "RemotePass123!" } });
-      fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "RemotePass123!" } });
       fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "remote.staff@example.test" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
 
@@ -5215,8 +5242,6 @@ describe("post-login operations app", () => {
       fireEvent.click(screen.getByRole("button", { name: "Student" }));
       fireEvent.change(screen.getByLabelText("Student full name"), { target: { value: "Remote Student" } });
       fireEvent.change(screen.getByLabelText("Student username"), { target: { value: "remote.student" } });
-      fireEvent.change(screen.getByLabelText("Student password"), { target: { value: "StudentPass123!" } });
-      fireEvent.change(screen.getByLabelText("Confirm student password"), { target: { value: "StudentPass123!" } });
       fireEvent.change(screen.getByLabelText("Student email"), { target: { value: "remote.student@example.test" } });
       fireEvent.change(screen.getByLabelText("Parent/guardian phone"), { target: { value: "(262) 555-0140" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Student Account" }));
@@ -5226,8 +5251,6 @@ describe("post-login operations app", () => {
       fireEvent.click(screen.getByRole("button", { name: "Parent" }));
       fireEvent.change(screen.getByLabelText("Parent full name"), { target: { value: "Remote Parent" } });
       fireEvent.change(screen.getByLabelText("Parent username"), { target: { value: "remote.parent" } });
-      fireEvent.change(screen.getByLabelText("Parent password"), { target: { value: "ParentPass123!" } });
-      fireEvent.change(screen.getByLabelText("Confirm parent password"), { target: { value: "ParentPass123!" } });
       fireEvent.change(screen.getByLabelText("Parent email"), { target: { value: "remote.parent@example.test" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Parent Account" }));
 
@@ -5238,6 +5261,7 @@ describe("post-login operations app", () => {
         expect.objectContaining({ username: "remote.student", role: "student", email: "remote.student@example.test", studentId: "student-remote-student" }),
         expect.objectContaining({ username: "remote.parent", role: "guardian", email: "remote.parent@example.test" })
       ]);
+      expect(requestBodies.every((body) => !("password" in body))).toBe(true);
       expect(fetchMock).toHaveBeenCalledWith(
         "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/manager-create-account",
         expect.objectContaining({

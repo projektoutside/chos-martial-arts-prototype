@@ -12,7 +12,9 @@ import {
   isSupabaseBackendInactiveResponse,
   isSupportedSupabaseLoginUsername,
   normalizeSupabaseUsername,
+  readSupabaseInviteCallback,
   readSupabaseAuthSession,
+  completeSupabaseInvitePassword,
   signInSupabaseAccount,
   supabaseBackendInactiveMessage,
   supabaseProjectRefFromUrl,
@@ -43,6 +45,30 @@ describe("supabase account adapter", () => {
     vi.restoreAllMocks();
     globalThis.fetch = originalFetch;
     window.localStorage.clear();
+  });
+
+  it("recognizes secure invite callbacks and stores their session", () => {
+    window.history.replaceState({}, "", "/#access_token=invite-token&refresh_token=refresh-token&expires_in=3600&type=invite");
+    expect(readSupabaseInviteCallback()).toEqual({ status: "ready", type: "invite" });
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ accessToken: "invite-token", refreshToken: "refresh-token" }));
+    expect(window.location.hash).toBe("");
+  });
+
+  it("sets an invited user's password using the callback session", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({ accessToken: "invite-token", expiresAt: Date.now() + 60_000, userId: "invite-user", projectRef: "project" }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: "invite-user" }));
+    globalThis.fetch = fetchMock;
+    await expect(completeSupabaseInvitePassword("StrongPass123!")).resolves.toEqual({ status: "ok" });
+    expect(fetchMock).toHaveBeenCalledWith("https://project.supabase.co/auth/v1/user", expect.objectContaining({ method: "PUT", body: JSON.stringify({ password: "StrongPass123!" }) }));
+    expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
+  });
+
+  it("signs in by real email when the profile keeps a friendly username", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ access_token: "token", expires_in: 3600, user: { id: "user-1", email: "jordan@example.com" } }))
+      .mockResolvedValueOnce(jsonResponse([{ id: "user-1", username: "jordan.staff", contact_email: "jordan@example.com", display_name: "Jordan", role: "staff", status: "active", phone: null, title: null, notes: null, access: [], student_id: null, created_by: null, created_at: "2026-01-01" }]));
+    globalThis.fetch = fetchMock;
+    await expect(signInSupabaseAccount({ username: "jordan@example.com", password: "StrongPass123!" })).resolves.toEqual(expect.objectContaining({ status: "authenticated", sessionEmail: "jordan.staff" }));
   });
 
   it("loads the signed-in user's authoritative first-login profile", async () => {
@@ -436,7 +462,7 @@ describe("supabase account adapter", () => {
       access: ["dashboard"]
     });
 
-    expect(result).toEqual({ status: "ok" });
+    expect(result).toEqual({ status: "ok", invitationStatus: "pending", email: "jordan@example.com" });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://project.supabase.co/functions/v1/manager-create-account",
       expect.objectContaining({
@@ -444,15 +470,15 @@ describe("supabase account adapter", () => {
         headers: expect.objectContaining({
           Authorization: "Bearer manager-access-token"
         }),
-        body: JSON.stringify({
-          displayName: "Jordan Lee",
-          username: "jordan.staff",
-          password: "StaffPass123!",
-          role: "staff",
-          status: "active",
-          email: "jordan@example.com",
-          access: ["dashboard"]
-        })
+          body: JSON.stringify({
+            displayName: "Jordan Lee",
+            username: "jordan.staff",
+            role: "staff",
+            status: "active",
+            email: "jordan@example.com",
+            password: "StaffPass123!",
+            access: ["dashboard"]
+          })
       })
     );
 

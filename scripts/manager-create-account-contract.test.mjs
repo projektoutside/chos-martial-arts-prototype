@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const sourceUrl = new URL("../supabase/functions/manager-create-account/index.ts", import.meta.url);
+const invitationMigrationUrl = new URL("../supabase/migrations/20260714044725_add_account_invitation_status.sql", import.meta.url);
 
 test("account creation authorizes any active staff owner without a username gate", async () => {
   const source = await readFile(sourceUrl, "utf8");
@@ -19,4 +20,37 @@ test("administrator usernames are reserved and new profiles start without welcom
   assert.match(source, /username === "dev123"/);
   assert.match(source, /welcome_seen_at: null/);
   assert.match(source, /is_owner: false/);
+});
+
+test("new accounts use the real email identity and Supabase invitation flow", async () => {
+  const source = await readFile(sourceUrl, "utf8");
+  assert.match(source, /const authEmail = contactEmail/);
+  assert.match(source, /auth\.admin\.inviteUserByEmail\(/);
+  assert.match(source, /redirectTo: inviteRedirectUrl/);
+  assert.doesNotMatch(source, /auth\.admin\.createUser\(/);
+  assert.doesNotMatch(source, /JSON\.stringify\([^)]*serviceRoleKey/);
+});
+
+test("new profiles persist pending invitation state", async () => {
+  const source = await readFile(sourceUrl, "utf8");
+  assert.match(source, /invitation_status: "pending"/);
+  assert.match(source, /invited_at: new Date\(\)\.toISOString\(\)/);
+  assert.match(source, /invitationStatus: "pending"/);
+});
+
+test("invitation migration preserves legacy accounts and records acceptance", async () => {
+  const migration = await readFile(invitationMigrationUrl, "utf8");
+  assert.match(migration, /invitation_status text not null default 'accepted'/);
+  assert.match(migration, /after update of email_confirmed_at on auth\.users/);
+  assert.match(migration, /set invitation_status = 'accepted'/);
+  assert.match(migration, /invitation_accepted_at = coalesce/);
+});
+
+test("an audit insert failure removes the incomplete auth user before reporting failure", async () => {
+  const source = await readFile(sourceUrl, "utf8");
+  const auditBlock = source.match(/const \{ error: auditError \}[\s\S]*?return jsonResponse\(\{[\s\S]*?account:/)?.[0] ?? "";
+  assert.match(auditBlock, /if \(auditError\)/);
+  assert.match(auditBlock, /adminClient\.auth\.admin\.deleteUser\(createdUser\.user\.id\)/);
+  assert.match(auditBlock, /if \(rollbackError\)/);
+  assert.match(auditBlock, /No account was created/);
 });

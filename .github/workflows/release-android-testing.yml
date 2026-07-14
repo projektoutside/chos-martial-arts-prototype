@@ -67,6 +67,10 @@ jobs:
         run: |
           printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 --decode > android/upload-key.jks
           printf 'storeFile=upload-key.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$ANDROID_UPLOAD_STORE_PASSWORD" "$ANDROID_UPLOAD_KEY_ALIAS" "$ANDROID_UPLOAD_KEY_PASSWORD" > android/key.properties
+      - name: Verify Android release invariants
+        run: npm run verify:android
+        env:
+          REQUIRE_ANDROID_SIGNING: '1'
       - run: npm run build:android:testing
       - run: npm run verify:demo-artifact
       - name: Save release notes

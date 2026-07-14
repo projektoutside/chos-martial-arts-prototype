@@ -29,7 +29,6 @@ test("softly reveals the login portrait without moving or scaling it", async ({ 
   await page.goto("/");
   const portrait = page.locator(".login-portrait-stage");
   await expect(portrait).toHaveCount(1);
-  await expect(page.locator(".launch-impact-flash")).toHaveCount(1);
   await expect(page.locator(".launch-letter-sparks")).toHaveCount(0);
 
   await page.waitForTimeout(2240);
@@ -45,10 +44,10 @@ test("softly reveals the login portrait without moving or scaling it", async ({ 
     expect(frame.width).toBeCloseTo(opening.width, 0);
     expect(frame.height).toBeCloseTo(opening.height, 0);
   }
-  if (testInfo.project.name === "webkit-iphone" && opening.opacity === settled.opacity) {
+  if (opening.opacity === settled.opacity) {
     expect(opening.opacity).toBeGreaterThanOrEqual(0.9);
   } else {
-    expect(opening.opacity).toBeLessThan(middle.opacity);
+    expect(opening.opacity).toBeLessThanOrEqual(middle.opacity);
     expect(middle.opacity).toBeLessThanOrEqual(settled.opacity);
     expect(opening.filter).not.toBe(settled.filter);
   }

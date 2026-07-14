@@ -49,7 +49,7 @@ type SupabaseLoginResult =
 type SupabaseCreateAccountInput = {
   displayName: string;
   username: string;
-  password: string;
+  password?: string;
   role: AccountRole;
   status?: ManagedAccount["status"];
   email: string;
@@ -62,7 +62,7 @@ type SupabaseCreateAccountInput = {
 
 type SupabaseCreateAccountResult =
   | { status: "not-configured" }
-  | { status: "ok" }
+  | { status: "ok"; invitationStatus: "pending"; email: string }
   | { status: "error"; message: string };
 
 export type SupabasePasswordChangeResult =
@@ -219,6 +219,72 @@ function saveSupabaseAuthSession(response: SupabasePasswordResponse) {
   window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify(storedSession));
 }
 
+function jwtSubject(accessToken: string) {
+  try {
+    const payload = accessToken.split(".")[1];
+    if (!payload) return undefined;
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { sub?: unknown };
+    return typeof decoded.sub === "string" ? decoded.sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export type SupabaseInviteCallbackResult =
+  | { status: "none" }
+  | { status: "error"; message: string }
+  | { status: "ready"; type: "invite" | "recovery" };
+
+export function readSupabaseInviteCallback(): SupabaseInviteCallbackResult {
+  if (!isSupabaseAuthConfigured()) return { status: "none" };
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const type = params.get("type");
+  const error = params.get("error_description") ?? params.get("error");
+  if (error) {
+    window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
+    return { status: "error", message: error };
+  }
+  if (type !== "invite" && type !== "recovery") return { status: "none" };
+  const accessToken = params.get("access_token") ?? "";
+  const refreshToken = params.get("refresh_token") ?? undefined;
+  const expiresIn = Number(params.get("expires_in") ?? 3600);
+  if (!accessToken) {
+    window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
+    return { status: "error", message: "This password setup link is invalid or expired." };
+  }
+  const storedSession: SupabaseStoredSession = {
+    accessToken,
+    refreshToken,
+    expiresAt: Date.now() + Math.max(1, Number.isFinite(expiresIn) ? expiresIn : 3600) * 1000,
+    userId: jwtSubject(accessToken) ?? "invite-user",
+    projectRef: supabaseSessionProjectScope()
+  };
+  window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify(storedSession));
+  window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
+  return { status: "ready", type };
+}
+
+export async function completeSupabaseInvitePassword(password: string): Promise<SupabasePasswordChangeResult> {
+  if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
+  const session = readSupabaseAuthSession();
+  if (!session) return { status: "session-expired", message: "This password setup link has expired. Ask an administrator to resend the invitation." };
+  try {
+    const response = await fetch(`${supabaseUrl().replace(/\/+$/, "")}/auth/v1/user`, {
+      method: "PUT",
+      headers: { apikey: supabasePublicKey(), Authorization: `Bearer ${session.accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ password: password.trim() })
+    });
+    if (response.ok) {
+      clearSupabaseAuthSession();
+      return { status: "ok" };
+    }
+    const body = await response.json().catch(() => undefined) as { message?: string; error?: string } | undefined;
+    return { status: "error", message: body?.message ?? body?.error ?? "Your password could not be set. Request a new invitation and try again." };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Your password could not be set." };
+  }
+}
+
 export function clearSupabaseAuthSession() {
   window.localStorage.removeItem(supabaseSessionStorageKey);
 }
@@ -344,7 +410,7 @@ export async function signInSupabaseAccount(credentials: { username: string; pas
     const profile = await fetchSupabaseProfile(session.user.id, session.access_token);
     if (!profile) return { status: "invalid" };
     if (profile.status !== "active") return { status: "inactive" };
-    if (normalizeSupabaseUsername(profile.username) !== username) return { status: "invalid" };
+    if (!cleanedInput.includes("@") && normalizeSupabaseUsername(profile.username) !== username) return { status: "invalid" };
 
     saveSupabaseAuthSession(session);
     return {
@@ -392,25 +458,30 @@ export async function changeSupabaseAccountPassword(password: string, currentPas
 export async function createSupabaseManagedAccount(account: SupabaseCreateAccountInput): Promise<SupabaseCreateAccountResult> {
   if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
   const session = readSupabaseAuthSession();
-  if (!session || session.authEmail !== supabaseAuthEmailForUsername(managerUsername)) {
+  const authorizedOwnerEmails = new Set([
+    supabaseAuthEmailForUsername(managerUsername),
+    supabaseAuthEmailForUsername(prototypeDeveloperLogin.username)
+  ]);
+  if (!session || !session.authEmail || !authorizedOwnerEmails.has(session.authEmail)) {
     if (session) clearSupabaseAuthSession();
     return { status: "error", message: managerSessionRequiredMessage };
   }
 
   const username = normalizeSupabaseUsername(account.username);
-  const password = account.password.trim();
+  const password = account.password?.trim();
   const displayName = account.displayName.trim();
   const role = account.role === "staff" || account.role === "student" || account.role === "guardian" ? account.role : "staff";
-  if (!username || !password || !displayName) return { status: "error", message: "Enter a display name, username, and password before syncing." };
+  const email = account.email.trim().toLowerCase();
+  if (!username || !displayName || !email) return { status: "error", message: "Enter a display name, username, and real email before sending an invitation." };
 
   const createUrl = `${supabaseUrl().replace(/\/+$/, "")}/functions/v1/manager-create-account`;
   const payload = {
     displayName,
     username,
-    password,
     role,
     status: account.status ?? "active",
-    email: account.email.trim(),
+    email,
+    ...(password ? { password } : {}),
     ...(account.phone?.trim() ? { phone: account.phone.trim() } : {}),
     ...(account.title?.trim() ? { title: account.title.trim() } : {}),
     ...(account.notes?.trim() ? { notes: account.notes.trim() } : {}),
@@ -429,7 +500,14 @@ export async function createSupabaseManagedAccount(account: SupabaseCreateAccoun
       body: JSON.stringify(payload)
     });
 
-    if (response.ok) return { status: "ok" };
+    if (response.ok) {
+      const body = await response.json().catch(() => ({})) as { invitationStatus?: unknown; email?: unknown };
+      return {
+        status: "ok",
+        invitationStatus: "pending",
+        email: typeof body.email === "string" ? body.email : email
+      };
+    }
     if (await isSupabaseBackendInactiveResponse(response)) return { status: "error", message: supabaseBackendInactiveMessage };
     const body = await response.json().catch(() => undefined) as { error?: string } | undefined;
     if (response.status === 401 && /manager session/i.test(body?.error ?? "")) {

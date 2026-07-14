@@ -22,4 +22,5 @@ pnpm-debug.log*
 *.jks
 android/key.properties
 .worktrees/
+supabase/.temp/
 .DS_Store

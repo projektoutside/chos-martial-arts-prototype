@@ -43,8 +43,8 @@ assert.match(packageJson.devDependencies?.["@capacitor/cli"] ?? "", /^\^?8\./, "
 const appGradle = read("android/app/build.gradle");
 assert.match(appGradle, new RegExp(`namespace\\s*=?\\s*["']${expected.appId.replaceAll(".", "\\.")}["']`));
 assert.match(appGradle, new RegExp(`applicationId ["']${expected.appId.replaceAll(".", "\\.")}["']`));
-assert.match(appGradle, new RegExp(`versionCode ${expected.versionCode}(?:\\D|$)`));
-assert.match(appGradle, new RegExp(`versionName ["']${expected.versionName.replaceAll(".", "\\.")}["']`));
+assert.match(appGradle, /versionCode\s+releaseVersionCode\s*>\s*0\s*\?\s*releaseVersionCode\s*:\s*7\b/, "Stable releases must use the supplied version code with the documented fallback");
+assert.match(appGradle, /versionName\s+releaseVersionName\s*\?:\s*["']0\.1\.6["']/, "Stable releases must use the supplied version name with the package fallback");
 assert.match(appGradle, /rootProject\.file\(["']key\.properties["']\)/, "Release signing must read android/key.properties");
 assert.match(appGradle, /signingConfigs\s*\{[\s\S]*release\s*\{/, "A release signing config is required");
 assert.match(appGradle, /signingConfig signingConfigs\.release/, "Release bundles must use the upload key");
@@ -63,6 +63,7 @@ assert.ok(targetSdk >= 35, `targetSdkVersion must be at least 35, received ${tar
 const manifest = read("android/app/src/main/AndroidManifest.xml");
 assertMainActivitySoftInputMode(manifest);
 assert.match(manifest, /android\.permission\.INTERNET/, "Android app must be allowed to reach Supabase staging");
+assert.match(manifest, /android:allowBackup=["']false["']/, "Authenticated app data must not be included in Android backups");
 assertImmersiveMainActivity(read("android/app/src/main/java/com/xatoridev/chosmartialarts/MainActivity.java"));
 assertImmersiveTheme(read("android/app/src/main/res/values/styles.xml"));
 
