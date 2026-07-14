@@ -24,3 +24,7 @@ test("strips stable service variables from testing builds", () => {
   assert.match(variantBuilder, /delete env\.VITE_SUPABASE_ANON_KEY/);
   assert.match(variantBuilder, /delete env\.VITE_APPROVED_SUPABASE_HOST/);
 });
+
+test("prevents GitHub Actions metadata from changing the Capacitor asset base", () => {
+  assert.match(variantBuilder, /delete env\.GITHUB_REPOSITORY/);
+});
