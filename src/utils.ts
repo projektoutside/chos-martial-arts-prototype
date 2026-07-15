@@ -273,7 +273,15 @@ export const defaultProfileAvatarPath = "assets/CheetahProfilePic/Cheetah.png";
 export const developerProfileAvatarPath = "assets/DeveloperProfilePic/TigerDeveloper.png";
 
 export function isPrototypeManagerLogin(input: { username: string; password: string }) {
-  return input.username.trim().toLowerCase() === prototypeManagerLogin.username.toLowerCase() && input.password.trim() === prototypeManagerLogin.password;
+  const username = input.username.trim().toLowerCase();
+  return (username === prototypeManagerLogin.username.toLowerCase() || username === "manager1")
+    && input.password.trim() === prototypeManagerLogin.password;
+}
+
+export function isReservedPrototypeUsername(username: string) {
+  const normalizedUsername = username.trim().toLowerCase();
+  return [prototypeManagerLogin.username.toLowerCase(), "manager1", prototypeDeveloperLogin.username.toLowerCase()]
+    .includes(normalizedUsername);
 }
 
 export function isDeveloperAccountEnabled() {

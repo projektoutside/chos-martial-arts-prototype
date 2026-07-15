@@ -12,6 +12,7 @@ const env = { ...process.env, VITE_APP_VARIANT: variant };
 delete env.GITHUB_REPOSITORY;
 if (variant === "stable") env.VITE_APPROVED_SUPABASE_HOST = "zfuwbbepsnmmlpgfkmhz.supabase.co";
 if (variant === "testing") {
+  env.VITE_ENABLE_DEVELOPER_ACCOUNT = "true";
   delete env.VITE_SUPABASE_URL;
   delete env.VITE_SUPABASE_PUBLISHABLE_KEY;
   delete env.VITE_SUPABASE_ANON_KEY;

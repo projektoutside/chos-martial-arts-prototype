@@ -3010,6 +3010,65 @@ select option { color: #111; }
   margin-top: 4px;
 }
 
+.account-activation-modal {
+  width: min(460px, 100%);
+  max-height: min(82dvh, 720px);
+  margin-top: clamp(28px, 8dvh, 84px);
+  overflow-y: auto;
+}
+
+.account-activation-form {
+  width: 100%;
+}
+
+.account-activation-form label {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  color: rgba(255, 248, 236, 0.88);
+  font-size: 0.88rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.account-activation-form input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgba(184, 217, 242, 0.34);
+  border-radius: 11px;
+  outline: 0;
+  background: rgba(5, 10, 18, 0.72);
+  color: #fff8ec;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.account-activation-form input:focus-visible {
+  border-color: rgba(184, 217, 242, 0.82);
+  box-shadow: 0 0 0 3px rgba(111, 168, 216, 0.2);
+}
+
+.account-activation-form .login-error {
+  margin: 0;
+}
+
+.account-activation-success {
+  color: #b8f5e2 !important;
+  font-weight: 800;
+}
+
+.account-activation-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.account-activation-actions .btn {
+  justify-content: center;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -3532,6 +3591,12 @@ select option { color: #111; }
   .header-inner { padding: 0 8px; gap: 6px; }
   .profile-button { padding: 0 8px; font-size: 0.76rem; }
   .icon-button { min-width: 40px; height: 40px; }
+}
+
+@media (max-width: 420px) {
+  .account-activation-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 560px) and (max-height: 720px) {

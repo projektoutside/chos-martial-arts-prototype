@@ -2,7 +2,7 @@
 
 ## Current Status
 
-This project is not ready for client handoff as a production system. It is a Xatori-managed staging pilot with a verified Cloudflare Pages deployment, an active Supabase staging surface for `Manager123` auth, owner-provisioned pilot accounts, messaging persistence, and signed-in operations app-state persistence through `app_state_items`. Device-local preferences and diagnostic prototype sessions still use browser storage. The deployed Supabase Twilio relay is blocked on hosted secrets and provider approval. Public staging intentionally exposes the gated `Dev123` diagnostic login for this pilot. There is no production backend, production database, payments, email provider, or approved live SMS provider.
+This project is not ready for client handoff as a production system. It is a Xatori-managed staging pilot with a verified Cloudflare Pages deployment, active Supabase owner profiles for `Manager1` and `Dev123`, administrator-provisioned pilot accounts, messaging persistence, and signed-in operations app-state persistence through `app_state_items`. Invited users activate an existing profile through email; the login-page action does not provide public registration. Device-local preferences and testing-app fallback credentials still use browser storage. The deployed Supabase Twilio relay is blocked on hosted secrets and provider approval. There is no production backend, production database, payments, production email provider, or approved live SMS provider.
 
 ## Delivery Package
 
@@ -26,7 +26,7 @@ This project is not ready for client handoff as a production system. It is a Xat
 - [x] Xatori GitHub repo exists and `origin/main` is reachable.
 - [x] Xatori Cloudflare Pages deployment is proven from the target repo commit.
 - [x] Local `main` tracks `origin/main`.
-- [x] Staging pilot scope is defined as `Manager123`, manager-created pilot accounts, and public-staging `Dev123`.
+- [x] Staging pilot scope is defined as `Manager1`, `Dev123`, and administrator-created invited accounts; `Manager123` remains a compatibility alias for `Manager1`.
 - [ ] Each launch-readiness push is verified against the live Pages URL before pilot users are invited.
 - [ ] GitHub CLI or connector identity is switched to an intended Xatori operator before live repo administration.
 - [ ] Legacy `projektoutside` repo exception is resolved or explicitly retained after Xatori deployment is proven.

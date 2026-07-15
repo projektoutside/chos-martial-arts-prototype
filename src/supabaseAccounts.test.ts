@@ -12,6 +12,7 @@ import {
   isSupabaseBackendInactiveResponse,
   isSupportedSupabaseLoginUsername,
   normalizeSupabaseUsername,
+  requestSupabaseAccountActivation,
   readSupabaseInviteCallback,
   readSupabaseAuthSession,
   completeSupabaseInvitePassword,
@@ -54,6 +55,44 @@ describe("supabase account adapter", () => {
     expect(window.location.hash).toBe("");
   });
 
+  it("keeps a missing hosted account private when public signup is disabled", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      code: 422,
+      error_code: "otp_disabled",
+      msg: "Signups not allowed for otp"
+    }, { status: 422 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(requestSupabaseAccountActivation(" Missing.User@Example.com ")).resolves.toEqual({ status: "ok" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/v1/otp?redirect_to="),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ email: "missing.user@example.com", create_user: false })
+      })
+    );
+  });
+
+  it("reports an unexpected hosted activation failure", async () => {
+    globalThis.fetch = vi.fn(async () => jsonResponse({
+      code: 422,
+      error_code: "unexpected_activation_failure",
+      msg: "Activation failed"
+    }, { status: 422 })) as typeof fetch;
+
+    await expect(requestSupabaseAccountActivation("staff@example.com")).resolves.toEqual({
+      status: "error",
+      message: "Activation email is temporarily unavailable. Please wait and try again."
+    });
+  });
+
+  it("recognizes existing-account magic links as password setup callbacks", () => {
+    window.history.replaceState({}, "", "/#access_token=magic-token&expires_in=3600&type=magiclink");
+    expect(readSupabaseInviteCallback()).toEqual({ status: "ready", type: "magiclink" });
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ accessToken: "magic-token" }));
+    expect(window.location.hash).toBe("");
+  });
+
   it("sets an invited user's password using the callback session", async () => {
     window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({ accessToken: "invite-token", expiresAt: Date.now() + 60_000, userId: "invite-user", projectRef: "project" }));
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: "invite-user" }));
@@ -69,6 +108,7 @@ describe("supabase account adapter", () => {
       .mockResolvedValueOnce(jsonResponse([{ id: "user-1", username: "jordan.staff", contact_email: "jordan@example.com", display_name: "Jordan", role: "staff", status: "active", phone: null, title: null, notes: null, access: [], student_id: null, created_by: null, created_at: "2026-01-01" }]));
     globalThis.fetch = fetchMock;
     await expect(signInSupabaseAccount({ username: "jordan@example.com", password: "StrongPass123!" })).resolves.toEqual(expect.objectContaining({ status: "authenticated", sessionEmail: "jordan.staff" }));
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ authEmail: "jordan@example.com", profileUsername: "jordan.staff" }));
   });
 
   it("loads the signed-in user's authoritative first-login profile", async () => {
@@ -122,9 +162,10 @@ describe("supabase account adapter", () => {
     expect(init).toEqual(expect.objectContaining({ method: "POST", body: "{}" }));
   });
 
-  it("normalizes local usernames and maps Manager123 to the owner Auth email", () => {
+  it("normalizes local usernames and maps both manager names to the live Manager1 Auth email", () => {
     expect(normalizeSupabaseUsername(" Jordan Staff! ")).toBe("jordan.staff");
-    expect(supabaseAuthEmailForUsername("Manager123")).toBe("manager123@accounts.chosmartialarts.app");
+    expect(supabaseAuthEmailForUsername("Manager1")).toBe("manager1@accounts.chosmartialarts.app");
+    expect(supabaseAuthEmailForUsername("Manager123")).toBe("manager1@accounts.chosmartialarts.app");
     expect(supabaseAuthEmailForUsername("Jordan Staff")).toBe("jordan.staff@accounts.chosmartialarts.app");
     expect(isSupportedSupabaseLoginUsername("Manager123")).toBe(true);
     expect(isSupportedSupabaseLoginUsername(" manager123 ")).toBe(true);
@@ -201,13 +242,59 @@ describe("supabase account adapter", () => {
       "https://project.supabase.co/auth/v1/token?grant_type=password",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ email: "manager123@accounts.chosmartialarts.app", password: "ManagerPass123!" })
+        body: JSON.stringify({ email: "manager1@accounts.chosmartialarts.app", password: "ManagerPass123!" })
       })
     );
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("manager-access-token");
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("\"projectRef\":\"project\"");
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("manager123@accounts.chosmartialarts.app");
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).not.toContain("manager-refresh-token");
+  });
+
+  it("signs Manager1 into the live Manager1 profile and scopes the saved session", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/auth/v1/token")) {
+        return jsonResponse({
+          access_token: "manager1-access-token",
+          expires_in: 3600,
+          user: { id: "manager1-user-id", email: "manager1@accounts.chosmartialarts.app" }
+        });
+      }
+      if (requestUrl.includes("/rest/v1/profiles")) {
+        return jsonResponse([{
+          id: "manager1-user-id",
+          username: "manager1",
+          contact_email: "manager1@chos.prototype",
+          display_name: "Cho's Manager",
+          role: "staff",
+          status: "active",
+          phone: null,
+          title: "Manager",
+          notes: null,
+          access: ["dashboard"],
+          student_id: null,
+          created_by: "manager1-user-id",
+          created_at: "2026-07-13T00:00:00.000Z"
+        }]);
+      }
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(signInSupabaseAccount({ username: "Manager1", password: "ManagerPass123!" })).resolves.toMatchObject({
+      status: "authenticated",
+      sessionEmail: "manager1@chos.prototype",
+      role: "staff"
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/auth/v1/token?grant_type=password",
+      expect.objectContaining({ body: JSON.stringify({ email: "manager1@accounts.chosmartialarts.app", password: "ManagerPass123!" }) })
+    );
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({
+      authEmail: "manager1@accounts.chosmartialarts.app",
+      profileUsername: "manager1"
+    }));
   });
 
   it("signs in created staff usernames through Supabase Auth and stores the JWT", async () => {
@@ -493,6 +580,39 @@ describe("supabase account adapter", () => {
       status: "error",
       message: "Sign into an authorized Supabase Developer or Manager account before syncing created accounts."
     });
+  });
+
+  it("lets the live Manager1 owner session reach server-side account authorization", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "manager1-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "manager1-user-id",
+      projectRef: "project",
+      authEmail: "manager1@accounts.chosmartialarts.app",
+      profileUsername: "manager1"
+    }));
+    const fetchMock = vi.fn(async () => jsonResponse({
+      email: "new.staff@example.com",
+      invitationStatus: "pending"
+    }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(createSupabaseManagedAccount({
+      displayName: "New Staff",
+      username: "new.staff",
+      role: "staff",
+      email: "new.staff@example.com"
+    })).resolves.toEqual({
+      status: "ok",
+      invitationStatus: "pending",
+      email: "new.staff@example.com"
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/functions/v1/manager-create-account",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer manager1-access-token" })
+      })
+    );
   });
 
   it("clears a rejected manager session when the Edge Function returns 401", async () => {

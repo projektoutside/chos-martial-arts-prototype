@@ -9,7 +9,7 @@ import {
 } from "./softKeyboardViewport";
 import { useSoftKeyboardEditor } from "./softKeyboardEditor";
 import { useAppState } from "./state";
-import { acknowledgeSupabaseWelcome, completeSupabaseInvitePassword, fetchSupabaseProfileOnboarding, isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, readSupabaseAuthSession, readSupabaseInviteCallback, signInSupabaseAccount, type SupabaseProfileOnboarding } from "./supabaseAccounts";
+import { acknowledgeSupabaseWelcome, completeSupabaseInvitePassword, fetchSupabaseProfileOnboarding, isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, readSupabaseAuthSession, readSupabaseInviteCallback, requestSupabaseAccountActivation, signInSupabaseAccount, type SupabaseProfileOnboarding } from "./supabaseAccounts";
 import { validateAccountPasswordChange } from "./accountPassword";
 import { FirstLoginWelcomeDialog } from "./FirstLoginWelcomeDialog";
 import { DemoEnvironmentBadge } from "./DemoEnvironmentBadge";
@@ -366,7 +366,7 @@ function LoginLandingPage({
   handoffActive?: boolean;
   interactive?: boolean;
 }) {
-  const { login, loginCreatedAccount, showToast } = useAppState();
+  const { activateCreatedAccount, login, loginCreatedAccount, showToast } = useAppState();
   const navigate = useNavigate();
   const loginLandingRef = useRef<HTMLElement | null>(null);
   const portraitStageRef = useRef<HTMLDivElement | null>(null);
@@ -382,6 +382,16 @@ function LoginLandingPage({
   const [setupPassword, setSetupPassword] = useState("");
   const [setupConfirmation, setSetupConfirmation] = useState("");
   const [setupMessage, setSetupMessage] = useState("");
+  const [activationOpen, setActivationOpen] = useState(false);
+  const [activationPending, setActivationPending] = useState(false);
+  const [activationMessage, setActivationMessage] = useState("");
+  const [activationForm, setActivationForm] = useState({
+    email: "",
+    username: "",
+    temporaryPassword: "",
+    password: "",
+    confirmation: ""
+  });
   const supabaseConfigured = isSupabaseAuthConfigured();
   const loginLandingStyle = { "--login-bg-image": `url("${publicAsset("NewFinalBackground.png")}")` } as CSSProperties;
 
@@ -542,6 +552,57 @@ function LoginLandingPage({
     setPasswordSetup({ status: "none" });
   };
 
+  const openAccountActivation = () => {
+    setActivationMessage("");
+    setActivationOpen(true);
+  };
+
+  const closeAccountActivation = () => {
+    if (activationPending) return;
+    setActivationOpen(false);
+    setActivationMessage("");
+  };
+
+  const submitAccountActivation = async (event: FormEvent) => {
+    event.preventDefault();
+    setActivationMessage("");
+
+    if (supabaseConfigured) {
+      setActivationPending(true);
+      const result = await requestSupabaseAccountActivation(activationForm.email);
+      setActivationPending(false);
+      if (result.status === "error") {
+        setActivationMessage(result.message);
+        return;
+      }
+      if (result.status === "not-configured") {
+        setActivationMessage("Account activation is unavailable.");
+        return;
+      }
+      setActivationMessage("If that profile was created, a secure activation link is on its way.");
+      return;
+    }
+
+    const validationMessage = validateAccountPasswordChange(activationForm.password, activationForm.confirmation);
+    if (validationMessage) {
+      setActivationMessage(validationMessage);
+      return;
+    }
+    const result = activateCreatedAccount({
+      username: activationForm.username,
+      temporaryPassword: activationForm.temporaryPassword,
+      password: activationForm.password
+    });
+    if (result.status === "error") {
+      setActivationMessage(result.message);
+      return;
+    }
+    setLoginForm({ username: result.username, password: "" });
+    setActivationForm({ email: "", username: "", temporaryPassword: "", password: "", confirmation: "" });
+    setSetupMessage("Account activated. Sign in with your username and new password.");
+    setActivationOpen(false);
+  };
+
   return (
     <section
       ref={loginLandingRef}
@@ -600,6 +661,9 @@ function LoginLandingPage({
           <button className="login-submit" type="submit" disabled={loginPending}>
             {loginPending ? "Signing In..." : "Sign In"}
           </button>
+          <button className="login-create" type="button" onClick={openAccountActivation}>
+            Create Account
+          </button>
           <p className="login-invite-only-note">Invited users sign in with their email. Legacy usernames still work.</p>
           {setupMessage && <p className="login-invite-only-note" role="status">{setupMessage}</p>}
         </form>
@@ -623,9 +687,44 @@ function LoginLandingPage({
           </div>
         </ModalShell>
       )}
+      {activationOpen && (
+        <ModalShell label="Activate account" onClose={closeAccountActivation} panelClass="modal-card login-failed-modal account-activation-modal">
+          <form className="login-failed-content account-activation-form" onSubmit={submitAccountActivation}>
+            <h2>Activate your account</h2>
+            <p>A Developer or Manager must create your profile before you can activate it.</p>
+            {supabaseConfigured ? (
+              <label>
+                <span>Account email</span>
+                <input
+                  aria-label="Account email"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  value={activationForm.email}
+                  onChange={(event) => setActivationForm({ ...activationForm, email: event.target.value })}
+                />
+              </label>
+            ) : (
+              <>
+                <label><span>Assigned username</span><input aria-label="Assigned username" autoComplete="username" value={activationForm.username} onChange={(event) => setActivationForm({ ...activationForm, username: event.target.value })} /></label>
+                <label><span>Temporary password</span><input aria-label="Temporary password" type="password" autoComplete="current-password" value={activationForm.temporaryPassword} onChange={(event) => setActivationForm({ ...activationForm, temporaryPassword: event.target.value })} /></label>
+                <label><span>New password</span><input aria-label="New account password" type="password" autoComplete="new-password" value={activationForm.password} onChange={(event) => setActivationForm({ ...activationForm, password: event.target.value })} /></label>
+                <label><span>Confirm password</span><input aria-label="Confirm account password" type="password" autoComplete="new-password" value={activationForm.confirmation} onChange={(event) => setActivationForm({ ...activationForm, confirmation: event.target.value })} /></label>
+              </>
+            )}
+            {activationMessage && <p className={activationMessage.startsWith("If that profile") ? "account-activation-success" : "login-error"} role="status">{activationMessage}</p>}
+            <div className="account-activation-actions">
+              <button className="btn btn-ghost" type="button" onClick={closeAccountActivation} disabled={activationPending}>Cancel</button>
+              <button className="btn btn-red" type="submit" disabled={activationPending}>
+                {activationPending ? "Sending..." : supabaseConfigured ? "Send Activation Link" : "Activate Account"}
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      )}
       {passwordSetup.status === "ready" && (
         <ModalShell label="Set your password" onClose={() => undefined} panelClass="modal-card login-failed-modal">
-          <form className="login-failed-content" onSubmit={submitPasswordSetup}>
+          <form className="login-failed-content account-activation-form" onSubmit={submitPasswordSetup}>
             <h2>Set your password</h2>
             <p>Create a strong password to finish accepting your Cho&apos;s invitation.</p>
             <label>New password<input aria-label="New password" type="password" autoComplete="new-password" value={setupPassword} onChange={(event) => setSetupPassword(event.target.value)} /></label>

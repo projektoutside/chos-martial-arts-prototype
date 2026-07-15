@@ -45,7 +45,7 @@ import type {
   TrainingVideo,
   TrainingVideoFolder
 } from "./types";
-import { applyCoupon, calculateTotals, createOrder, estimateSmsSegments, hasSmsOptOutLanguage, isPrototypeDeveloperEmail, isPrototypeManagerOwnerEmail, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
+import { applyCoupon, calculateTotals, createOrder, estimateSmsSegments, hasSmsOptOutLanguage, isPrototypeDeveloperEmail, isPrototypeManagerOwnerEmail, isReservedPrototypeUsername, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
 
 const stableKeys = {
   cart: "chos.cart.v1",
@@ -247,6 +247,8 @@ type GuardianAccountInput = {
 
 type CreatedAccountLoginResult = ManagedAccount | AccountRecord | ChildAccount;
 
+type CreatedAccountActivationResult = { status: "ok"; username: string } | { status: "error"; message: string };
+
 type PasswordChangeResult = { status: "ok" } | { status: "error"; message: string };
 
 type ManagerAccountAccess = {
@@ -429,6 +431,7 @@ interface AppState {
   login: (email: string, remembered: boolean, role?: AccountRole) => void;
   loginRegisteredAccount: (credentials: { username: string; password: string }) => AccountRecord | undefined;
   loginCreatedAccount: (credentials: { username: string; password: string }) => CreatedAccountLoginResult | undefined;
+  activateCreatedAccount: (credentials: { username: string; temporaryPassword: string; password: string }) => CreatedAccountActivationResult;
   loginChildAccount: (childId: string) => void;
   loginChildCredentials: (credentials: { username: string; password: string }) => ChildAccount | undefined;
   childUsernameExists: (username: string, options?: { excludeChildId?: string }) => boolean;
@@ -758,13 +761,25 @@ function hasValidManagedStudentLink(account: Pick<ManagedAccount, "role" | "stud
 
 function hasSupabaseAuthSessionForAppSession(normalizedEmail: string) {
   const session = readSupabaseAuthSession();
-  if (!session?.authEmail) return false;
+  if (!session) return false;
   const expectedUsername = normalizedEmail === prototypeManagerLogin.email.toLowerCase()
     ? prototypeManagerLogin.username
     : normalizedEmail === "manager1@chos.prototype"
       ? "manager1"
+      : normalizedEmail === prototypeDeveloperLogin.email.toLowerCase()
+        ? prototypeDeveloperLogin.username
       : normalizedEmail;
+  const normalizedExpectedUsername = normalizeCreatedAccountUsername(expectedUsername);
+  if (session.profileUsername && normalizeCreatedAccountUsername(session.profileUsername) === normalizedExpectedUsername) return true;
+  if (!session.authEmail) {
+    clearSupabaseAuthSession();
+    return false;
+  }
   if (session.authEmail === supabaseAuthEmailForUsername(expectedUsername)) return true;
+  if (
+    normalizedExpectedUsername === prototypeManagerLogin.username.toLowerCase()
+    && session.authEmail === "manager123@accounts.chosmartialarts.app"
+  ) return true;
   clearSupabaseAuthSession();
   return false;
 }
@@ -772,7 +787,10 @@ function hasSupabaseAuthSessionForAppSession(normalizedEmail: string) {
 function validatePrototypeSession(session: AccountSession | undefined) {
   if (!session?.email) return undefined;
   const normalizedEmail = session.email.toLowerCase();
-  if (isSupabaseAuthConfigured() && !isPrototypeDeveloperEmail(normalizedEmail) && !hasSupabaseAuthSessionForAppSession(normalizedEmail)) return undefined;
+  const supabaseConfigured = isSupabaseAuthConfigured();
+  const hasScopedSupabaseSession = supabaseConfigured && hasSupabaseAuthSessionForAppSession(normalizedEmail);
+  if (supabaseConfigured && !hasScopedSupabaseSession) return undefined;
+  if (hasScopedSupabaseSession) return session;
   if (isPrototypeManagerOwnerEmail(normalizedEmail)) return session;
   if (isPrototypeDeveloperEmail(normalizedEmail)) return session;
   const managedAccounts = readStoredArray<ManagedAccount>(keys.managedAccounts);
@@ -813,7 +831,8 @@ function inferBuiltInPrototypeAccountRole(email: string): AccountRole | undefine
 }
 
 function isBuiltInPrototypeIdentity(email: string) {
-  return Boolean(inferBuiltInPrototypeAccountRole(email.trim().toLowerCase()));
+  const normalizedIdentity = email.trim().toLowerCase();
+  return isReservedPrototypeUsername(normalizedIdentity) || Boolean(inferBuiltInPrototypeAccountRole(normalizedIdentity));
 }
 
 function inferPrototypeAccountRole(email: string): AccountRole | undefined {
@@ -904,8 +923,7 @@ function managedAccountCreationKey(account: Pick<ManagedAccount, "displayName" |
 }
 
 function isPrototypeLoginUsername(username: string) {
-  const normalizedUsername = username.trim().toLowerCase();
-  return [prototypeManagerLogin.username, prototypeDeveloperLogin.username].some((prototypeUsername) => prototypeUsername.toLowerCase() === normalizedUsername);
+  return isReservedPrototypeUsername(username);
 }
 
 function isChildUsernameUnavailable(username: string, childAccounts: readonly ChildAccount[], managedAccounts: readonly ManagedAccount[], excludeChildId?: string) {
@@ -2664,7 +2682,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const loginChildAccount = useCallback(
     (childId: string) => {
       const child = childAccountsRef.current.find((item) => item.id === childId);
-      if (!child || !session || child.parentEmail.toLowerCase() !== session.email.toLowerCase()) return;
+      if (!child || isReservedPrototypeUsername(child.username) || !session || child.parentEmail.toLowerCase() !== session.email.toLowerCase()) return;
       saveRoleForEmail(child.username, "student");
       setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString() });
     },
@@ -2675,7 +2693,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     (credentials: { username: string; password: string }) => {
       const normalizedUsername = normalizeChildUsername(credentials.username);
       const password = credentials.password.trim();
-      if (!normalizedUsername || !password) return undefined;
+      if (!normalizedUsername || isReservedPrototypeUsername(normalizedUsername) || !password) return undefined;
       const child = childAccountsRef.current.find((item) => item.username.toLowerCase() === normalizedUsername.toLowerCase() && item.password === password);
       if (!child) return undefined;
       saveRoleForEmail(child.username, "student");
@@ -2719,7 +2737,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         }
       }
 
-      if (normalizedChildUsername) {
+      if (normalizedChildUsername && !isReservedPrototypeUsername(normalizedChildUsername)) {
         const child = childAccountsRef.current.find((item) => item.username.toLowerCase() === normalizedChildUsername.toLowerCase() && item.password === password);
         if (child) {
           saveRoleForEmail(child.username, "student");
@@ -2731,6 +2749,55 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       return undefined;
     },
     [saveRoleForEmail, setSession]
+  );
+
+  const activateCreatedAccount = useCallback(
+    (credentials: { username: string; temporaryPassword: string; password: string }): CreatedAccountActivationResult => {
+      const normalizedUsername = normalizeCreatedAccountUsername(credentials.username);
+      const normalizedRegisteredLogin = credentials.username.trim().toLowerCase();
+      const normalizedChildUsername = normalizeChildUsername(credentials.username);
+      const temporaryPassword = credentials.temporaryPassword.trim();
+      const password = credentials.password.trim();
+      const invalidMessage = "Check the assigned username and temporary password.";
+      if (!temporaryPassword || !password) return { status: "error", message: invalidMessage };
+
+      if (normalizedUsername && !isBuiltInPrototypeIdentity(normalizedUsername)) {
+        const managedAccount = managedAccountsRef.current.find(
+          (account) =>
+            account.username.trim().toLowerCase() === normalizedUsername
+            && account.password === temporaryPassword
+            && account.status !== "inactive"
+            && hasValidManagedStudentLink(account, studentsRef.current)
+        );
+        if (managedAccount) {
+          updateManagedAccountsState((current) => current.map((account) => (account.id === managedAccount.id ? { ...account, password } : account)));
+          return { status: "ok", username: managedAccount.username };
+        }
+      }
+
+      if (normalizedRegisteredLogin && !isBuiltInPrototypeIdentity(normalizedRegisteredLogin)) {
+        const registeredAccount = accountsRef.current.find(
+          (account) => account.email.trim().toLowerCase() === normalizedRegisteredLogin && account.password === temporaryPassword
+        );
+        if (registeredAccount) {
+          updateAccountsState((current) => current.map((account) => (account.email.trim().toLowerCase() === normalizedRegisteredLogin ? { ...account, password } : account)));
+          return { status: "ok", username: registeredAccount.email };
+        }
+      }
+
+      if (normalizedChildUsername && !isReservedPrototypeUsername(normalizedChildUsername)) {
+        const childAccount = childAccountsRef.current.find(
+          (account) => account.username.toLowerCase() === normalizedChildUsername.toLowerCase() && account.password === temporaryPassword
+        );
+        if (childAccount) {
+          updateChildAccountsState((current) => current.map((account) => (account.id === childAccount.id ? { ...account, password } : account)));
+          return { status: "ok", username: childAccount.username };
+        }
+      }
+
+      return { status: "error", message: invalidMessage };
+    },
+    [updateAccountsState, updateChildAccountsState, updateManagedAccountsState]
   );
 
   const childUsernameExists = useCallback(
@@ -4303,6 +4370,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     login,
     loginRegisteredAccount,
     loginCreatedAccount,
+    activateCreatedAccount,
     loginChildAccount,
     loginChildCredentials,
     childUsernameExists,

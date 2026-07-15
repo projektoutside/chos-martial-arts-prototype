@@ -36,6 +36,7 @@ export type SupabaseStoredSession = {
   userId: string;
   projectRef?: string;
   authEmail?: string;
+  profileUsername?: string;
 };
 
 type SupabaseLoginResult =
@@ -65,6 +66,11 @@ type SupabaseCreateAccountResult =
   | { status: "ok"; invitationStatus: "pending"; email: string }
   | { status: "error"; message: string };
 
+export type SupabaseAccountActivationRequestResult =
+  | { status: "not-configured" }
+  | { status: "ok" }
+  | { status: "error"; message: string };
+
 export type SupabasePasswordChangeResult =
   | { status: "not-configured" }
   | { status: "session-expired"; message: string }
@@ -89,7 +95,8 @@ type AcknowledgeWelcomeResult =
   | { ok: false; reason: "session" | "profile" | "network"; message: string };
 
 const supabaseSessionStorageKey = "chos.supabase.auth.v1";
-const managerUsername = prototypeManagerLogin.username.toLowerCase();
+const legacyManagerUsername = prototypeManagerLogin.username.toLowerCase();
+const liveManagerUsername = "manager1";
 const supabaseAccountAuthDomain = "accounts.chosmartialarts.app";
 const managerSessionRequiredMessage = "Sign into an authorized Supabase Developer or Manager account before syncing created accounts.";
 const mongTengSupabaseProjectRef = "jqvclzlvrhdcsfhhvekr";
@@ -195,7 +202,9 @@ export function normalizeSupabaseUsername(username: string) {
 
 export function supabaseAuthEmailForUsername(username: string) {
   const normalizedUsername = normalizeSupabaseUsername(username);
-  if (normalizedUsername === managerUsername) return `manager123@${supabaseAccountAuthDomain}`;
+  if (normalizedUsername === legacyManagerUsername || normalizedUsername === liveManagerUsername) {
+    return `${liveManagerUsername}@${supabaseAccountAuthDomain}`;
+  }
   return `${normalizedUsername}@${supabaseAccountAuthDomain}`;
 }
 
@@ -206,7 +215,7 @@ export function isSupportedSupabaseLoginUsername(username: string) {
   return true;
 }
 
-function saveSupabaseAuthSession(response: SupabasePasswordResponse) {
+function saveSupabaseAuthSession(response: SupabasePasswordResponse, profile?: SupabaseProfileResponse) {
   if (!response.access_token || !response.user?.id) return;
   const expiresAt = response.expires_at ? response.expires_at * 1000 : Date.now() + Math.max(1, response.expires_in ?? 3600) * 1000;
   const storedSession: SupabaseStoredSession = {
@@ -214,7 +223,8 @@ function saveSupabaseAuthSession(response: SupabasePasswordResponse) {
     expiresAt,
     userId: response.user.id,
     projectRef: supabaseSessionProjectScope(),
-    authEmail: response.user.email?.trim().toLowerCase()
+    authEmail: response.user.email?.trim().toLowerCase(),
+    profileUsername: profile ? normalizeSupabaseUsername(profile.username) : undefined
   };
   window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify(storedSession));
 }
@@ -233,7 +243,7 @@ function jwtSubject(accessToken: string) {
 export type SupabaseInviteCallbackResult =
   | { status: "none" }
   | { status: "error"; message: string }
-  | { status: "ready"; type: "invite" | "recovery" };
+  | { status: "ready"; type: "invite" | "recovery" | "magiclink" };
 
 export function readSupabaseInviteCallback(): SupabaseInviteCallbackResult {
   if (!isSupabaseAuthConfigured()) return { status: "none" };
@@ -244,7 +254,7 @@ export function readSupabaseInviteCallback(): SupabaseInviteCallbackResult {
     window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
     return { status: "error", message: error };
   }
-  if (type !== "invite" && type !== "recovery") return { status: "none" };
+  if (type !== "invite" && type !== "recovery" && type !== "magiclink") return { status: "none" };
   const accessToken = params.get("access_token") ?? "";
   const refreshToken = params.get("refresh_token") ?? undefined;
   const expiresIn = Number(params.get("expires_in") ?? 3600);
@@ -371,8 +381,8 @@ async function fetchSupabaseProfile(userId: string, accessToken: string) {
 
 function sessionEmailForProfile(profile: SupabaseProfileResponse) {
   const normalizedUsername = normalizeSupabaseUsername(profile.username);
-  if (normalizedUsername === "manager1") return "manager1@chos.prototype";
-  if (normalizedUsername === managerUsername) return prototypeManagerLogin.email;
+  if (normalizedUsername === liveManagerUsername) return "manager1@chos.prototype";
+  if (normalizedUsername === legacyManagerUsername) return prototypeManagerLogin.email;
   if (normalizedUsername === prototypeDeveloperLogin.username.toLowerCase()) return prototypeDeveloperLogin.email;
   return profile.username;
 }
@@ -410,9 +420,11 @@ export async function signInSupabaseAccount(credentials: { username: string; pas
     const profile = await fetchSupabaseProfile(session.user.id, session.access_token);
     if (!profile) return { status: "invalid" };
     if (profile.status !== "active") return { status: "inactive" };
-    if (!cleanedInput.includes("@") && normalizeSupabaseUsername(profile.username) !== username) return { status: "invalid" };
+    const profileUsername = normalizeSupabaseUsername(profile.username);
+    const managerAliasMatch = (username === legacyManagerUsername || username === liveManagerUsername) && profileUsername === liveManagerUsername;
+    if (!cleanedInput.includes("@") && profileUsername !== username && !managerAliasMatch) return { status: "invalid" };
 
-    saveSupabaseAuthSession(session);
+    saveSupabaseAuthSession(session, profile);
     return {
       status: "authenticated",
       sessionEmail: sessionEmailForProfile(profile),
@@ -422,6 +434,39 @@ export async function signInSupabaseAccount(credentials: { username: string; pas
   } catch (error) {
     if (isSupabaseBackendInactiveError(error)) return { status: "backend-inactive", message: supabaseBackendInactiveMessage };
     return { status: "error", message: error instanceof Error ? error.message : "Supabase sign-in failed." };
+  }
+}
+
+export async function requestSupabaseAccountActivation(email: string): Promise<SupabaseAccountActivationRequestResult> {
+  if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    return { status: "error", message: "Enter the email address assigned to your profile." };
+  }
+
+  const redirectUrl = new URL(import.meta.env.BASE_URL || "/", window.location.origin).toString();
+  const activationUrl = new URL(`${supabaseUrl().replace(/\/+$/, "")}/auth/v1/otp`);
+  activationUrl.searchParams.set("redirect_to", redirectUrl);
+
+  try {
+    const response = await fetch(activationUrl.toString(), {
+      method: "POST",
+      headers: {
+        apikey: supabasePublicKey(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email: normalizedEmail, create_user: false })
+    });
+    if (response.ok || response.status === 400) return { status: "ok" };
+    if (response.status === 422) {
+      const payload = await response.clone().json().catch(() => null) as { error_code?: unknown } | null;
+      if (payload?.error_code === "otp_disabled") return { status: "ok" };
+    }
+    if (await isSupabaseBackendInactiveResponse(response)) return { status: "error", message: supabaseBackendInactiveMessage };
+    return { status: "error", message: "Activation email is temporarily unavailable. Please wait and try again." };
+  } catch (error) {
+    if (isSupabaseBackendInactiveError(error)) return { status: "error", message: supabaseBackendInactiveMessage };
+    return { status: "error", message: "Activation email is temporarily unavailable. Please wait and try again." };
   }
 }
 
@@ -458,12 +503,7 @@ export async function changeSupabaseAccountPassword(password: string, currentPas
 export async function createSupabaseManagedAccount(account: SupabaseCreateAccountInput): Promise<SupabaseCreateAccountResult> {
   if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
   const session = readSupabaseAuthSession();
-  const authorizedOwnerEmails = new Set([
-    supabaseAuthEmailForUsername(managerUsername),
-    supabaseAuthEmailForUsername(prototypeDeveloperLogin.username)
-  ]);
-  if (!session || !session.authEmail || !authorizedOwnerEmails.has(session.authEmail)) {
-    if (session) clearSupabaseAuthSession();
+  if (!session) {
     return { status: "error", message: managerSessionRequiredMessage };
   }
 

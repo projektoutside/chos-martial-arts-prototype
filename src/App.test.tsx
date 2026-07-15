@@ -2538,6 +2538,41 @@ function ImmediateChildCredentialLoginHarness() {
   );
 }
 
+type ReservedChildIdentityMode = "credentials" | "created" | "activation" | "handoff";
+
+function ReservedChildIdentityHarness({ mode }: { mode: ReservedChildIdentityMode }) {
+  const { activateCreatedAccount, loginChildAccount, loginChildCredentials, loginCreatedAccount, session } = useAppState();
+  const [result, setResult] = useState("none");
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          if (mode === "credentials") {
+            setResult(loginChildCredentials({ username: "Manager1", password: "Dragon123" }) ? "signed-in" : "blocked");
+            return;
+          }
+          if (mode === "created") {
+            setResult(loginCreatedAccount({ username: "Manager1", password: "Dragon123" }) ? "signed-in" : "blocked");
+            return;
+          }
+          if (mode === "activation") {
+            setResult(activateCreatedAccount({ username: "Manager1", temporaryPassword: "Dragon123", password: "NewDragon123!" }).status);
+            return;
+          }
+          loginChildAccount("reserved-manager-child");
+          setResult("attempted");
+        }}
+      >
+        Check reserved child identity
+      </button>
+      <p>Harness reserved result: {result}</p>
+      <p>Harness session email: {session?.email ?? "none"}</p>
+    </div>
+  );
+}
+
 describe("login landing", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -2863,7 +2898,7 @@ describe("login landing", () => {
         "https://zfuwbbepsnmmlpgfkmhz.supabase.co/auth/v1/token?grant_type=password",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ email: "manager123@accounts.chosmartialarts.app", password: prototypeManagerLogin.password })
+          body: JSON.stringify({ email: "manager1@accounts.chosmartialarts.app", password: prototypeManagerLogin.password })
         })
       );
       expect(await screen.findByRole("dialog", { name: "Login failed" })).toBeInTheDocument();
@@ -2902,15 +2937,74 @@ describe("login landing", () => {
     expect(window.localStorage.getItem("chos.accountRoles.v1")).toBeNull();
   });
 
-  it("keeps the public login limited to credential sign-in", () => {
+  it("offers activation without reopening public self-registration", () => {
     renderLoggedOutApp("/");
 
     expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Create Account" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create Account" }));
+    expect(screen.getByRole("dialog", { name: "Activate account" })).toBeInTheDocument();
+    expect(screen.getByText("A Developer or Manager must create your profile before you can activate it.")).toBeInTheDocument();
+    expect(screen.queryByText(/public sign.?up/i)).not.toBeInTheDocument();
     expect(screen.getByText("Invited users sign in with their email. Legacy usernames still work.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign in as Guest" })).not.toBeInTheDocument();
+  });
+
+  it("lets an invited hosted user request an existing-account-only activation link", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async (_url: string | URL | Request) => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    try {
+      renderLoggedOutApp("/");
+      fireEvent.click(screen.getByRole("button", { name: "Create Account" }));
+      fireEvent.change(screen.getByLabelText("Account email"), { target: { value: " invited@example.com " } });
+      fireEvent.click(screen.getByRole("button", { name: "Send Activation Link" }));
+
+      expect(await screen.findByText("If that profile was created, a secure activation link is on its way.")).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/^https:\/\/zfuwbbepsnmmlpgfkmhz\.supabase\.co\/auth\/v1\/otp\?redirect_to=/),
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ email: "invited@example.com", create_user: false })
+        })
+      );
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/signup"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("lets a testing-app user replace an administrator-issued temporary password before sign-in", async () => {
+    window.localStorage.setItem("chos.managedAccounts.v1", JSON.stringify([{
+      id: "pending-local-staff",
+      displayName: "Jordan Lee",
+      username: "jordan.staff",
+      password: "TemporaryPass123!",
+      role: "staff",
+      status: "active",
+      access: ["dashboard"],
+      createdAt: "2026-07-15T00:00:00.000Z"
+    }]));
+    renderLoggedOutApp("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "Create Account" }));
+    fireEvent.change(screen.getByLabelText("Assigned username"), { target: { value: "jordan.staff" } });
+    fireEvent.change(screen.getByLabelText("Temporary password"), { target: { value: "TemporaryPass123!" } });
+    fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "NewLocalPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "NewLocalPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
+
+    expect(await screen.findByText("Account activated. Sign in with your username and new password.")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Username")).toHaveValue("jordan.staff");
+    expect(JSON.parse(window.localStorage.getItem("chos.managedAccounts.v1") ?? "[]")).toContainEqual(expect.objectContaining({
+      username: "jordan.staff",
+      password: "NewLocalPass123!"
+    }));
   });
 
   it("does not expose the retired public account creation dialog", () => {
@@ -3213,6 +3307,21 @@ describe("login landing", () => {
     expect(window.sessionStorage.getItem("chos.session.v1")).toBeNull();
   });
 
+  it("clears a refreshed Dev123 session when staging auth is configured but the Supabase session is missing", () => {
+    vi.stubEnv("VITE_ENABLE_DEVELOPER_ACCOUNT", "true");
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: prototypeDeveloperLogin.email, remembered: true, createdAt: "2026-07-15T00:00:00.000Z" });
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: prototypeDeveloperLogin.email, role: "staff" }]));
+
+    renderLoggedOutApp("/manager");
+
+    expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
+    expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
+    expect(window.sessionStorage.getItem("chos.session.v1")).toBeNull();
+  });
+
   it("clears a refreshed Manager123 session when the stored Supabase session belongs to another account", () => {
     vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
     vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
@@ -3233,6 +3342,28 @@ describe("login landing", () => {
     expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
     expect(window.sessionStorage.getItem("chos.session.v1")).toBeNull();
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toBeNull();
+  });
+
+  it("keeps an invited real-email Supabase session after reload by its authoritative profile username", () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: "jordan.staff", remembered: true, createdAt: "2026-07-15T00:00:00.000Z" });
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "jordan.staff", role: "staff" }]));
+    window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+      accessToken: "invited-staff-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "invited-staff-user-id",
+      projectRef: "zfuwbbepsnmmlpgfkmhz",
+      authEmail: "jordan@example.com",
+      profileUsername: "jordan.staff"
+    }));
+
+    renderLoggedOutApp("/reports");
+
+    expect(screen.queryByTestId("auth-gate")).not.toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toMatchObject({ email: "jordan.staff" });
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("invited-staff-access-token");
   });
 
   it("keeps the portrait available on the reduced-motion login screen", () => {
@@ -3986,6 +4117,72 @@ describe("post-login operations app", () => {
         { email: "parent123@chos.prototype", role: "guardian" },
         { email: "kai-cho.child", role: "student" }
       ]);
+    });
+  });
+
+  it.each(["credentials", "created", "activation"] as const)("blocks a stored Manager1 child from the %s path", async (mode) => {
+    window.localStorage.setItem("chos.childAccounts.v1", JSON.stringify([{
+      id: "reserved-manager-child",
+      parentEmail: "parent123@chos.prototype",
+      name: "Reserved Manager Child",
+      username: "Manager1",
+      password: "Dragon123",
+      age: "9",
+      beltSlug: "white",
+      createdAt: "2026-07-15T10:00:00.000Z"
+    }]));
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppStateProvider>
+          <ReservedChildIdentityHarness mode={mode} />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Check reserved child identity" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(`Harness reserved result: ${mode === "activation" ? "error" : "blocked"}`)).toBeInTheDocument();
+      expect(screen.getByText("Harness session email: none")).toBeInTheDocument();
+      expect(JSON.parse(window.localStorage.getItem("chos.childAccounts.v1") ?? "[]")).toEqual([
+        expect.objectContaining({ username: "Manager1", password: "Dragon123" })
+      ]);
+    });
+  });
+
+  it("blocks a stored Manager1 child from parent handoff", async () => {
+    const parentEmail = "parent123@chos.prototype";
+    seedActiveSession({ email: parentEmail, remembered: true, createdAt: new Date().toISOString() });
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: parentEmail, role: "guardian" }]));
+    window.localStorage.setItem("chos.accounts.v1", JSON.stringify([{
+      email: parentEmail,
+      password: "ParentPass123!",
+      role: "guardian",
+      createdAt: "2026-07-15T10:00:00.000Z"
+    }]));
+    window.localStorage.setItem("chos.childAccounts.v1", JSON.stringify([{
+      id: "reserved-manager-child",
+      parentEmail,
+      name: "Reserved Manager Child",
+      username: "Manager1",
+      password: "Dragon123",
+      age: "9",
+      beltSlug: "white",
+      createdAt: "2026-07-15T10:00:00.000Z"
+    }]));
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppStateProvider>
+          <ReservedChildIdentityHarness mode="handoff" />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Check reserved child identity" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Harness reserved result: attempted")).toBeInTheDocument();
+      expect(screen.getByText(`Harness session email: ${parentEmail}`)).toBeInTheDocument();
     });
   });
 
@@ -5166,7 +5363,7 @@ describe("post-login operations app", () => {
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
   });
 
-  it("requires a Supabase owner session before creating live accounts and does not write local accounts", async () => {
+  it("requires a Supabase owner session before opening live account tools and does not write local accounts", () => {
     vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
     vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
     vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
@@ -5177,12 +5374,7 @@ describe("post-login operations app", () => {
     try {
       renderDeveloperApp("/manager?tool=create");
 
-      fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Remote Staff" } });
-      fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "remote.staff" } });
-      fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "remote.staff@example.test" } });
-      fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
-
-      expect(await screen.findByText("Sign into an authorized Supabase Developer or Manager account before creating live accounts.")).toBeInTheDocument();
+      expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
       expect(fetchMock).not.toHaveBeenCalled();
       expect(window.localStorage.getItem("chos.managedAccounts.v1")).toBeNull();
       expect(window.localStorage.getItem("chos.accounts.v1")).toBeNull();

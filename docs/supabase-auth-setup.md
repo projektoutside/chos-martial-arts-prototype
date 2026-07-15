@@ -1,6 +1,6 @@
 # Supabase Auth Setup
 
-This app keeps the browser on publishable Supabase credentials only. Manager sign-in uses Supabase Auth directly, and chat/message records use Supabase REST and Realtime with row-level security. The service role key never enters Vite or localStorage.
+This app keeps the browser on publishable Supabase credentials only. Administrator and invited-user sign-in uses Supabase Auth directly, and chat/message records use Supabase REST and Realtime with row-level security. The service role key never enters Vite or localStorage.
 
 ## Required project setup
 
@@ -10,14 +10,14 @@ This app keeps the browser on publishable Supabase credentials only. Manager sig
 4. Set the deployed app env vars:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_PUBLISHABLE_KEY`
-5. Seed the one owner account after the migration:
+5. For a new environment, seed or update the Manager owner after the migration. Provision the Developer owner separately through the approved privileged two-admin setup; never place either password in source control:
 
 ```powershell
 $env:SUPABASE_URL="https://PROJECT_REF.supabase.co"
 $env:SUPABASE_SERVICE_ROLE_KEY="<service-role-key>"
-$env:MANAGER_USERNAME="Manager123"
+$env:MANAGER_USERNAME="Manager1"
 $env:MANAGER_PASSWORD="<generated-strong-password>"
-$env:MANAGER_AUTH_EMAIL="manager123@accounts.chosmartialarts.app"
+$env:MANAGER_AUTH_EMAIL="manager1@accounts.chosmartialarts.app"
 node scripts/seed-supabase-manager.mjs
 ```
 
@@ -29,14 +29,16 @@ For an existing staging project, rotate any legacy seeded owner password by reru
 
 ## Runtime behavior
 
-- `Manager123` signs in through Supabase when `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are configured.
-- The public-staging `Dev123` diagnostic login signs in through Supabase when `VITE_ENABLE_DEVELOPER_ACCOUNT=true`; its internal Auth email is `dev123@accounts.chosmartialarts.app`.
-- Manager-created staff, student, and parent accounts are supported when the function is deployed and the manager has a valid `Manager123` Supabase session.
+- `Manager1` signs in through Supabase when `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are configured. The legacy `Manager123` username is an alias for the same live `Manager1` Auth profile.
+- `Dev123` signs in through Supabase when `VITE_ENABLE_DEVELOPER_ACCOUNT=true`; its internal Auth email is `dev123@accounts.chosmartialarts.app`.
+- Any authenticated active staff owner, including `Manager1` and `Dev123`, can create staff, student, and parent invitations through the deployed function.
+- The login-page **Create Account** action is activation-only. It requests a magic link with `create_user=false` for an existing administrator-created Auth identity and never calls public signup.
 - `live_chat_messages`, `direct_messages`, `message_logs`, and `app_state_items` persist in Supabase when the user is signed in with a valid Supabase session.
 - When Supabase env vars are configured but a Supabase auth session is unavailable, operations records do not fall back to localStorage. Device-local preferences can still use browser storage.
 - The local prototype fallback for credential and operations records is only used when Supabase env vars are absent.
 
 ## Hosted Auth hardening
 
+- Keep public email signup disabled in Supabase Auth. Invitations and existing-account magic links remain the only supported activation paths.
 - Enable Supabase leaked-password protection in Auth settings after the Supabase organization is on Pro or higher. The Free plan leaves the Security Advisor warning `auth_leaked_password_protection` active.
 - Keep the local password policy in the seed script even after hosted leaked-password protection is enabled; the hosted check rejects known compromised passwords, while the local policy blocks short or composition-weak passwords.
