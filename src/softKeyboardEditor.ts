@@ -138,6 +138,8 @@ export type InstallSoftKeyboardEditorOptions = {
   doc?: Document;
 };
 
+export const SOFT_KEYBOARD_EDITOR_ARM_WINDOW_MS = 3_000;
+
 function isTouchInputCapable(win: Window) {
   return win.navigator.maxTouchPoints > 0 || Boolean(win.matchMedia?.("(pointer: coarse)")?.matches);
 }
@@ -233,6 +235,10 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   let dragStartY: number | null = null;
   let dragStartScrollTop = 0;
   let overlayKeyboardWasVisible = false;
+  let armedSource: KeyboardEditableElement | null = null;
+  let armedSourceTimer = 0;
+  let lastTouchPointerTarget: KeyboardEditableElement | null = null;
+  let lastTouchPointerAt = Number.NEGATIVE_INFINITY;
 
   layer.className = "soft-keyboard-editor-layer";
   layer.hidden = true;
@@ -250,6 +256,23 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   surface.append(input, textarea, done);
   layer.append(backdrop, surface);
   doc.body.append(layer);
+
+  const clearArmedSource = () => {
+    if (armedSource) armedSource.removeAttribute("data-soft-keyboard-source-armed");
+    armedSource = null;
+    if (armedSourceTimer) win.clearTimeout(armedSourceTimer);
+    armedSourceTimer = 0;
+  };
+
+  const armSource = (nextSource: KeyboardEditableElement, event: Event) => {
+    clearArmedSource();
+    armedSource = nextSource;
+    nextSource.setAttribute("data-soft-keyboard-source-armed", "true");
+    armedSourceTimer = win.setTimeout(clearArmedSource, SOFT_KEYBOARD_EDITOR_ARM_WINDOW_MS);
+    if (event.cancelable) event.preventDefault();
+  };
+
+  const isLoginSource = (target: KeyboardEditableElement) => Boolean(target.closest(".login-landing"));
 
   const resizeEditor = () => {
     if (!(editor instanceof HTMLTextAreaElement)) return;
@@ -296,6 +319,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   };
 
   const close = () => {
+    clearArmedSource();
     if (!source) return;
     if (dirty && source.isConnected) source.dispatchEvent(new Event("change", { bubbles: true }));
     source.removeAttribute("data-soft-keyboard-source-active");
@@ -460,6 +484,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
   };
 
   const open = (nextSource: KeyboardEditableElement, event: Event) => {
+    clearArmedSource();
     if (source === nextSource && !layer.hidden) {
       activateEditorKeyboard();
       if (event.cancelable) event.preventDefault();
@@ -493,32 +518,52 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
     win.requestAnimationFrame(resizeEditor);
   };
 
+  const handleSourceActivation = (target: KeyboardEditableElement, event: Event) => {
+    if (isLoginSource(target) || armedSource === target) {
+      open(target, event);
+      return;
+    }
+    if (source === target && !layer.hidden) {
+      open(target, event);
+      return;
+    }
+    if (source) close();
+    armSource(target, event);
+  };
+
   const handlePointerDown = (event: PointerEvent) => {
     if (layer.contains(event.target as Node)) return;
     if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
     const target = resolveKeyboardEditableTarget(event.target);
-    if (target) open(target, event);
-    else close();
+    if (target) {
+      lastTouchPointerTarget = target;
+      lastTouchPointerAt = event.timeStamp;
+      handleSourceActivation(target, event);
+    } else close();
   };
 
   const handleTouchStart = (event: TouchEvent) => {
     if (layer.contains(event.target as Node)) return;
     const target = resolveKeyboardEditableTarget(event.target);
-    if (target) open(target, event);
+    if (target && target === lastTouchPointerTarget && event.timeStamp - lastTouchPointerAt < 750) return;
+    if (target) handleSourceActivation(target, event);
     else close();
   };
 
   const handleClick = (event: MouseEvent) => {
     if (!mobileEditorEnabled || layer.contains(event.target as Node)) return;
     const target = resolveKeyboardEditableTarget(event.target);
-    if (target) open(target, event);
+    if (target && target === lastTouchPointerTarget && event.timeStamp - lastTouchPointerAt < 750) return;
+    if (target) handleSourceActivation(target, event);
     else close();
   };
 
   const handleFocusIn = (event: FocusEvent) => {
     if (!mobileEditorEnabled || layer.contains(event.target as Node)) return;
     const target = resolveKeyboardEditableTarget(event.target);
-    if (target) open(target, event);
+    if (!target) return;
+    const followsCurrentTouch = target === lastTouchPointerTarget && event.timeStamp - lastTouchPointerAt < 750;
+    if (!followsCurrentTouch || isLoginSource(target) || armedSource === target) open(target, event);
   };
 
   const forwardCompositionEvent = (event: CompositionEvent) => {
@@ -609,6 +654,7 @@ export function installSoftKeyboardEditor(options: InstallSoftKeyboardEditorOpti
 
   return () => {
     close();
+    clearArmedSource();
     win.clearInterval(healthTimer);
     doc.removeEventListener("mousemove", handleEditorMouseMove, true);
     doc.removeEventListener("mouseup", endEditorDrag, true);

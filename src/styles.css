@@ -23835,6 +23835,11 @@ html[data-touch-input="true"] :is(
   animation: soft-keyboard-editor-enter var(--motion-fast) var(--motion-ease-out) both;
 }
 
+[data-soft-keyboard-source-armed="true"] {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
 .soft-keyboard-editor-layer[hidden],
 .soft-keyboard-editor-layer [hidden] {
   display: none !important;

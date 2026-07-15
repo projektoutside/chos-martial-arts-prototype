@@ -9,6 +9,11 @@ import {
 } from "./softKeyboardEditor";
 
 function dispatchPointerDown(target: EventTarget, pointerType: "mouse" | "pen" | "touch") {
+  dispatchSinglePointerDown(target, pointerType);
+  return dispatchSinglePointerDown(target, pointerType);
+}
+
+function dispatchSinglePointerDown(target: EventTarget, pointerType: "mouse" | "pen" | "touch") {
   const event = new Event("pointerdown", { bubbles: true, cancelable: true });
   Object.defineProperty(event, "pointerType", { value: pointerType });
   target.dispatchEvent(event);
@@ -138,6 +143,55 @@ describe("soft keyboard editor helpers", () => {
     expect(document.documentElement.dataset.softKeyboardEditor).toBe("open");
   });
 
+  it("arms a post-login text field on the first tap and opens it on a second tap within three seconds", () => {
+    vi.useFakeTimers();
+    const source = document.createElement("input");
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    const firstTap = dispatchSinglePointerDown(source, "touch");
+
+    expect(firstTap.defaultPrevented).toBe(true);
+    expect(source).toHaveAttribute("data-soft-keyboard-source-armed", "true");
+    expect(document.documentElement.dataset.softKeyboardEditor).toBeUndefined();
+
+    vi.advanceTimersByTime(2_999);
+    dispatchSinglePointerDown(source, "touch");
+
+    expect(source).not.toHaveAttribute("data-soft-keyboard-source-armed");
+    expect(document.documentElement.dataset.softKeyboardEditor).toBe("open");
+    vi.useRealTimers();
+  });
+
+  it("requires a new two-tap sequence after the three-second window expires", () => {
+    vi.useFakeTimers();
+    const source = document.createElement("textarea");
+    document.body.append(source);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    dispatchSinglePointerDown(source, "touch");
+    vi.advanceTimersByTime(3_001);
+    dispatchSinglePointerDown(source, "touch");
+
+    expect(source).toHaveAttribute("data-soft-keyboard-source-armed", "true");
+    expect(document.documentElement.dataset.softKeyboardEditor).toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it("keeps login fields on immediate one-tap keyboard activation", () => {
+    const login = document.createElement("main");
+    login.className = "login-landing";
+    const source = document.createElement("input");
+    login.append(source);
+    document.body.append(login);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    dispatchSinglePointerDown(source, "touch");
+
+    expect(document.documentElement.dataset.softKeyboardEditor).toBe("open");
+    expect(source).not.toHaveAttribute("data-soft-keyboard-source-armed");
+  });
+
   it("focuses and requests the phone keyboard before canceling the first trusted tap", () => {
     const order: string[] = [];
     const source = document.createElement("input");
@@ -162,8 +216,9 @@ describe("soft keyboard editor helpers", () => {
     });
 
     source.dispatchEvent(event);
+    dispatchSinglePointerDown(source, "touch");
 
-    expect(order).toEqual(["focus", "show", "preventDefault"]);
+    expect(order).toEqual(["preventDefault", "focus", "show"]);
     expect(editor).not.toHaveAttribute("hidden");
   });
 
