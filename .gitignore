@@ -9,6 +9,8 @@ coverage/
 /reference-frames/
 /playwright-report/
 /test-results/
+/.playwright-cli/
+/output/playwright/
 /ImageSegmentationProfilePage/
 /roundhouse-frames/
 /3dmodel/

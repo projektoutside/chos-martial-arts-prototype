@@ -1,12 +1,12 @@
 # Supabase Auth Setup
 
-This app keeps the browser on publishable Supabase credentials only. Administrator and invited-user sign-in uses Supabase Auth directly, and chat/message records use Supabase REST and Realtime with row-level security. The service role key never enters Vite or localStorage.
+This app keeps the browser on publishable Supabase credentials only. Administrator and managed-user sign-in uses Supabase Auth directly, and chat/message records use Supabase REST and Realtime with row-level security. The service role key never enters Vite or localStorage.
 
 ## Required project setup
 
 1. Create or connect the Cho's Supabase project. Current staging is `chos-martial-arts-operations-app-staging` / `zfuwbbepsnmmlpgfkmhz`.
 2. Apply the migrations in `supabase/migrations`.
-3. Deploy `supabase/functions/manager-create-account/index.ts` when administrator-created live staff, student, and parent accounts are in scope. Set the Edge Function secret `INVITE_REDIRECT_URL` to an allow-listed app URL (for production, `https://chos-martial-arts-operations-app.pages.dev/`). The function uses `verify_jwt = false` because it performs its own bearer-token, Supabase Auth user, and active-owner-profile checks; do not deploy it without those checks. It keeps the service-role key server-side, invites the user's real email through Supabase Auth, and persists a pending invitation until Auth confirms the email.
+3. Deploy both `supabase/functions/manager-create-account/index.ts` and `supabase/functions/activate-account/index.ts` when administrator-created live staff, student, and parent accounts are in scope. Both use `verify_jwt = false` because they perform their own bearer-token, Supabase Auth user, and active-profile checks; do not deploy them without those checks. Account creation keeps the service-role key server-side, stores the user's real email only as profile contact data, and creates an internal username-based Auth identity that requires a password change. Activation binds the password replacement to the bearer-token user and reauthenticates the assigned temporary password.
 4. Set the deployed app env vars:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_PUBLISHABLE_KEY`
@@ -31,14 +31,15 @@ For an existing staging project, rotate any legacy seeded owner password by reru
 
 - `Manager1` signs in through Supabase when `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are configured. The legacy `Manager123` username is an alias for the same live `Manager1` Auth profile.
 - `Dev123` signs in through Supabase when `VITE_ENABLE_DEVELOPER_ACCOUNT=true`; its internal Auth email is `dev123@accounts.chosmartialarts.app`.
-- Any authenticated active staff owner, including `Manager1` and `Dev123`, can create staff, student, and parent invitations through the deployed function.
-- The login-page **Create Account** action is activation-only. It requests a magic link with `create_user=false` for an existing administrator-created Auth identity and never calls public signup.
+- Any authenticated active staff owner, including `Manager1` and `Dev123`, can create staff, student, and parent accounts through the deployed function and must securely give the user the assigned account name and temporary password.
+- The login-page **Access New Account** action verifies those assigned credentials, then requires a different policy-compliant personal password before an app session is created. Entering temporary credentials in normal **Sign In** routes to the same required password-change step.
+- The login-page **Create Account** action is informational only. It never calls public signup.
 - `live_chat_messages`, `direct_messages`, `message_logs`, and `app_state_items` persist in Supabase when the user is signed in with a valid Supabase session.
 - When Supabase env vars are configured but a Supabase auth session is unavailable, operations records do not fall back to localStorage. Device-local preferences can still use browser storage.
 - The local prototype fallback for credential and operations records is only used when Supabase env vars are absent.
 
 ## Hosted Auth hardening
 
-- Keep public email signup disabled in Supabase Auth. Invitations and existing-account magic links remain the only supported activation paths.
+- Keep public email signup disabled in Supabase Auth. Administrator-created credentials plus **Access New Account** are the supported activation path.
 - Enable Supabase leaked-password protection in Auth settings after the Supabase organization is on Pro or higher. The Free plan leaves the Security Advisor warning `auth_leaked_password_protection` active.
 - Keep the local password policy in the seed script even after hosted leaked-password protection is enabled; the hosted check rejects known compromised passwords, while the local policy blocks short or composition-weak passwords.

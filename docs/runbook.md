@@ -30,7 +30,7 @@ git diff --check
 - Workflow: `.github/workflows/deploy-pages.yml` verifies the release build; Cloudflare Pages uses Direct Upload
 - Status: Cloudflare Pages is the active hosted pilot target. GitHub Pages is unavailable while the Xatori repository is private on the current organization plan.
 - Staging build requirements: repo variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and `VITE_ENABLE_DEVELOPER_ACCOUNT=true` must be present before the workflow builds the Pages artifact. `VITE_SUPABASE_URL` must point to Cho's staging Supabase project `zfuwbbepsnmmlpgfkmhz`.
-- Public staging account model: `Manager1` and `Dev123` validate through their active Supabase owner profiles. The legacy `Manager123` username routes to the same `Manager1` identity. Other users must first be created by an active staff owner, then use **Create Account** to activate that existing profile; the action does not self-register users.
+- Public staging account model: `Manager1` and `Dev123` validate through their active Supabase owner profiles. The legacy `Manager123` username routes to the same `Manager1` identity. Other users must first be created by an active staff owner with an assigned account name and temporary password, then use **Access New Account** to replace that password before entering the app. **Create Account** remains informational and public self-registration stays disabled.
 
 ## Xatori Deployment Workflow
 

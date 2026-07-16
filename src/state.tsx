@@ -2712,7 +2712,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   );
 
   const loginCreatedAccount = useCallback(
-    (credentials: { username: string; password: string }) => {
+    (credentials: { username: string; password: string }): CreatedAccountLoginResult | undefined => {
       const normalizedUsername = normalizeCreatedAccountUsername(credentials.username);
       const normalizedRegisteredLogin = credentials.username.trim().toLowerCase();
       const normalizedChildUsername = normalizeChildUsername(credentials.username);
