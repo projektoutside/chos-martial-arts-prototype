@@ -1,6 +1,7 @@
 import type { AccountRole, ManagedAccount, ManagerAccessKey } from "./types";
 import { isDeveloperAccountEnabled, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
 import { resolveAppEnvironment } from "./appEnvironment";
+import { requiresPasswordChange, validateActivationPassword } from "../supabase/functions/_shared/account-activation";
 
 type SupabasePasswordResponse = {
   access_token: string;
@@ -10,6 +11,8 @@ type SupabasePasswordResponse = {
   user?: {
     id: string;
     email?: string;
+    app_metadata?: Record<string, unknown>;
+    user_metadata?: Record<string, unknown>;
   };
 };
 
@@ -39,12 +42,13 @@ export type SupabaseStoredSession = {
   profileUsername?: string;
 };
 
-type SupabaseLoginResult =
+export type SupabaseLoginResult =
   | { status: "not-configured" }
   | { status: "invalid" }
   | { status: "inactive" }
   | { status: "backend-inactive"; message: string }
   | { status: "error"; message: string }
+  | { status: "activation-required"; sessionEmail: string; role: AccountRole; profile: SupabaseProfileResponse }
   | { status: "authenticated"; sessionEmail: string; role: AccountRole; profile: SupabaseProfileResponse };
 
 type SupabaseCreateAccountInput = {
@@ -68,6 +72,12 @@ type SupabaseCreateAccountResult =
 
 export type SupabaseAccountActivationRequestResult =
   | { status: "not-configured" }
+  | { status: "ok" }
+  | { status: "error"; message: string };
+
+export type SupabaseActivationResult =
+  | { status: "not-configured" }
+  | { status: "session-expired"; message: string }
   | { status: "ok" }
   | { status: "error"; message: string };
 
@@ -425,6 +435,14 @@ export async function signInSupabaseAccount(credentials: { username: string; pas
     if (!cleanedInput.includes("@") && profileUsername !== username && !managerAliasMatch) return { status: "invalid" };
 
     saveSupabaseAuthSession(session, profile);
+    if (requiresPasswordChange(session.user.app_metadata)) {
+      return {
+        status: "activation-required",
+        sessionEmail: sessionEmailForProfile(profile),
+        role: profile.role,
+        profile
+      };
+    }
     return {
       status: "authenticated",
       sessionEmail: sessionEmailForProfile(profile),
@@ -467,6 +485,43 @@ export async function requestSupabaseAccountActivation(email: string): Promise<S
   } catch (error) {
     if (isSupabaseBackendInactiveError(error)) return { status: "error", message: supabaseBackendInactiveMessage };
     return { status: "error", message: "Activation email is temporarily unavailable. Please wait and try again." };
+  }
+}
+
+export async function activateSupabaseAccount(newPassword: string, temporaryPassword: string): Promise<SupabaseActivationResult> {
+  if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
+  const validationMessage = validateActivationPassword(newPassword, temporaryPassword);
+  if (validationMessage) return { status: "error", message: validationMessage };
+  const session = readSupabaseAuthSession();
+  if (!session) {
+    return { status: "session-expired", message: "Your temporary sign-in has expired. Start account access again." };
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl().replace(/\/+$/, "")}/functions/v1/activate-account`, {
+      method: "POST",
+      headers: {
+        apikey: supabasePublicKey(),
+        Authorization: `Bearer ${session.accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        newPassword: newPassword.trim(),
+        temporaryPassword: temporaryPassword.trim()
+      })
+    });
+    if (response.ok) return { status: "ok" };
+    if (await isSupabaseBackendInactiveResponse(response)) {
+      return { status: "error", message: supabaseBackendInactiveMessage };
+    }
+    const body = await response.json().catch(() => undefined) as { error?: string } | undefined;
+    if (response.status === 401 || response.status === 403) clearSupabaseAuthSession();
+    return response.status === 401
+      ? { status: "session-expired", message: "Your temporary sign-in has expired. Start account access again." }
+      : { status: "error", message: body?.error ?? "Account activation failed. Please try again." };
+  } catch (error) {
+    if (isSupabaseBackendInactiveError(error)) return { status: "error", message: supabaseBackendInactiveMessage };
+    return { status: "error", message: "Account activation failed. Please try again." };
   }
 }
 

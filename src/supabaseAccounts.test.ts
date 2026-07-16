@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  activateSupabaseAccount,
   clearSupabaseAuthSession,
   acknowledgeSupabaseWelcome,
   changeSupabaseAccountPassword,
@@ -580,6 +581,102 @@ describe("supabase account adapter", () => {
       status: "error",
       message: "Sign into an authorized Supabase Developer or Manager account before syncing created accounts."
     });
+  });
+
+  it("requires activation before a newly provisioned account can enter the app", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/auth/v1/token")) {
+        return jsonResponse({
+          access_token: "staff-access-token",
+          refresh_token: "staff-refresh-token",
+          expires_in: 3600,
+          token_type: "bearer",
+          user: {
+            id: "staff-user-id",
+            email: "jordan.staff@accounts.chosmartialarts.app",
+            app_metadata: { role: "staff", requires_password_change: true },
+            user_metadata: {
+              username: "jordan.staff",
+              display_name: "Jordan Lee",
+              contact_email: "jordan@example.com"
+            }
+          }
+        });
+      }
+      if (requestUrl.includes("/rest/v1/profiles")) {
+        return jsonResponse([{
+          id: "staff-user-id",
+          username: "jordan.staff",
+          contact_email: "jordan@example.com",
+          display_name: "Jordan Lee",
+          role: "staff",
+          status: "active",
+          phone: null,
+          title: "Instructor",
+          notes: null,
+          access: ["dashboard"],
+          student_id: null,
+          created_by: "manager-user-id",
+          created_at: "2026-07-16T00:00:00.000Z"
+        }]);
+      }
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(signInSupabaseAccount({ username: "jordan.staff", password: "TemporaryPass123!" })).resolves.toMatchObject({
+      status: "activation-required",
+      sessionEmail: "jordan.staff",
+      role: "staff"
+    });
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("staff-access-token");
+    expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
+  });
+
+  it("activates only the temporary authenticated Supabase account", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "staff-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "staff-user-id",
+      projectRef: "project",
+      authEmail: "jordan.staff@accounts.chosmartialarts.app",
+      profileUsername: "jordan.staff"
+    }));
+    const fetchMock = vi.fn(async () => jsonResponse({ status: "ok" }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(activateSupabaseAccount("PermanentPass456!", "TemporaryPass123!")).resolves.toEqual({ status: "ok" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/functions/v1/activate-account",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer staff-access-token" }),
+        body: JSON.stringify({
+          newPassword: "PermanentPass456!",
+          temporaryPassword: "TemporaryPass123!"
+        })
+      })
+    );
+  });
+
+  it("rejects unsafe activation attempts before changing hosted state", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(activateSupabaseAccount("short", "TemporaryPass123!")).resolves.toEqual({
+      status: "error",
+      message: "Use at least 12 characters with uppercase, lowercase, a number, and a symbol."
+    });
+    await expect(activateSupabaseAccount("TemporaryPass123!", "TemporaryPass123!")).resolves.toEqual({
+      status: "error",
+      message: "Choose a new password that is different from your temporary password."
+    });
+    await expect(activateSupabaseAccount("PermanentPass456!", "TemporaryPass123!")).resolves.toEqual({
+      status: "session-expired",
+      message: "Your temporary sign-in has expired. Start account access again."
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("lets the live Manager1 owner session reach server-side account authorization", async () => {

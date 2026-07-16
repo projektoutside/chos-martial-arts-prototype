@@ -16,7 +16,7 @@
     "preview": "vite preview",
     "preview:network": "vite preview --host 0.0.0.0",
     "test": "vitest run && npm run test:contracts",
-    "test:contracts": "node --test scripts/manager-create-account-contract.test.mjs scripts/validate-play-release-input.test.mjs scripts/verify-android-variant.test.mjs scripts/verify-demo-artifact.test.mjs",
+    "test:contracts": "node --test scripts/activate-account-contract.test.mjs scripts/manager-create-account-contract.test.mjs scripts/validate-play-release-input.test.mjs scripts/verify-android-variant.test.mjs scripts/verify-demo-artifact.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:keyboard": "playwright test e2e/soft-keyboard-layout.spec.ts",
     "verify:android": "node scripts/verify-android-release.mjs",
