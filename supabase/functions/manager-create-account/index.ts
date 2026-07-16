@@ -1,5 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  accountPasswordPolicyText,
+  activationRequiredAppMetadata,
+  isStrongActivationPassword
+} from "../_shared/account-activation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,6 +14,7 @@ const corsHeaders = {
 
 const allowedRoles = new Set(["staff", "student", "guardian"]);
 const allowedStatuses = new Set(["active", "inactive"]);
+const accountAuthDomain = "accounts.chosmartialarts.app";
 const allowedAccess = new Set([
   "dashboard",
   "messages",
@@ -25,6 +31,7 @@ const allowedAccess = new Set([
 type AccountRequest = {
   displayName?: unknown;
   username?: unknown;
+  password?: unknown;
   role?: unknown;
   status?: unknown;
   email?: unknown;
@@ -54,6 +61,10 @@ function normalizeUsername(value: unknown) {
     .replace(/^[._-]+|[._-]+$/g, "");
 }
 
+function authEmailForUsername(username: string) {
+  return `${username}@${accountAuthDomain}`;
+}
+
 function normalizeAccess(value: unknown, role: string) {
   if (role !== "staff" || !Array.isArray(value)) return [];
   return [...new Set(value.filter((item): item is string => typeof item === "string" && allowedAccess.has(item)))];
@@ -66,9 +77,7 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const inviteRedirectUrl = Deno.env.get("INVITE_REDIRECT_URL") ?? "";
-
-  if (!supabaseUrl || !anonKey || !serviceRoleKey || !inviteRedirectUrl) {
+  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return jsonResponse({ error: "Supabase function secrets are not configured." }, 500);
   }
 
@@ -109,6 +118,7 @@ Deno.serve(async (req: Request) => {
 
   const username = normalizeUsername(body.username);
   const displayName = cleanString(body.displayName);
+  const password = cleanString(body.password);
   const role = allowedRoles.has(cleanString(body.role)) ? cleanString(body.role) : "";
   const status = allowedStatuses.has(cleanString(body.status)) ? cleanString(body.status) : "active";
   const contactEmail = cleanString(body.email).toLowerCase();
@@ -117,10 +127,13 @@ Deno.serve(async (req: Request) => {
   const notes = cleanString(body.notes) || null;
   const studentId = cleanString(body.studentId) || null;
   const access = normalizeAccess(body.access, role);
-  const authEmail = contactEmail;
+  const authEmail = authEmailForUsername(username);
 
-  if (!username || username.length < 3 || !displayName || !contactEmail || !role) {
-    return jsonResponse({ error: "Display name, username, email, and role are required." }, 400);
+  if (!username || username.length < 3 || !displayName || !password || !contactEmail || !role) {
+    return jsonResponse({ error: "Display name, username, temporary password, email, and role are required." }, 400);
+  }
+  if (!isStrongActivationPassword(password)) {
+    return jsonResponse({ error: accountPasswordPolicyText }, 400);
   }
   if (username === "manager123" || username === "manager1" || username === "dev123" || username.endsWith(".child")) {
     return jsonResponse({ error: "That username is reserved." }, 400);
@@ -138,21 +151,21 @@ Deno.serve(async (req: Request) => {
   if (existingProfileError) return jsonResponse({ error: "Could not check existing profiles." }, 500);
   if (existingProfile) return jsonResponse({ error: "An account with that username already exists." }, 409);
 
-  const { data: createdUser, error: createUserError } = await adminClient.auth.admin.inviteUserByEmail(
-    authEmail,
-    {
-      redirectTo: inviteRedirectUrl,
-      data: {
-        username,
-        role,
-        display_name: displayName,
-        contact_email: contactEmail
-      }
-    }
-  );
+  const { data: createdUser, error: createUserError } = await adminClient.auth.admin.createUser({
+    email: authEmail,
+    password,
+    email_confirm: true,
+    user_metadata: {
+      username,
+      role,
+      display_name: displayName,
+      contact_email: contactEmail
+    },
+    app_metadata: activationRequiredAppMetadata({ role })
+  });
 
   if (createUserError || !createdUser.user) {
-    return jsonResponse({ error: createUserError?.message ?? "Could not send the account invitation." }, 400);
+    return jsonResponse({ error: createUserError?.message ?? "Could not create the account." }, 400);
   }
 
   const profileRow = {
@@ -209,8 +222,9 @@ Deno.serve(async (req: Request) => {
   }
 
   return jsonResponse({
-    email: authEmail,
-    invited: true,
+    email: contactEmail,
+    username,
+    activationRequired: true,
     invitationStatus: "pending",
     account: {
       id: createdUser.user.id,

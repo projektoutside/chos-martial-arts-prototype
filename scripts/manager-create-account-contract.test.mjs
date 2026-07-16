@@ -22,12 +22,15 @@ test("administrator usernames are reserved and new profiles start without welcom
   assert.match(source, /is_owner: false/);
 });
 
-test("new accounts use the real email identity and Supabase invitation flow", async () => {
+test("new accounts use assigned usernames and temporary passwords that require activation", async () => {
   const source = await readFile(sourceUrl, "utf8");
-  assert.match(source, /const authEmail = contactEmail/);
-  assert.match(source, /auth\.admin\.inviteUserByEmail\(/);
-  assert.match(source, /redirectTo: inviteRedirectUrl/);
-  assert.doesNotMatch(source, /auth\.admin\.createUser\(/);
+  assert.match(source, /password\?: unknown/);
+  assert.match(source, /authEmailForUsername\(username\)/);
+  assert.match(source, /auth\.admin\.createUser\(/);
+  assert.match(source, /password,/);
+  assert.match(source, /app_metadata: activationRequiredAppMetadata/);
+  assert.match(source, /email_confirm: true/);
+  assert.doesNotMatch(source, /auth\.admin\.inviteUserByEmail\(/);
   assert.doesNotMatch(source, /JSON\.stringify\([^)]*serviceRoleKey/);
 });
 
