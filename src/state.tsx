@@ -46,6 +46,7 @@ import type {
   TrainingVideoFolder
 } from "./types";
 import { applyCoupon, calculateTotals, createOrder, estimateSmsSegments, hasSmsOptOutLanguage, isPrototypeDeveloperEmail, isPrototypeManagerOwnerEmail, isReservedPrototypeUsername, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
+import { validateActivationPassword } from "../supabase/functions/_shared/account-activation";
 
 const stableKeys = {
   cart: "chos.cart.v1",
@@ -134,6 +135,7 @@ interface Toast {
 interface AccountRecord {
   email: string;
   password?: string;
+  requiresPasswordChange?: boolean;
   role?: AccountRole;
   displayName?: string;
   contactEmail?: string;
@@ -245,9 +247,15 @@ type GuardianAccountInput = {
   notes?: string;
 };
 
-type CreatedAccountLoginResult = ManagedAccount | AccountRecord | ChildAccount;
+type CreatedAccountRecord = ManagedAccount | AccountRecord | ChildAccount;
 
-type CreatedAccountActivationResult = { status: "ok"; username: string } | { status: "error"; message: string };
+type CreatedAccountLoginResult =
+  | { status: "authenticated"; account: CreatedAccountRecord }
+  | { status: "activation-required"; account: ManagedAccount | AccountRecord };
+
+type CreatedAccountActivationResult =
+  | { status: "ok"; username: string; account: ManagedAccount | AccountRecord }
+  | { status: "error"; message: string };
 
 type PasswordChangeResult = { status: "ok" } | { status: "error"; message: string };
 
@@ -2720,9 +2728,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
             hasValidManagedStudentLink(account, studentsRef.current)
         );
         if (managedAccount) {
+          if (managedAccount.requiresPasswordChange === true) {
+            return { status: "activation-required", account: managedAccount };
+          }
           saveRoleForEmail(managedAccount.username, managedAccount.role);
           setSession({ email: managedAccount.username, remembered: true, createdAt: new Date().toISOString() });
-          return managedAccount;
+          return { status: "authenticated", account: managedAccount };
         }
       }
 
@@ -2731,9 +2742,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           (account) => account.email.trim().toLowerCase() === normalizedRegisteredLogin && account.password === password
         );
         if (registeredAccount) {
+          if (registeredAccount.requiresPasswordChange === true) {
+            return { status: "activation-required", account: registeredAccount };
+          }
           saveRoleForEmail(registeredAccount.email, normalizeRegisteredAccountRole(registeredAccount.role));
           setSession({ email: registeredAccount.email, remembered: true, createdAt: new Date().toISOString() });
-          return registeredAccount;
+          return { status: "authenticated", account: registeredAccount };
         }
       }
 
@@ -2742,7 +2756,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         if (child) {
           saveRoleForEmail(child.username, "student");
           setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString() });
-          return child;
+          return { status: "authenticated", account: child };
         }
       }
 
@@ -2755,49 +2769,61 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     (credentials: { username: string; temporaryPassword: string; password: string }): CreatedAccountActivationResult => {
       const normalizedUsername = normalizeCreatedAccountUsername(credentials.username);
       const normalizedRegisteredLogin = credentials.username.trim().toLowerCase();
-      const normalizedChildUsername = normalizeChildUsername(credentials.username);
       const temporaryPassword = credentials.temporaryPassword.trim();
       const password = credentials.password.trim();
       const invalidMessage = "Check the assigned username and temporary password.";
       if (!temporaryPassword || !password) return { status: "error", message: invalidMessage };
+      const validationMessage = validateActivationPassword(password, temporaryPassword);
+      if (validationMessage) return { status: "error", message: validationMessage };
 
       if (normalizedUsername && !isBuiltInPrototypeIdentity(normalizedUsername)) {
         const managedAccount = managedAccountsRef.current.find(
           (account) =>
             account.username.trim().toLowerCase() === normalizedUsername
             && account.password === temporaryPassword
+            && account.requiresPasswordChange === true
             && account.status !== "inactive"
             && hasValidManagedStudentLink(account, studentsRef.current)
         );
         if (managedAccount) {
-          updateManagedAccountsState((current) => current.map((account) => (account.id === managedAccount.id ? { ...account, password } : account)));
-          return { status: "ok", username: managedAccount.username };
+          const updatedAccount = { ...managedAccount, password, requiresPasswordChange: false };
+          const updatedAccounts = managedAccountsRef.current.map((account) => (account.id === managedAccount.id ? updatedAccount : account));
+          try {
+            window.localStorage.setItem(stableKeys.managedAccounts, JSON.stringify(updatedAccounts));
+          } catch {
+            return { status: "error", message: "Account activation could not be saved on this device. Check storage access and try again." };
+          }
+          updateManagedAccountsState(updatedAccounts);
+          saveRoleForEmail(updatedAccount.username, updatedAccount.role);
+          setSession({ email: updatedAccount.username, remembered: true, createdAt: new Date().toISOString() });
+          return { status: "ok", username: updatedAccount.username, account: updatedAccount };
         }
       }
 
       if (normalizedRegisteredLogin && !isBuiltInPrototypeIdentity(normalizedRegisteredLogin)) {
         const registeredAccount = accountsRef.current.find(
-          (account) => account.email.trim().toLowerCase() === normalizedRegisteredLogin && account.password === temporaryPassword
+          (account) => account.email.trim().toLowerCase() === normalizedRegisteredLogin
+            && account.password === temporaryPassword
+            && account.requiresPasswordChange === true
         );
         if (registeredAccount) {
-          updateAccountsState((current) => current.map((account) => (account.email.trim().toLowerCase() === normalizedRegisteredLogin ? { ...account, password } : account)));
-          return { status: "ok", username: registeredAccount.email };
-        }
-      }
-
-      if (normalizedChildUsername && !isReservedPrototypeUsername(normalizedChildUsername)) {
-        const childAccount = childAccountsRef.current.find(
-          (account) => account.username.toLowerCase() === normalizedChildUsername.toLowerCase() && account.password === temporaryPassword
-        );
-        if (childAccount) {
-          updateChildAccountsState((current) => current.map((account) => (account.id === childAccount.id ? { ...account, password } : account)));
-          return { status: "ok", username: childAccount.username };
+          const updatedAccount = { ...registeredAccount, password, requiresPasswordChange: false };
+          const updatedAccounts = accountsRef.current.map((account) => (account.email.trim().toLowerCase() === normalizedRegisteredLogin ? updatedAccount : account));
+          try {
+            window.localStorage.setItem(stableKeys.accounts, JSON.stringify(updatedAccounts));
+          } catch {
+            return { status: "error", message: "Account activation could not be saved on this device. Check storage access and try again." };
+          }
+          updateAccountsState(updatedAccounts);
+          saveRoleForEmail(updatedAccount.email, normalizeRegisteredAccountRole(updatedAccount.role));
+          setSession({ email: updatedAccount.email, remembered: true, createdAt: new Date().toISOString() });
+          return { status: "ok", username: updatedAccount.email, account: updatedAccount };
         }
       }
 
       return { status: "error", message: invalidMessage };
     },
-    [updateAccountsState, updateChildAccountsState, updateManagedAccountsState]
+    [saveRoleForEmail, setSession, updateAccountsState, updateManagedAccountsState]
   );
 
   const childUsernameExists = useCallback(
@@ -2837,6 +2863,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         displayName,
         username,
         password,
+        requiresPasswordChange: true,
         role,
         status: account.status === "inactive" ? "inactive" : "active",
         ...(account.email?.trim() ? { email: account.email.trim().toLowerCase() } : {}),
@@ -2872,6 +2899,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const createdAccount: AccountRecord = {
         email: username,
         password,
+        requiresPasswordChange: true,
         role: "guardian",
         displayName,
         ...(account.email?.trim() ? { contactEmail: account.email.trim().toLowerCase() } : {}),

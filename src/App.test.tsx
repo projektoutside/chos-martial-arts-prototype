@@ -2470,6 +2470,49 @@ function ChildUsernameCollisionHarness() {
   );
 }
 
+function ActivationRequiredManagedAccountHarness() {
+  const { activateCreatedAccount, loginCreatedAccount, session } = useAppState();
+  const [result, setResult] = useState("none");
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          const loginResult = loginCreatedAccount({ username: "jordan.staff", password: "TemporaryPass123!" });
+          setResult(loginResult && "status" in loginResult ? loginResult.status : loginResult ? "legacy-authenticated" : "missing");
+        }}
+      >
+        Check activation-required login
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const activationResult = activateCreatedAccount({
+            username: "jordan.staff",
+            temporaryPassword: "TemporaryPass123!",
+            password: "PermanentPass123!"
+          });
+          setResult(activationResult.status);
+        }}
+      >
+        Complete local account activation
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const loginResult = loginCreatedAccount({ username: "jordan.staff", password: "PermanentPass123!" });
+          setResult(loginResult?.status ?? "missing");
+        }}
+      >
+        Sign in with permanent password
+      </button>
+      <p>Harness activation login result: {result}</p>
+      <p>Harness activation session email: {session?.email ?? "none"}</p>
+    </div>
+  );
+}
+
 function ChildLoginOwnershipHarness({ childId }: { childId: string }) {
   const { loginChildAccount, session } = useAppState();
 
@@ -5306,6 +5349,76 @@ describe("post-login operations app", () => {
       expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toEqual(expect.objectContaining({ email: "jordan.staff" }));
       expect(JSON.parse(window.localStorage.getItem("chos.accountRoles.v1") ?? "[]")).toContainEqual({ email: "jordan.staff", role: "staff" });
     });
+  });
+
+  it("does not create a local app session while a managed account still requires activation", async () => {
+    window.localStorage.setItem("chos.managedAccounts.v1", JSON.stringify([{
+      id: "managed-jordan-activation-helper",
+      displayName: "Jordan Lee",
+      username: "jordan.staff",
+      password: "TemporaryPass123!",
+      requiresPasswordChange: true,
+      role: "staff",
+      status: "active",
+      access: ["dashboard"],
+      createdAt: "2026-07-16T10:00:00.000Z"
+    }]));
+    window.localStorage.setItem("chos.childAccounts.v1", JSON.stringify([]));
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([]));
+
+    render(
+      <MemoryRouter initialEntries={["/manager"]}>
+        <AppStateProvider>
+          <ActivationRequiredManagedAccountHarness />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Check activation-required login" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Harness activation login result: activation-required")).toBeInTheDocument();
+      expect(screen.getByText("Harness activation session email: none")).toBeInTheDocument();
+      expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
+    });
+  });
+
+  it("atomically replaces a managed temporary password and starts the local app session", async () => {
+    window.localStorage.setItem("chos.managedAccounts.v1", JSON.stringify([{
+      id: "managed-jordan-activation-helper",
+      displayName: "Jordan Lee",
+      username: "jordan.staff",
+      password: "TemporaryPass123!",
+      requiresPasswordChange: true,
+      role: "staff",
+      status: "active",
+      access: ["dashboard"],
+      createdAt: "2026-07-16T10:00:00.000Z"
+    }]));
+
+    render(
+      <MemoryRouter initialEntries={["/manager"]}>
+        <AppStateProvider>
+          <ActivationRequiredManagedAccountHarness />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Complete local account activation" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Harness activation login result: ok")).toBeInTheDocument();
+      expect(screen.getByText("Harness activation session email: jordan.staff")).toBeInTheDocument();
+    });
+    expect(JSON.parse(window.localStorage.getItem("chos.managedAccounts.v1") ?? "[]")).toContainEqual(expect.objectContaining({
+      username: "jordan.staff",
+      password: "PermanentPass123!",
+      requiresPasswordChange: false
+    }));
+
+    clearActiveSession();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in with permanent password" }));
+    expect(await screen.findByText("Harness activation login result: authenticated")).toBeInTheDocument();
   });
 
   it("lets the manager create a parent account that lands on Cho's Room", async () => {

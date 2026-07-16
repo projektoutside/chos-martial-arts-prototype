@@ -203,6 +203,7 @@ export interface ManagedAccount {
   displayName: string;
   username: string;
   password: string;
+  requiresPasswordChange?: boolean;
   role: "staff" | "student";
   status: "active" | "inactive";
   email?: string;
