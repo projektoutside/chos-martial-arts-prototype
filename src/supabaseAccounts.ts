@@ -1,7 +1,7 @@
 import type { AccountRole, ManagedAccount, ManagerAccessKey } from "./types";
 import { isDeveloperAccountEnabled, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
 import { resolveAppEnvironment } from "./appEnvironment";
-import { requiresPasswordChange, validateActivationPassword } from "../supabase/functions/_shared/account-activation";
+import { accountPasswordPolicyText, isStrongActivationPassword, requiresPasswordChange, validateActivationPassword } from "../supabase/functions/_shared/account-activation";
 
 type SupabasePasswordResponse = {
   access_token: string;
@@ -54,7 +54,7 @@ export type SupabaseLoginResult =
 type SupabaseCreateAccountInput = {
   displayName: string;
   username: string;
-  password?: string;
+  password: string;
   role: AccountRole;
   status?: ManagedAccount["status"];
   email: string;
@@ -67,7 +67,7 @@ type SupabaseCreateAccountInput = {
 
 type SupabaseCreateAccountResult =
   | { status: "not-configured" }
-  | { status: "ok"; invitationStatus: "pending"; email: string }
+  | { status: "ok"; activationRequired: true; username: string; email: string }
   | { status: "error"; message: string };
 
 export type SupabaseAccountActivationRequestResult =
@@ -563,11 +563,12 @@ export async function createSupabaseManagedAccount(account: SupabaseCreateAccoun
   }
 
   const username = normalizeSupabaseUsername(account.username);
-  const password = account.password?.trim();
+  const password = account.password.trim();
   const displayName = account.displayName.trim();
   const role = account.role === "staff" || account.role === "student" || account.role === "guardian" ? account.role : "staff";
   const email = account.email.trim().toLowerCase();
-  if (!username || !displayName || !email) return { status: "error", message: "Enter a display name, username, and real email before sending an invitation." };
+  if (!username || !displayName || !email || !password) return { status: "error", message: "Enter a display name, username, temporary password, and real email before creating the account." };
+  if (!isStrongActivationPassword(password)) return { status: "error", message: accountPasswordPolicyText };
 
   const createUrl = `${supabaseUrl().replace(/\/+$/, "")}/functions/v1/manager-create-account`;
   const payload = {
@@ -576,7 +577,7 @@ export async function createSupabaseManagedAccount(account: SupabaseCreateAccoun
     role,
     status: account.status ?? "active",
     email,
-    ...(password ? { password } : {}),
+    password,
     ...(account.phone?.trim() ? { phone: account.phone.trim() } : {}),
     ...(account.title?.trim() ? { title: account.title.trim() } : {}),
     ...(account.notes?.trim() ? { notes: account.notes.trim() } : {}),
@@ -596,10 +597,11 @@ export async function createSupabaseManagedAccount(account: SupabaseCreateAccoun
     });
 
     if (response.ok) {
-      const body = await response.json().catch(() => ({})) as { invitationStatus?: unknown; email?: unknown };
+      const body = await response.json().catch(() => ({})) as { activationRequired?: unknown; username?: unknown; email?: unknown };
       return {
         status: "ok",
-        invitationStatus: "pending",
+        activationRequired: true,
+        username: typeof body.username === "string" ? body.username : username,
         email: typeof body.email === "string" ? body.email : email
       };
     }

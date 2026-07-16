@@ -550,7 +550,7 @@ describe("supabase account adapter", () => {
       access: ["dashboard"]
     });
 
-    expect(result).toEqual({ status: "ok", invitationStatus: "pending", email: "jordan@example.com" });
+    expect(result).toEqual({ status: "ok", activationRequired: true, username: "jordan.staff", email: "jordan@example.com" });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://project.supabase.co/functions/v1/manager-create-account",
       expect.objectContaining({
@@ -690,18 +690,21 @@ describe("supabase account adapter", () => {
     }));
     const fetchMock = vi.fn(async () => jsonResponse({
       email: "new.staff@example.com",
-      invitationStatus: "pending"
+      username: "new.staff",
+      activationRequired: true
     }));
     globalThis.fetch = fetchMock as typeof fetch;
 
     await expect(createSupabaseManagedAccount({
       displayName: "New Staff",
       username: "new.staff",
+      password: "StaffPass123!",
       role: "staff",
       email: "new.staff@example.com"
     })).resolves.toEqual({
       status: "ok",
-      invitationStatus: "pending",
+      activationRequired: true,
+      username: "new.staff",
       email: "new.staff@example.com"
     });
     expect(fetchMock).toHaveBeenCalledWith(

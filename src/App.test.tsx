@@ -2980,43 +2980,109 @@ describe("login landing", () => {
     expect(window.localStorage.getItem("chos.accountRoles.v1")).toBeNull();
   });
 
-  it("offers activation without reopening public self-registration", () => {
+  it("offers a dedicated new-account access flow without reopening public self-registration", () => {
     renderLoggedOutApp("/");
 
     expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Create Account" }));
-    expect(screen.getByRole("dialog", { name: "Activate account" })).toBeInTheDocument();
-    expect(screen.getByText("A Developer or Manager must create your profile before you can activate it.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Access New Account" }));
+    expect(screen.getByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Account name")).toHaveAttribute("autocomplete", "username");
+    expect(screen.getByLabelText("Temporary password")).toHaveAttribute("autocomplete", "current-password");
     expect(screen.queryByText(/public sign.?up/i)).not.toBeInTheDocument();
-    expect(screen.getByText("Invited users sign in with their email. Legacy usernames still work.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign in as Guest" })).not.toBeInTheDocument();
   });
 
-  it("lets an invited hosted user request an existing-account-only activation link", async () => {
+  it("activates a hosted account with assigned credentials and a new personal password", async () => {
     vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
     vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
     vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
     const originalFetch = globalThis.fetch;
-    const fetchMock = vi.fn(async (_url: string | URL | Request) => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/auth/v1/token")) {
+        return new Response(JSON.stringify({
+          access_token: "temporary-account-token",
+          expires_in: 3600,
+          user: {
+            id: "new-staff-user-id",
+            email: "jordan.staff@accounts.chosmartialarts.app",
+            app_metadata: { requires_password_change: true }
+          }
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.includes("/rest/v1/profiles")) {
+        return new Response(JSON.stringify([{
+          id: "new-staff-user-id",
+          username: "jordan.staff",
+          contact_email: "jordan@example.com",
+          display_name: "Jordan Lee",
+          role: "staff",
+          status: "active",
+          phone: null,
+          title: null,
+          notes: null,
+          access: ["dashboard"],
+          student_id: null,
+          created_by: "manager-user-id",
+          created_at: "2026-07-16T00:00:00.000Z"
+        }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.includes("/functions/v1/activate-account")) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
     globalThis.fetch = fetchMock as typeof fetch;
 
     try {
       renderLoggedOutApp("/");
-      fireEvent.click(screen.getByRole("button", { name: "Create Account" }));
-      fireEvent.change(screen.getByLabelText("Account email"), { target: { value: " invited@example.com " } });
-      fireEvent.click(screen.getByRole("button", { name: "Send Activation Link" }));
+      fireEvent.click(screen.getByRole("button", { name: "Access New Account" }));
+      fireEvent.change(screen.getByLabelText("Account name"), { target: { value: "jordan.staff" } });
+      fireEvent.change(screen.getByLabelText("Temporary password"), { target: { value: "TemporaryPass123!" } });
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
-      expect(await screen.findByText("If that profile was created, a secure activation link is on its way.")).toBeInTheDocument();
+      expect(await screen.findByText("Create your personal password")).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "PermanentPass123!" } });
+      fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "PermanentPass123!" } });
+      fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
+
+      expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
       expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringMatching(/^https:\/\/zfuwbbepsnmmlpgfkmhz\.supabase\.co\/auth\/v1\/otp\?redirect_to=/),
+        "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/activate-account",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ email: "invited@example.com", create_user: false })
+          body: JSON.stringify({ newPassword: "PermanentPass123!", temporaryPassword: "TemporaryPass123!" })
         })
       );
-      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/signup"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("routes a hosted temporary-password sign-in into the required password change", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).includes("/auth/v1/token")) {
+        return new Response(JSON.stringify({ access_token: "temporary-account-token", expires_in: 3600, user: { id: "new-staff-user-id", email: "jordan.staff@accounts.chosmartialarts.app", app_metadata: { requires_password_change: true } } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify([{ id: "new-staff-user-id", username: "jordan.staff", contact_email: null, display_name: "Jordan Lee", role: "staff", status: "active", phone: null, title: null, notes: null, access: ["dashboard"], student_id: null, created_by: null, created_at: "2026-07-16T00:00:00.000Z" }]), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+
+    try {
+      renderLoggedOutApp("/");
+      fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "jordan.staff" } });
+      fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "TemporaryPass123!" } });
+      fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+      expect(await screen.findByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+      expect(screen.getByText("Create your personal password")).toBeInTheDocument();
+      expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -3028,6 +3094,7 @@ describe("login landing", () => {
       displayName: "Jordan Lee",
       username: "jordan.staff",
       password: "TemporaryPass123!",
+      requiresPasswordChange: true,
       role: "staff",
       status: "active",
       access: ["dashboard"],
@@ -3035,15 +3102,16 @@ describe("login landing", () => {
     }]));
     renderLoggedOutApp("/");
 
-    fireEvent.click(screen.getByRole("button", { name: "Create Account" }));
-    fireEvent.change(screen.getByLabelText("Assigned username"), { target: { value: "jordan.staff" } });
+    fireEvent.click(screen.getByRole("button", { name: "Access New Account" }));
+    fireEvent.change(screen.getByLabelText("Account name"), { target: { value: "jordan.staff" } });
     fireEvent.change(screen.getByLabelText("Temporary password"), { target: { value: "TemporaryPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("Create your personal password")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "NewLocalPass123!" } });
     fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "NewLocalPass123!" } });
     fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
 
-    expect(await screen.findByText("Account activated. Sign in with your username and new password.")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Username")).toHaveValue("jordan.staff");
+    expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem("chos.managedAccounts.v1") ?? "[]")).toContainEqual(expect.objectContaining({
       username: "jordan.staff",
       password: "NewLocalPass123!"
@@ -4966,7 +5034,7 @@ describe("post-login operations app", () => {
     expect(screen.getByRole("heading", { name: "MANAGER PANEL" })).toBeInTheDocument();
   });
 
-  it("lets the manager create a staff account that can log in without Create access", async () => {
+  it("lets the manager create a staff account that activates without Create access", async () => {
     const managerView = renderLoggedInApp("/manager");
 
     fireEvent.click(screen.getByRole("link", { name: "Create" }));
@@ -5001,6 +5069,10 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "StaffPass123!" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
+    expect(await screen.findByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "PermanentStaffPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "PermanentStaffPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "Profile" }));
     expect(await screen.findByRole("heading", { name: "Staff Profile" })).toBeInTheDocument();
@@ -5084,7 +5156,7 @@ describe("post-login operations app", () => {
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
   });
 
-  it("lets the manager create a student account that can log in", async () => {
+  it("lets the manager create a student account that activates and logs in", async () => {
     const managerView = renderLoggedInApp("/manager?tool=create");
 
     fireEvent.click(screen.getByRole("button", { name: "Student" }));
@@ -5119,6 +5191,10 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "StudentPass123!" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
+    expect(await screen.findByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "PermanentStudentPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "PermanentStudentPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
   });
 
@@ -5421,7 +5497,7 @@ describe("post-login operations app", () => {
     expect(await screen.findByText("Harness activation login result: authenticated")).toBeInTheDocument();
   });
 
-  it("lets the manager create a parent account that lands on Cho's Room", async () => {
+  it("requires a manager-created parent to replace the temporary password before entering Cho's Room", async () => {
     const managerView = renderLoggedInApp("/manager?tool=create");
 
     fireEvent.click(screen.getByRole("button", { name: "Parent" }));
@@ -5449,10 +5525,14 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "ParentPass123!" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
+    expect(await screen.findByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "PermanentParentPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "PermanentParentPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
   });
 
-  it("lets the gated developer create local staff accounts", async () => {
+  it("lets the gated developer create local staff accounts that require activation", async () => {
     const developerView = renderLoggedInDeveloperApp("/manager?tool=create");
 
     expect(screen.getByLabelText("Developer app launcher")).toBeInTheDocument();
@@ -5473,6 +5553,10 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "StaffPass123!" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
+    expect(await screen.findByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "PermanentDevStaff123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "PermanentDevStaff123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
   });
 
@@ -5517,8 +5601,8 @@ describe("post-login operations app", () => {
       const body = JSON.parse(String(init?.body ?? "{}"));
       return new Response(JSON.stringify({
         email: body.email,
-        invited: true,
-        invitationStatus: "pending",
+        username: body.username,
+        activationRequired: true,
         account: {
           id: `${body.role}-remote-id`,
           username: body.username,
@@ -5534,11 +5618,13 @@ describe("post-login operations app", () => {
       const createAccountCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/functions/v1/manager-create-account"));
 
       expect(screen.getByText("Create live Supabase sign-in profiles for staff, students, and parents. An authorized Developer or Manager Supabase session is required before a live account is created.")).toBeInTheDocument();
-      expect(screen.getByText("Enter the user's real email and profile details. They will receive a secure invitation to create their own password.")).toBeInTheDocument();
+      expect(screen.getByText("Set a temporary password, then give the user their account name and temporary password. They will replace it from Access New Account.")).toBeInTheDocument();
       expect(screen.queryByText(/Create local sign-in credentials/)).not.toBeInTheDocument();
 
       fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Remote Staff" } });
       fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "remote.staff" } });
+      fireEvent.change(screen.getByLabelText("Staff temporary password"), { target: { value: "RemoteStaffPass123!" } });
+      fireEvent.change(screen.getByLabelText("Confirm staff temporary password"), { target: { value: "RemoteStaffPass123!" } });
       fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "remote.staff@example.test" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
 
@@ -5547,6 +5633,8 @@ describe("post-login operations app", () => {
       fireEvent.click(screen.getByRole("button", { name: "Student" }));
       fireEvent.change(screen.getByLabelText("Student full name"), { target: { value: "Remote Student" } });
       fireEvent.change(screen.getByLabelText("Student username"), { target: { value: "remote.student" } });
+      fireEvent.change(screen.getByLabelText("Student temporary password"), { target: { value: "RemoteStudentPass123!" } });
+      fireEvent.change(screen.getByLabelText("Confirm student temporary password"), { target: { value: "RemoteStudentPass123!" } });
       fireEvent.change(screen.getByLabelText("Student email"), { target: { value: "remote.student@example.test" } });
       fireEvent.change(screen.getByLabelText("Parent/guardian phone"), { target: { value: "(262) 555-0140" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Student Account" }));
@@ -5556,17 +5644,18 @@ describe("post-login operations app", () => {
       fireEvent.click(screen.getByRole("button", { name: "Parent" }));
       fireEvent.change(screen.getByLabelText("Parent full name"), { target: { value: "Remote Parent" } });
       fireEvent.change(screen.getByLabelText("Parent username"), { target: { value: "remote.parent" } });
+      fireEvent.change(screen.getByLabelText("Parent temporary password"), { target: { value: "RemoteParentPass123!" } });
+      fireEvent.change(screen.getByLabelText("Confirm parent temporary password"), { target: { value: "RemoteParentPass123!" } });
       fireEvent.change(screen.getByLabelText("Parent email"), { target: { value: "remote.parent@example.test" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Parent Account" }));
 
       await waitFor(() => expect(createAccountCalls()).toHaveLength(3));
       const requestBodies = createAccountCalls().map(([, init]) => JSON.parse(String((init as RequestInit).body)));
       expect(requestBodies).toEqual([
-        expect.objectContaining({ username: "remote.staff", role: "staff", email: "remote.staff@example.test", access: expect.arrayContaining(["dashboard"]) }),
-        expect.objectContaining({ username: "remote.student", role: "student", email: "remote.student@example.test", studentId: "student-remote-student" }),
-        expect.objectContaining({ username: "remote.parent", role: "guardian", email: "remote.parent@example.test" })
+        expect.objectContaining({ username: "remote.staff", password: "RemoteStaffPass123!", role: "staff", email: "remote.staff@example.test", access: expect.arrayContaining(["dashboard"]) }),
+        expect.objectContaining({ username: "remote.student", password: "RemoteStudentPass123!", role: "student", email: "remote.student@example.test", studentId: "student-remote-student" }),
+        expect.objectContaining({ username: "remote.parent", password: "RemoteParentPass123!", role: "guardian", email: "remote.parent@example.test" })
       ]);
-      expect(requestBodies.every((body) => !("password" in body))).toBe(true);
       expect(fetchMock).toHaveBeenCalledWith(
         "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/manager-create-account",
         expect.objectContaining({

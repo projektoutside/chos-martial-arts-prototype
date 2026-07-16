@@ -14,6 +14,7 @@ export default defineConfig({
       ...configDefaults.exclude,
       "e2e/**",
       ".worktrees/**",
+      "scripts/activate-account-contract.test.mjs",
       "scripts/manager-create-account-contract.test.mjs",
       "scripts/validate-play-release-input.test.mjs",
       "scripts/verify-android-variant.test.mjs",

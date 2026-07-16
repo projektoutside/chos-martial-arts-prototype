@@ -9848,7 +9848,7 @@ function CreateAccountsPage() {
   const createLiveSupabaseAccount = async (account: {
     displayName: string;
     username: string;
-    password?: string;
+    password: string;
     role: AccountRole;
     email: string;
     phone?: string;
@@ -9867,7 +9867,7 @@ function CreateAccountsPage() {
     try {
       const result = await createSupabaseManagedAccount({ ...account, status: "active" });
       if (result.status === "ok") {
-        const message = `Invitation sent to ${result.email}; account acceptance is pending.`;
+        const message = `${result.username} was created. Give the user their account name and temporary password so they can choose a personal password.`;
         setFormMessage(message);
         showToast(message);
         return "created";
@@ -9895,7 +9895,7 @@ function CreateAccountsPage() {
 
   const createStaff = async (event: FormEvent) => {
     event.preventDefault();
-    const passwordError = isSupabaseAuthConfigured() ? "" : validatePasswordFields(staffForm.password, staffForm.confirmPassword);
+    const passwordError = validatePasswordFields(staffForm.password, staffForm.confirmPassword);
     if (passwordError) {
       showFormMessage(passwordError);
       return;
@@ -9910,6 +9910,7 @@ function CreateAccountsPage() {
       const liveCreated = await createLiveSupabaseAccount({
         displayName,
         username,
+        password: staffForm.password,
         role: "staff",
         email: staffForm.email.trim() || `${username}@chos.prototype`,
         phone: staffForm.phone,
@@ -9944,7 +9945,7 @@ function CreateAccountsPage() {
 
   const createStudent = async (event: FormEvent) => {
     event.preventDefault();
-    const passwordError = isSupabaseAuthConfigured() ? "" : validatePasswordFields(studentForm.password, studentForm.confirmPassword);
+    const passwordError = validatePasswordFields(studentForm.password, studentForm.confirmPassword);
     if (passwordError) {
       showFormMessage(passwordError);
       return;
@@ -9964,6 +9965,7 @@ function CreateAccountsPage() {
       const liveCreated = await createLiveSupabaseAccount({
         displayName: studentName,
         username,
+        password: studentForm.password,
         role: "student",
         email: studentForm.studentEmail.trim() || `${username}@chos.prototype`,
         phone: studentForm.guardianPhone,
@@ -10029,7 +10031,7 @@ function CreateAccountsPage() {
 
   const createParent = async (event: FormEvent) => {
     event.preventDefault();
-    const passwordError = isSupabaseAuthConfigured() ? "" : validatePasswordFields(parentForm.password, parentForm.confirmPassword);
+    const passwordError = validatePasswordFields(parentForm.password, parentForm.confirmPassword);
     if (passwordError) {
       showFormMessage(passwordError);
       return;
@@ -10044,6 +10046,7 @@ function CreateAccountsPage() {
       const liveCreated = await createLiveSupabaseAccount({
         displayName,
         username,
+        password: parentForm.password,
         role: "guardian",
         email: parentForm.email.trim() || `${username}@chos.prototype`,
         phone: parentForm.phone,
@@ -10095,7 +10098,7 @@ function CreateAccountsPage() {
     ? "Create live Supabase sign-in profiles for staff, students, and parents. An authorized Developer or Manager Supabase session is required before a live account is created."
     : "Create local sign-in credentials for staff, students, and parents. Manager and Developer are the only accounts that can open this creator.";
   const creatorInstructions = liveSupabaseAccountsEnabled
-    ? "Enter the user's real email and profile details. They will receive a secure invitation to create their own password."
+    ? "Set a temporary password, then give the user their account name and temporary password. They will replace it from Access New Account."
     : "Choose the role, set the username and password, then hand the credentials to the family or staff member.";
 
   return (
@@ -10132,8 +10135,8 @@ function CreateAccountsPage() {
             <div className="student-form-grid">
               <label>Staff full name<input value={staffForm.displayName} onChange={(event) => setStaffForm({ ...staffForm, displayName: event.target.value })} /></label>
               <label>Staff username<input autoComplete="username" value={staffForm.username} onChange={(event) => setStaffForm({ ...staffForm, username: event.target.value })} /></label>
-              {!liveSupabaseAccountsEnabled && <label>Staff password<input type="password" autoComplete="new-password" value={staffForm.password} onChange={(event) => setStaffForm({ ...staffForm, password: event.target.value })} /></label>}
-              {!liveSupabaseAccountsEnabled && <label>Confirm staff password<input type="password" autoComplete="new-password" value={staffForm.confirmPassword} onChange={(event) => setStaffForm({ ...staffForm, confirmPassword: event.target.value })} /></label>}
+              <label>Staff temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Staff temporary password" : "Staff password"} type="password" autoComplete="new-password" value={staffForm.password} onChange={(event) => setStaffForm({ ...staffForm, password: event.target.value })} /></label>
+              <label>Confirm staff temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Confirm staff temporary password" : "Confirm staff password"} type="password" autoComplete="new-password" value={staffForm.confirmPassword} onChange={(event) => setStaffForm({ ...staffForm, confirmPassword: event.target.value })} /></label>
               <label>Staff email<input type="email" value={staffForm.email} onChange={(event) => setStaffForm({ ...staffForm, email: event.target.value })} /></label>
               <label>Staff phone<input value={staffForm.phone} onChange={(event) => setStaffForm({ ...staffForm, phone: event.target.value })} /></label>
               <label>Staff title<input value={staffForm.title} onChange={(event) => setStaffForm({ ...staffForm, title: event.target.value })} /></label>
@@ -10159,8 +10162,8 @@ function CreateAccountsPage() {
             <div className="student-form-grid">
               <label>Student full name<input value={studentForm.fullName} onChange={(event) => setStudentForm({ ...studentForm, fullName: event.target.value })} /></label>
               <label>Student username<input autoComplete="username" value={studentForm.username} onChange={(event) => setStudentForm({ ...studentForm, username: event.target.value })} /></label>
-              {!liveSupabaseAccountsEnabled && <label>Student password<input type="password" autoComplete="new-password" value={studentForm.password} onChange={(event) => setStudentForm({ ...studentForm, password: event.target.value })} /></label>}
-              {!liveSupabaseAccountsEnabled && <label>Confirm student password<input type="password" autoComplete="new-password" value={studentForm.confirmPassword} onChange={(event) => setStudentForm({ ...studentForm, confirmPassword: event.target.value })} /></label>}
+              <label>Student temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Student temporary password" : "Student password"} type="password" autoComplete="new-password" value={studentForm.password} onChange={(event) => setStudentForm({ ...studentForm, password: event.target.value })} /></label>
+              <label>Confirm student temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Confirm student temporary password" : "Confirm student password"} type="password" autoComplete="new-password" value={studentForm.confirmPassword} onChange={(event) => setStudentForm({ ...studentForm, confirmPassword: event.target.value })} /></label>
               <label>Student email<input type="email" value={studentForm.studentEmail} onChange={(event) => setStudentForm({ ...studentForm, studentEmail: event.target.value })} /></label>
               <label>Parent/guardian phone<input value={studentForm.guardianPhone} onChange={(event) => setStudentForm({ ...studentForm, guardianPhone: event.target.value })} /></label>
               <label>Parent/guardian name<input value={studentForm.guardianName} onChange={(event) => setStudentForm({ ...studentForm, guardianName: event.target.value })} /></label>
@@ -10180,8 +10183,8 @@ function CreateAccountsPage() {
             <div className="student-form-grid">
               <label>Parent full name<input value={parentForm.displayName} onChange={(event) => setParentForm({ ...parentForm, displayName: event.target.value })} /></label>
               <label>Parent username<input autoComplete="username" value={parentForm.username} onChange={(event) => setParentForm({ ...parentForm, username: event.target.value })} /></label>
-              {!liveSupabaseAccountsEnabled && <label>Parent password<input type="password" autoComplete="new-password" value={parentForm.password} onChange={(event) => setParentForm({ ...parentForm, password: event.target.value })} /></label>}
-              {!liveSupabaseAccountsEnabled && <label>Confirm parent password<input type="password" autoComplete="new-password" value={parentForm.confirmPassword} onChange={(event) => setParentForm({ ...parentForm, confirmPassword: event.target.value })} /></label>}
+              <label>Parent temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Parent temporary password" : "Parent password"} type="password" autoComplete="new-password" value={parentForm.password} onChange={(event) => setParentForm({ ...parentForm, password: event.target.value })} /></label>
+              <label>Confirm parent temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Confirm parent temporary password" : "Confirm parent password"} type="password" autoComplete="new-password" value={parentForm.confirmPassword} onChange={(event) => setParentForm({ ...parentForm, confirmPassword: event.target.value })} /></label>
               <label>Parent email<input type="email" value={parentForm.email} onChange={(event) => setParentForm({ ...parentForm, email: event.target.value })} /></label>
               <label>Parent phone<input value={parentForm.phone} onChange={(event) => setParentForm({ ...parentForm, phone: event.target.value })} /></label>
             </div>

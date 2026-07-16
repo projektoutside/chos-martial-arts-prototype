@@ -9,8 +9,9 @@ import {
 } from "./softKeyboardViewport";
 import { useSoftKeyboardEditor } from "./softKeyboardEditor";
 import { useAppState } from "./state";
-import { acknowledgeSupabaseWelcome, completeSupabaseInvitePassword, fetchSupabaseProfileOnboarding, isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, readSupabaseAuthSession, readSupabaseInviteCallback, requestSupabaseAccountActivation, signInSupabaseAccount, type SupabaseProfileOnboarding } from "./supabaseAccounts";
+import { acknowledgeSupabaseWelcome, activateSupabaseAccount, clearSupabaseAuthSession, completeSupabaseInvitePassword, fetchSupabaseProfileOnboarding, isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, readSupabaseAuthSession, readSupabaseInviteCallback, signInSupabaseAccount, type SupabaseProfileOnboarding } from "./supabaseAccounts";
 import { validateAccountPasswordChange } from "./accountPassword";
+import type { AccountRole } from "./types";
 import { FirstLoginWelcomeDialog } from "./FirstLoginWelcomeDialog";
 import { DemoEnvironmentBadge } from "./DemoEnvironmentBadge";
 import { initializeAppTheme } from "./theme";
@@ -366,7 +367,7 @@ function LoginLandingPage({
   handoffActive?: boolean;
   interactive?: boolean;
 }) {
-  const { activateCreatedAccount, login, loginCreatedAccount, showToast } = useAppState();
+  const { activateCreatedAccount, login, loginCreatedAccount, logout, showToast } = useAppState();
   const navigate = useNavigate();
   const loginLandingRef = useRef<HTMLElement | null>(null);
   const portraitStageRef = useRef<HTMLDivElement | null>(null);
@@ -382,11 +383,13 @@ function LoginLandingPage({
   const [setupPassword, setSetupPassword] = useState("");
   const [setupConfirmation, setSetupConfirmation] = useState("");
   const [setupMessage, setSetupMessage] = useState("");
+  const [createAccountInfoOpen, setCreateAccountInfoOpen] = useState(false);
   const [activationOpen, setActivationOpen] = useState(false);
+  const [activationStep, setActivationStep] = useState<"credentials" | "password">("credentials");
+  const [activationHostedSession, setActivationHostedSession] = useState<{ sessionEmail: string; role: AccountRole } | null>(null);
   const [activationPending, setActivationPending] = useState(false);
   const [activationMessage, setActivationMessage] = useState("");
   const [activationForm, setActivationForm] = useState({
-    email: "",
     username: "",
     temporaryPassword: "",
     password: "",
@@ -497,6 +500,14 @@ function LoginLandingPage({
           navigate("/");
           return;
         }
+        if (supabaseLogin.status === "activation-required") {
+          setActivationForm({ username: loginForm.username, temporaryPassword: loginForm.password, password: "", confirmation: "" });
+          setActivationHostedSession({ sessionEmail: supabaseLogin.sessionEmail, role: supabaseLogin.role });
+          setActivationStep("password");
+          setActivationMessage("");
+          setActivationOpen(true);
+          return;
+        }
         if (supabaseLogin.status === "inactive") {
           failLogin("The account is inactive.");
           return;
@@ -520,7 +531,15 @@ function LoginLandingPage({
 
     if (!supabaseConfigured) {
       const createdAccount = loginCreatedAccount(loginForm);
-      if (createdAccount) {
+      if (createdAccount?.status === "activation-required") {
+        setActivationForm({ username: loginForm.username, temporaryPassword: loginForm.password, password: "", confirmation: "" });
+        setActivationHostedSession(null);
+        setActivationStep("password");
+        setActivationMessage("");
+        setActivationOpen(true);
+        return;
+      }
+      if (createdAccount?.status === "authenticated") {
         navigate("/");
         return;
       }
@@ -553,13 +572,20 @@ function LoginLandingPage({
   };
 
   const openAccountActivation = () => {
+    setActivationForm({ username: loginForm.username, temporaryPassword: "", password: "", confirmation: "" });
+    setActivationStep("credentials");
+    setActivationHostedSession(null);
     setActivationMessage("");
     setActivationOpen(true);
   };
 
   const closeAccountActivation = () => {
     if (activationPending) return;
+    clearSupabaseAuthSession();
     setActivationOpen(false);
+    setActivationStep("credentials");
+    setActivationHostedSession(null);
+    setActivationForm({ username: "", temporaryPassword: "", password: "", confirmation: "" });
     setActivationMessage("");
   };
 
@@ -567,19 +593,45 @@ function LoginLandingPage({
     event.preventDefault();
     setActivationMessage("");
 
-    if (supabaseConfigured) {
+    if (activationStep === "credentials") {
+      if (!activationForm.username.trim() || !activationForm.temporaryPassword.trim()) {
+        setActivationMessage("Enter the account name and temporary password you were given.");
+        return;
+      }
       setActivationPending(true);
-      const result = await requestSupabaseAccountActivation(activationForm.email);
+      if (supabaseConfigured) {
+        const result = await signInSupabaseAccount({ username: activationForm.username, password: activationForm.temporaryPassword });
+        setActivationPending(false);
+        if (result.status === "activation-required") {
+          setActivationHostedSession({ sessionEmail: result.sessionEmail, role: result.role });
+          setActivationStep("password");
+          return;
+        }
+        clearSupabaseAuthSession();
+        if (result.status === "authenticated") {
+          setActivationMessage("This account is already active. Use Sign In.");
+          return;
+        }
+        if (result.status === "inactive") {
+          setActivationMessage("This account is inactive. Ask a Manager or Developer for help.");
+          return;
+        }
+        setActivationMessage(result.status === "backend-inactive" || result.status === "error" ? result.message : "Check the account name and temporary password.");
+        return;
+      }
+
+      const result = loginCreatedAccount({ username: activationForm.username, password: activationForm.temporaryPassword });
       setActivationPending(false);
-      if (result.status === "error") {
-        setActivationMessage(result.message);
+      if (result?.status === "activation-required") {
+        setActivationStep("password");
         return;
       }
-      if (result.status === "not-configured") {
-        setActivationMessage("Account activation is unavailable.");
+      if (result?.status === "authenticated") {
+        logout();
+        setActivationMessage("This account is already active. Use Sign In.");
         return;
       }
-      setActivationMessage("If that profile was created, a secure activation link is on its way.");
+      setActivationMessage("Check the account name and temporary password.");
       return;
     }
 
@@ -588,19 +640,37 @@ function LoginLandingPage({
       setActivationMessage(validationMessage);
       return;
     }
-    const result = activateCreatedAccount({
-      username: activationForm.username,
-      temporaryPassword: activationForm.temporaryPassword,
-      password: activationForm.password
-    });
-    if (result.status === "error") {
-      setActivationMessage(result.message);
-      return;
+    setActivationPending(true);
+    if (supabaseConfigured) {
+      const result = await activateSupabaseAccount(activationForm.password, activationForm.temporaryPassword);
+      setActivationPending(false);
+      if (result.status !== "ok") {
+        setActivationMessage(result.status === "not-configured" ? "Account activation is unavailable." : result.message);
+        if (result.status === "session-expired") setActivationStep("credentials");
+        return;
+      }
+      if (!activationHostedSession) {
+        clearSupabaseAuthSession();
+        setActivationStep("credentials");
+        setActivationMessage("Your temporary sign-in expired. Start account access again.");
+        return;
+      }
+      login(activationHostedSession.sessionEmail, true, activationHostedSession.role);
+    } else {
+      const result = activateCreatedAccount({
+        username: activationForm.username,
+        temporaryPassword: activationForm.temporaryPassword,
+        password: activationForm.password
+      });
+      setActivationPending(false);
+      if (result.status === "error") {
+        setActivationMessage(result.message);
+        return;
+      }
     }
-    setLoginForm({ username: result.username, password: "" });
-    setActivationForm({ email: "", username: "", temporaryPassword: "", password: "", confirmation: "" });
-    setSetupMessage("Account activated. Sign in with your username and new password.");
+    setActivationForm({ username: "", temporaryPassword: "", password: "", confirmation: "" });
     setActivationOpen(false);
+    navigate("/");
   };
 
   return (
@@ -661,10 +731,15 @@ function LoginLandingPage({
           <button className="login-submit" type="submit" disabled={loginPending}>
             {loginPending ? "Signing In..." : "Sign In"}
           </button>
-          <button className="login-create" type="button" onClick={openAccountActivation}>
-            Create Account
-          </button>
-          <p className="login-invite-only-note">Invited users sign in with their email. Legacy usernames still work.</p>
+          <div className="login-secondary-actions">
+            <button className="login-create" type="button" onClick={() => setCreateAccountInfoOpen(true)}>
+              Create Account
+            </button>
+            <button className="login-create login-access-new-account" type="button" onClick={openAccountActivation}>
+              Access New Account
+            </button>
+          </div>
+          <p className="login-invite-only-note">Use Sign In for an active account, or Access New Account with the temporary password you were given.</p>
           {setupMessage && <p className="login-invite-only-note" role="status">{setupMessage}</p>}
         </form>
         <div className="login-divider" aria-hidden="true">
@@ -687,36 +762,36 @@ function LoginLandingPage({
           </div>
         </ModalShell>
       )}
+      {createAccountInfoOpen && (
+        <ModalShell label="Create account" onClose={() => setCreateAccountInfoOpen(false)} panelClass="modal-card login-failed-modal">
+          <div className="login-failed-content">
+            <h2>Need an account?</h2>
+            <p>A Developer or Manager must create your account and give you an account name and temporary password.</p>
+            <button className="btn btn-red login-failed-action" type="button" onClick={() => setCreateAccountInfoOpen(false)}>Got It</button>
+          </div>
+        </ModalShell>
+      )}
       {activationOpen && (
-        <ModalShell label="Activate account" onClose={closeAccountActivation} panelClass="modal-card login-failed-modal account-activation-modal">
+        <ModalShell label="Access new account" onClose={closeAccountActivation} panelClass="modal-card login-failed-modal account-activation-modal">
           <form className="login-failed-content account-activation-form" onSubmit={submitAccountActivation}>
-            <h2>Activate your account</h2>
-            <p>A Developer or Manager must create your profile before you can activate it.</p>
-            {supabaseConfigured ? (
-              <label>
-                <span>Account email</span>
-                <input
-                  aria-label="Account email"
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  value={activationForm.email}
-                  onChange={(event) => setActivationForm({ ...activationForm, email: event.target.value })}
-                />
-              </label>
+            <h2>{activationStep === "credentials" ? "Access your new account" : "Create your personal password"}</h2>
+            <p>{activationStep === "credentials" ? "Enter the account name and temporary password a Developer or Manager gave you." : "Your temporary credentials are correct. Replace the temporary password before entering the app."}</p>
+            {activationStep === "credentials" ? (
+              <>
+                <label><span>Account name</span><input aria-label="Account name" autoComplete="username" value={activationForm.username} onChange={(event) => setActivationForm({ ...activationForm, username: event.target.value })} /></label>
+                <label><span>Temporary password</span><input aria-label="Temporary password" type="password" autoComplete="current-password" value={activationForm.temporaryPassword} onChange={(event) => setActivationForm({ ...activationForm, temporaryPassword: event.target.value })} /></label>
+              </>
             ) : (
               <>
-                <label><span>Assigned username</span><input aria-label="Assigned username" autoComplete="username" value={activationForm.username} onChange={(event) => setActivationForm({ ...activationForm, username: event.target.value })} /></label>
-                <label><span>Temporary password</span><input aria-label="Temporary password" type="password" autoComplete="current-password" value={activationForm.temporaryPassword} onChange={(event) => setActivationForm({ ...activationForm, temporaryPassword: event.target.value })} /></label>
                 <label><span>New password</span><input aria-label="New account password" type="password" autoComplete="new-password" value={activationForm.password} onChange={(event) => setActivationForm({ ...activationForm, password: event.target.value })} /></label>
                 <label><span>Confirm password</span><input aria-label="Confirm account password" type="password" autoComplete="new-password" value={activationForm.confirmation} onChange={(event) => setActivationForm({ ...activationForm, confirmation: event.target.value })} /></label>
               </>
             )}
-            {activationMessage && <p className={activationMessage.startsWith("If that profile") ? "account-activation-success" : "login-error"} role="status">{activationMessage}</p>}
+            {activationMessage && <p className="login-error" role="status">{activationMessage}</p>}
             <div className="account-activation-actions">
               <button className="btn btn-ghost" type="button" onClick={closeAccountActivation} disabled={activationPending}>Cancel</button>
               <button className="btn btn-red" type="submit" disabled={activationPending}>
-                {activationPending ? "Sending..." : supabaseConfigured ? "Send Activation Link" : "Activate Account"}
+                {activationPending ? "Checking..." : activationStep === "credentials" ? "Continue" : "Activate Account"}
               </button>
             </div>
           </form>
