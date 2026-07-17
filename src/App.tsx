@@ -383,7 +383,6 @@ function LoginLandingPage({
   const [setupPassword, setSetupPassword] = useState("");
   const [setupConfirmation, setSetupConfirmation] = useState("");
   const [setupMessage, setSetupMessage] = useState("");
-  const [createAccountInfoOpen, setCreateAccountInfoOpen] = useState(false);
   const [activationOpen, setActivationOpen] = useState(false);
   const [activationStep, setActivationStep] = useState<"credentials" | "password">("credentials");
   const [activationHostedSession, setActivationHostedSession] = useState<{ sessionEmail: string; role: AccountRole } | null>(null);
@@ -732,9 +731,6 @@ function LoginLandingPage({
             {loginPending ? "Signing In..." : "Sign In"}
           </button>
           <div className="login-secondary-actions">
-            <button className="login-create" type="button" onClick={() => setCreateAccountInfoOpen(true)}>
-              Create Account
-            </button>
             <button className="login-create login-access-new-account" type="button" onClick={openAccountActivation}>
               Access New Account
             </button>
@@ -759,15 +755,6 @@ function LoginLandingPage({
             <button className="btn btn-red login-failed-action" type="button" onClick={() => setLoginFailedOpen(false)}>
               Try Again
             </button>
-          </div>
-        </ModalShell>
-      )}
-      {createAccountInfoOpen && (
-        <ModalShell label="Create account" onClose={() => setCreateAccountInfoOpen(false)} panelClass="modal-card login-failed-modal">
-          <div className="login-failed-content">
-            <h2>Need an account?</h2>
-            <p>A Developer or Manager must create your account and give you an account name and temporary password.</p>
-            <button className="btn btn-red login-failed-action" type="button" onClick={() => setCreateAccountInfoOpen(false)}>Got It</button>
           </div>
         </ModalShell>
       )}

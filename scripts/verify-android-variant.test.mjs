@@ -4,6 +4,7 @@ import test from "node:test";
 
 const gradle = readFileSync(new URL("../android/app/build.gradle", import.meta.url), "utf8");
 const variantBuilder = readFileSync(new URL("./build-android-variant.mjs", import.meta.url), "utf8");
+const stableWebBuilder = readFileSync(new URL("./build-web-stable.mjs", import.meta.url), "utf8");
 
 test("defines stable and testing Android identities", () => {
   assert.match(gradle, /flavorDimensions\s+["']environment["']/);
@@ -28,4 +29,8 @@ test("strips stable service variables from testing builds", () => {
 
 test("prevents GitHub Actions metadata from changing the Capacitor asset base", () => {
   assert.match(variantBuilder, /delete env\.GITHUB_REPOSITORY/);
+});
+
+test("keeps the approved developer login enabled in stable web builds", () => {
+  assert.match(stableWebBuilder, /VITE_ENABLE_DEVELOPER_ACCOUNT:\s*["']true["']/);
 });

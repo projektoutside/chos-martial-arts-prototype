@@ -2986,7 +2986,8 @@ describe("login landing", () => {
     expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create Account" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Access New Account" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Access New Account" }));
     expect(screen.getByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
     expect(screen.getByLabelText("Account name")).toHaveAttribute("autocomplete", "username");

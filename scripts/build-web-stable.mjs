@@ -4,7 +4,8 @@ const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const env = {
   ...process.env,
   VITE_APP_VARIANT: "stable",
-  VITE_APPROVED_SUPABASE_HOST: "zfuwbbepsnmmlpgfkmhz.supabase.co"
+  VITE_APPROVED_SUPABASE_HOST: "zfuwbbepsnmmlpgfkmhz.supabase.co",
+  VITE_ENABLE_DEVELOPER_ACCOUNT: "true"
 };
 
 const result = spawnSync(npmCommand, ["run", "build"], {
