@@ -149,6 +149,8 @@ function resolveKeyboardEditableTarget(target: EventTarget | null): KeyboardEdit
   const element = target as HTMLElement;
   if (isKeyboardEditableTarget(target)) return target;
 
+  if (element.closest("button, a, select, [role='button']")) return null;
+
   const editableAncestor = element.closest("input, textarea, [contenteditable], [role='textbox']");
   if (isKeyboardEditableTarget(editableAncestor)) return editableAncestor;
 

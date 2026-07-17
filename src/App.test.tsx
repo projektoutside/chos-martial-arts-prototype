@@ -3125,6 +3125,19 @@ describe("login landing", () => {
     expect(screen.queryByText(/default username and password/i)).not.toBeInTheDocument();
   });
 
+  it("keeps the password visibility control outside the password label activation area", () => {
+    renderLoggedOutApp("/");
+
+    const passwordInput = screen.getByLabelText("Password");
+    const visibilityButton = screen.getByRole("button", { name: "Show password" });
+
+    expect(visibilityButton.closest("label")).toBeNull();
+    expect(passwordInput).toHaveAttribute("type", "password");
+    fireEvent.click(visibilityButton);
+    expect(passwordInput).toHaveAttribute("type", "text");
+    expect(screen.getByRole("button", { name: "Hide password" })).toBeInTheDocument();
+  });
+
   it("signs the gated developer credential into owner mode on Live Chat", async () => {
     vi.stubEnv("VITE_ENABLE_DEVELOPER_ACCOUNT", "true");
     const { container } = renderLoggedOutApp("/");

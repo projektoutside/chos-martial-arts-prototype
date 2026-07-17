@@ -712,10 +712,11 @@ function LoginLandingPage({
             />
           </label>
           {errors.username && <p className="login-error">{errors.username}</p>}
-          <label className="login-field">
+          <div className="login-field">
             <Lock size={32} aria-hidden="true" />
-            <span className="sr-only">Password</span>
+            <span id="login-password-label" className="sr-only">Password</span>
             <input
+              aria-labelledby="login-password-label"
               autoComplete="current-password"
               placeholder="Password"
               type={passwordVisible ? "text" : "password"}
@@ -725,7 +726,7 @@ function LoginLandingPage({
             <button className="login-field-action" type="button" aria-label={passwordVisible ? "Hide password" : "Show password"} onClick={() => setPasswordVisible(!passwordVisible)}>
               {passwordVisible ? <EyeOff size={32} /> : <Eye size={32} />}
             </button>
-          </label>
+          </div>
           {errors.password && <p className="login-error">{errors.password}</p>}
           <button className="login-submit" type="submit" disabled={loginPending}>
             {loginPending ? "Signing In..." : "Sign In"}

@@ -192,6 +192,26 @@ describe("soft keyboard editor helpers", () => {
     expect(source).not.toHaveAttribute("data-soft-keyboard-source-armed");
   });
 
+  it("does not hijack the password visibility button inside a login field label", () => {
+    const login = document.createElement("main");
+    login.className = "login-landing";
+    const label = document.createElement("label");
+    const password = document.createElement("input");
+    password.type = "password";
+    const visibilityButton = document.createElement("button");
+    visibilityButton.type = "button";
+    visibilityButton.setAttribute("aria-label", "Show password");
+    label.append(password, visibilityButton);
+    login.append(label);
+    document.body.append(login);
+    cleanup = installSoftKeyboardEditor({ win: window, doc: document });
+
+    const pointerEvent = dispatchSinglePointerDown(visibilityButton, "touch");
+
+    expect(pointerEvent.defaultPrevented).toBe(false);
+    expect(document.documentElement.dataset.softKeyboardEditor).toBeUndefined();
+  });
+
   it("focuses and requests the phone keyboard before canceling the first trusted tap", () => {
     const order: string[] = [];
     const source = document.createElement("input");

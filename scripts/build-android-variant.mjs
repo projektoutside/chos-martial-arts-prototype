@@ -10,7 +10,10 @@ const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
 const gradleCommand = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
 const env = { ...process.env, VITE_APP_VARIANT: variant };
 delete env.GITHUB_REPOSITORY;
-if (variant === "stable") env.VITE_APPROVED_SUPABASE_HOST = "zfuwbbepsnmmlpgfkmhz.supabase.co";
+if (variant === "stable") {
+  env.VITE_APPROVED_SUPABASE_HOST = "zfuwbbepsnmmlpgfkmhz.supabase.co";
+  env.VITE_ENABLE_DEVELOPER_ACCOUNT = "true";
+}
 if (variant === "testing") {
   env.VITE_ENABLE_DEVELOPER_ACCOUNT = "true";
   delete env.VITE_SUPABASE_URL;

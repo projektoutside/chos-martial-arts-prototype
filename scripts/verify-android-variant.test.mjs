@@ -27,6 +27,13 @@ test("strips stable service variables from testing builds", () => {
   assert.match(variantBuilder, /env\.VITE_ENABLE_DEVELOPER_ACCOUNT\s*=\s*["']true["']/);
 });
 
+test("enables the approved developer login in stable Android builds", () => {
+  assert.match(
+    variantBuilder,
+    /if \(variant === ["']stable["']\)\s*\{[\s\S]*?env\.VITE_APPROVED_SUPABASE_HOST\s*=\s*["']zfuwbbepsnmmlpgfkmhz\.supabase\.co["'];[\s\S]*?env\.VITE_ENABLE_DEVELOPER_ACCOUNT\s*=\s*["']true["'];[\s\S]*?\}/
+  );
+});
+
 test("prevents GitHub Actions metadata from changing the Capacitor asset base", () => {
   assert.match(variantBuilder, /delete env\.GITHUB_REPOSITORY/);
 });
