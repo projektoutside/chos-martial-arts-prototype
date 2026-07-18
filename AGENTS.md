@@ -11,6 +11,7 @@
 ## Start Here
 
 - Run `git status -sb` before editing. This repo is often dirty, and active user changes must be preserved.
+- Before adding or changing any authenticated UI, feature button, navigation control, modal, or workflow, read and follow `docs/guided-onboarding-contract.md`. The guided-onboarding contract is a mandatory product requirement, not an optional polish pass.
 - Inspect the real source before changing behavior. Do not patch from memory.
 - Prefer small, high-confidence diffs over broad rewrites.
 - Use `rg` for searches when available.
@@ -35,6 +36,16 @@
 - Favor phone-app-style icon launchers and direct workflow pages over long scrolling dashboards when redesigning authenticated surfaces.
 - Keep the UI polished, responsive, accessible, and usable on mobile-sized screens.
 - Use real app behavior and testable controls; avoid marketing-only screens when the user asks for an app feature.
+
+## Mandatory Guided Onboarding Contract
+
+- Every new authenticated feature or moderate-complexity control must be evaluated for a one-time spotlight guide in the same change. Apply the rubric and exact markup contract in `docs/guided-onboarding-contract.md`.
+- A guided step must dim the rest of the app, spotlight the exact required control, show one short instruction, prevent unrelated pointer and keyboard actions, and advance only after the required control is activated.
+- Guided history is per signed-in user and per stable feature ID. Keep local progress plus authenticated Supabase progress. Never clear progress during normal app updates, never rename or reuse an existing feature ID, and never make a user repeat an identical guide.
+- The starter guide may route to `/profile` only once after the first successful login for that role. It must never run on the login page or replay on later logins.
+- Cover every authenticated role and visible role-specific surface, including Manager1, Manager2, Developer1, staff, parent, and student experiences. Hidden or unauthorized controls must never be guided.
+- Never require a destructive, financial, delivery, logout, permission-grant, or irreversible final action. Guide the safe entry control and, when necessary, the close/cancel control that exits without changing data.
+- Any change to guided behavior must include regression coverage for exact-target locking, no replay for the same user, separate progress for different users, remote-history failure behavior, and affected modal/route transitions. Verify both mobile and desktop layouts before release.
 
 ## State And Data Rules
 
