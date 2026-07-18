@@ -55,6 +55,7 @@ import { buildOperationsBackupSnapshot, makeOperationsBackupFilename, type Produ
 import { buildReportsCommandCenter, getMerchandiseReorderPoint, getMerchandiseTargetStock, isMissedClassFollowUpDue, isQueuedMessageDeliverable, type ReportsAttendanceGapCandidate, type ReportsCelebrationCandidate, type ReportsClassReminderCandidate, type ReportsDirectMessageReplyCandidate, type ReportsNewStudentCheckInCandidate, type ReportsPriorityAction, type ReportsProfileUpdateCandidate } from "./operationsReports";
 import { buildLiveChatNotificationPlan, enabledWebPushNotificationChannels } from "./notificationRouting";
 import { publicAsset } from "./appAssets";
+import { GuidedOnboardingProvider, useGuidedOnboarding } from "./GuidedOnboarding";
 import {
   fetchLiveChatMessages,
   getLiveChatAvailability,
@@ -167,6 +168,23 @@ const studentLauncherItems: ManagerLauncherItem[] = [
   { label: "Test", icon: "test" },
   { label: "Videos", icon: "videos" }
 ];
+
+const managerLauncherOnboardingCopy: Record<ManagerLauncherIconKind, { title: string; instruction: string }> = {
+  dashboard: { title: "Dashboard", instruction: "Shows the studio calendar, attendance snapshot, upcoming events, and the fastest daily actions." },
+  create: { title: "Create Accounts", instruction: "Creates staff, student, or parent logins and lets authorized managers activate or deactivate them." },
+  messages: { title: "Messages", instruction: "Opens direct messages, app notifications, approved text workflows, and delivery status tools." },
+  students: { title: "Students", instruction: "Opens the searchable student directory where staff can add profiles and update student details." },
+  classes: { title: "Classes", instruction: "Opens the class catalog where staff can create classes and edit capacity, instructor, age, and schedule details." },
+  studyGuide: { title: "Study Guide", instruction: "Organizes training materials into folders so students and families can review lessons outside class." },
+  events: { title: "Events", instruction: "Creates and manages tests, seminars, tournaments, and other dated studio events." },
+  scheduling: { title: "Scheduling", instruction: "Builds the studio schedule for classes, private lessons, starter programs, and custom appointments." },
+  merchandise: { title: "Merchandise", instruction: "Manages products, prices, inventory levels, and items that need to be reordered." },
+  videos: { title: "Videos", instruction: "Organizes training videos into folders and controls which lessons are available in the app." },
+  reports: { title: "Reports", instruction: "Finds attendance gaps, follow-ups, reminders, backups, and other manager action items in one command center." },
+  developer: { title: "Developer Tools", instruction: "Shows environment health, account totals, diagnostics, and technical export tools for app support." },
+  study: { title: "Study", instruction: "Opens the student study area for reviewing assigned martial arts learning materials." },
+  test: { title: "Test Preparation", instruction: "Opens belt-test preparation guidance so students know what to practice before testing." }
+};
 
 type LandingPageOption = {
   value: LandingPagePreference;
@@ -1664,9 +1682,11 @@ function OperationsShell({ children }: { children: ReactNode }) {
   }, [session?.email]);
 
   return (
-    <StaffOperationsShell accountRole={accountRole} sessionEmail={session?.email} logout={logout} path={location.pathname}>
-      {children}
-    </StaffOperationsShell>
+    <GuidedOnboardingProvider accountRole={accountRole} sessionEmail={session?.email}>
+      <StaffOperationsShell accountRole={accountRole} sessionEmail={session?.email} logout={logout} path={location.pathname}>
+        {children}
+      </StaffOperationsShell>
+    </GuidedOnboardingProvider>
   );
 }
 
@@ -4679,6 +4699,10 @@ function ProfileCommunicationSwipePanel({
           role="tab"
           tabIndex={activeMode === "liveChat" ? 0 : -1}
           type="button"
+          data-guided-onboarding-id="profile.communication.live-chat.v1"
+          data-guided-onboarding-title="Profile Live Chat"
+          data-guided-onboarding-instruction="Shows the live Cho's conversation inside your profile without leaving this page."
+          data-guided-onboarding-priority="750"
         >
           <MessagesSquare size={16} aria-hidden="true" />
           <span>Live Chat</span>
@@ -4692,6 +4716,10 @@ function ProfileCommunicationSwipePanel({
           role="tab"
           tabIndex={activeMode === "notifications" ? 0 : -1}
           type="button"
+          data-guided-onboarding-id="profile.communication.notifications.v1"
+          data-guided-onboarding-title={notificationLabel}
+          data-guided-onboarding-instruction="Switches this panel from live chat to your private messages and event notifications."
+          data-guided-onboarding-priority="751"
         >
           <Bell size={16} aria-hidden="true" />
           <span>{notificationLabel}</span>
@@ -5256,6 +5284,10 @@ function LiveChatRoomFrame({
           className="manager-launcher-rail-toggle live-chat-roster-toggle"
           onClick={() => setIsRosterCollapsed((current) => !current)}
           type="button"
+          data-guided-onboarding-id="shared.live-chat.members.v1"
+          data-guided-onboarding-title="Member List"
+          data-guided-onboarding-instruction="Collapses or expands the people list so the conversation can use more screen space."
+          data-guided-onboarding-priority="810"
         >
           <span className="manager-launcher-rail-toggle-bar" aria-hidden="true" />
         </button>
@@ -5287,6 +5319,10 @@ function LiveChatRoomFrame({
                       aria-selected={activeRoomId === room.id}
                       style={{ "--live-chat-room-tab-color": room.color } as CSSProperties}
                       onClick={() => setActiveRoomId(room.id)}
+                      data-guided-onboarding-id="shared.live-chat.rooms.v1"
+                      data-guided-onboarding-title="Chat Rooms"
+                      data-guided-onboarding-instruction="Switches the conversation to a different room; messages stay separated by room."
+                      data-guided-onboarding-priority="811"
                     >
                       {room.name}
                     </button>
@@ -5300,6 +5336,10 @@ function LiveChatRoomFrame({
                     aria-selected={isMentionsView}
                     style={{ "--live-chat-room-tab-color": "#8a63f2" } as CSSProperties}
                     onClick={() => setActiveRoomId(liveChatMentionsRoomId)}
+                    data-guided-onboarding-id="shared.live-chat.mentions.v1"
+                    data-guided-onboarding-title="Mentions"
+                    data-guided-onboarding-instruction="Filters live chat to messages that mention you so important replies are easy to find."
+                    data-guided-onboarding-priority="812"
                   >
                     Mentions <strong>{mentionMessages.length}</strong>
                   </button>
@@ -5385,7 +5425,15 @@ function LiveChatPage() {
         <header className="manager-launcher-topbar manager-page-title-bar" aria-label="Live chat page header">
           <ManagerPageTitleFrame title="Live Chats" className="manager-page-title-frame--manager-panel" />
           <nav className="manager-home-top-actions" aria-label="Live chat quick actions">
-            <Link className="manager-home-top-action manager-launcher-profile-link" to="/profile" aria-label="Profile">
+            <Link
+              className="manager-home-top-action manager-launcher-profile-link"
+              to="/profile"
+              aria-label="Profile"
+              data-guided-onboarding-id="navigation.profile.v1"
+              data-guided-onboarding-title="Return to Profile"
+              data-guided-onboarding-instruction="Returns to your personal profile, weekly view, messages, and account settings."
+              data-guided-onboarding-priority="900"
+            >
               <img className="manager-home-profile-action-photo" src={profileActionPhoto} alt="" draggable="false" />
               <span className="manager-home-top-action-label">Profile</span>
             </Link>
@@ -5773,6 +5821,7 @@ function HomeProfilePushSubscriptionControls({
 
 function StudentProfilePage() {
   const { currentChildAccount, directMessages, logout, scheduledClasses, sendDirectMessage, session, showToast, studioClasses, studioEvents, students } = useAppState();
+  const navigate = useNavigate();
   const today = useLiveCalendarDate();
   const selectedStudent = useMemo(() => {
     const sessionEmail = session?.email.toLowerCase();
@@ -6233,7 +6282,16 @@ function StudentProfilePage() {
       <header className="student-reference-header" aria-label="Student profile page header">
         <ManagerPageTitleFrame title="Profile" className="student-reference-title-frame" />
         <nav className="student-reference-top-actions" aria-label="Student profile quick actions">
-          <button className="student-reference-top-action" type="button" aria-label="Student Panel" onClick={() => setStudentBottomPanel("belt")}>
+          <button
+            className="student-reference-top-action"
+            type="button"
+            aria-label="Student Panel"
+            onClick={() => navigate("/manager")}
+            data-guided-onboarding-id="student.panel.v1"
+            data-guided-onboarding-title="Student Panel"
+            data-guided-onboarding-instruction="Opens the student app launcher for the dashboard, classes, study material, test preparation, and videos."
+            data-guided-onboarding-priority="10"
+          >
             <img src={managerPageIcon} alt="" aria-hidden="true" draggable="false" />
             <span>Student Panel</span>
           </button>
@@ -6246,7 +6304,16 @@ function StudentProfilePage() {
       <main className="student-reference-main">
         <section className="student-reference-top-grid" aria-label="Student profile summary and schedule">
           <article className="student-reference-profile-card" aria-label="Student reference profile card">
-            <button className="student-reference-profile-settings" type="button" aria-label="Profile Settings" onClick={() => setStudentProfileOpen(true)}>
+            <button
+              className="student-reference-profile-settings"
+              type="button"
+              aria-label="Profile Settings"
+              onClick={() => setStudentProfileOpen(true)}
+              data-guided-onboarding-id="student.profile-settings.v1"
+              data-guided-onboarding-title="Profile Settings"
+              data-guided-onboarding-instruction="Opens your profile details, password, theme, first-page choice, notifications, and color settings."
+              data-guided-onboarding-priority="700"
+            >
               <img src={managerProfileSettingsIcon} alt="" aria-hidden="true" draggable="false" />
             </button>
             <button
@@ -6336,6 +6403,10 @@ function StudentProfilePage() {
               aria-controls="student-profile-belt-case-panel"
               tabIndex={studentBottomPanel === "belt" ? 0 : -1}
               onClick={() => setStudentBottomPanel("belt")}
+              data-guided-onboarding-id="student.belt-case.v1"
+              data-guided-onboarding-title="Belt Case"
+              data-guided-onboarding-instruction="Shows your current belt journey and the display case for ranks you have earned."
+              data-guided-onboarding-priority="720"
             >
               <Award size={18} aria-hidden="true" />
               <span>Belt Case</span>
@@ -6348,6 +6419,10 @@ function StudentProfilePage() {
               aria-controls="student-profile-messages-panel"
               tabIndex={studentBottomPanel === "messages" ? 0 : -1}
               onClick={() => setStudentBottomPanel("messages")}
+              data-guided-onboarding-id="student.messages.v1"
+              data-guided-onboarding-title="Messages"
+              data-guided-onboarding-instruction="Shows private app messages from Cho's staff and lets you reply inside a selected thread."
+              data-guided-onboarding-priority="721"
             >
               <MessagesSquare size={18} aria-hidden="true" />
               <span>Messages</span>
@@ -6356,7 +6431,15 @@ function StudentProfilePage() {
           <button className="student-reference-star-button" type="button" aria-label="Great Job!">
             <Sparkles size={24} aria-hidden="true" />
           </button>
-          <button className="student-reference-edit-button" type="button" onClick={() => setStudentProfileOpen(true)}>
+          <button
+            className="student-reference-edit-button"
+            type="button"
+            onClick={() => setStudentProfileOpen(true)}
+            data-guided-onboarding-id="student.profile-settings.v1"
+            data-guided-onboarding-title="Edit Profile"
+            data-guided-onboarding-instruction="Opens the same profile settings used to update your personal app preferences."
+            data-guided-onboarding-priority="700"
+          >
             <FileText size={18} aria-hidden="true" />
             <span>Edit Profile</span>
           </button>
@@ -6574,7 +6657,16 @@ function StudentProfilePage() {
                 <h2>Profile Settings</h2>
                 <p>Edit student contact settings and app theme.</p>
               </div>
-              <button className="student-modal-close" type="button" aria-label="Close student profile settings" onClick={() => setStudentProfileOpen(false)}>
+              <button
+                className="student-modal-close"
+                type="button"
+                aria-label="Close student profile settings"
+                onClick={() => setStudentProfileOpen(false)}
+                data-guided-onboarding-id="student.profile-settings.close.v1"
+                data-guided-onboarding-title="Student Settings Panel"
+                data-guided-onboarding-instruction="This panel saves student-only preferences. Close it now to continue without changing anything."
+                data-guided-onboarding-priority="701"
+              >
                 <X size={20} />
               </button>
             </header>
@@ -7034,25 +7126,71 @@ function ParentChildProfileModal({
 
 function ParentFirstChildTutorialOverlay({
   createdChild,
-  onBack,
   onFinish,
   onOpenChildSide,
-  onSkip,
   stepId,
   targetPosition
 }: {
   createdChild?: ChildAccount;
-  onBack: () => void;
   onFinish: () => void;
   onOpenChildSide?: () => void;
-  onSkip: () => void;
   stepId: ParentTutorialStepId;
   targetPosition: ParentTutorialTargetPosition | null;
 }) {
   const step = parentTutorialSteps[stepId];
   const stepIndex = parentTutorialStepOrder.indexOf(stepId);
-  const isFirstStep = stepIndex <= 0;
   const isFinalStep = stepId === "created-child";
+  useEffect(() => {
+    if (import.meta.env.MODE === "test") return;
+    const target = document.querySelector<HTMLElement>(`[data-parent-tutorial-target="${step.target}"]`);
+    const coach = document.querySelector<HTMLElement>(".parent-tutorial-coach");
+    if (!target || !coach) return;
+    const previousDescribedBy = target.getAttribute("aria-describedby");
+    target.setAttribute("aria-describedby", "parent-tutorial-instruction");
+    document.documentElement.classList.add("parent-tutorial-is-active");
+
+    const isAllowedEvent = (event: Event) => {
+      if (!(event.target instanceof Node)) return false;
+      return isFinalStep ? coach.contains(event.target) : target.contains(event.target);
+    };
+    const blockUnrelatedAction = (event: Event) => {
+      if (isAllowedEvent(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+    const blockBackgroundScroll = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+    const retainRequiredFocus = (event: FocusEvent) => {
+      if (isAllowedEvent(event)) return;
+      event.preventDefault();
+      const focusTarget = isFinalStep ? coach.querySelector<HTMLElement>("button") : target;
+      focusTarget?.focus({ preventScroll: true });
+    };
+
+    const focusTarget = isFinalStep ? coach.querySelector<HTMLElement>("button") : target;
+    focusTarget?.focus({ preventScroll: true });
+    document.addEventListener("pointerdown", blockUnrelatedAction, true);
+    document.addEventListener("click", blockUnrelatedAction, true);
+    document.addEventListener("keydown", blockUnrelatedAction, true);
+    document.addEventListener("focusin", retainRequiredFocus, true);
+    document.addEventListener("wheel", blockBackgroundScroll, { capture: true, passive: false });
+    document.addEventListener("touchmove", blockBackgroundScroll, { capture: true, passive: false });
+    return () => {
+      document.documentElement.classList.remove("parent-tutorial-is-active");
+      if (previousDescribedBy) target.setAttribute("aria-describedby", previousDescribedBy);
+      else target.removeAttribute("aria-describedby");
+      document.removeEventListener("pointerdown", blockUnrelatedAction, true);
+      document.removeEventListener("click", blockUnrelatedAction, true);
+      document.removeEventListener("keydown", blockUnrelatedAction, true);
+      document.removeEventListener("focusin", retainRequiredFocus, true);
+      document.removeEventListener("wheel", blockBackgroundScroll, true);
+      document.removeEventListener("touchmove", blockBackgroundScroll, true);
+    };
+  }, [isFinalStep, step.target]);
   const spotlightStyle = targetPosition
     ? ({
         "--parent-tutorial-top": `${targetPosition.spotlight.top}px`,
@@ -7080,30 +7218,19 @@ function ParentFirstChildTutorialOverlay({
       >
         <p>Step {stepIndex + 1} of {parentTutorialStepOrder.length}</p>
         <h2>{step.title}</h2>
-        <span>{step.detail}</span>
-        <div className="parent-tutorial-actions">
-          {!isFirstStep && !isFinalStep && (
-            <button type="button" onClick={onBack}>
-              Back
-            </button>
-          )}
-          {isFinalStep ? (
-            <>
-              {createdChild && onOpenChildSide && (
-                <button className="parent-tutorial-open-child" type="button" onClick={onOpenChildSide}>
-                  Open {createdChild.name}&apos;s Student Side
-                </button>
-              )}
-              <button className="parent-tutorial-finish" type="button" onClick={onFinish}>
-                Finish
+        <span id="parent-tutorial-instruction">{step.detail}</span>
+        {isFinalStep && (
+          <div className="parent-tutorial-actions">
+            {createdChild && onOpenChildSide && (
+              <button className="parent-tutorial-open-child" type="button" onClick={onOpenChildSide}>
+                Open {createdChild.name}&apos;s Student Side
               </button>
-            </>
-          ) : (
-            <button type="button" onClick={onSkip}>
-              Skip tutorial
+            )}
+            <button className="parent-tutorial-finish" type="button" onClick={onFinish}>
+              Finish
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </section>
     </div>
   );
@@ -7142,6 +7269,7 @@ function ParentChildHandoffPrompt({
 
 function ParentProfilePage() {
   const { addChildAccount, childUsernameExists, directMessages, guardianChildren, loginChildAccount, logout, scheduledClasses, session, showToast, studioClasses, studioEvents, updateChildAccount } = useAppState();
+  const { hasSeenFeature, markFeatureSeen, progressReady } = useGuidedOnboarding();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<ParentProfileTab>(() => parentTabFromSearch(location.search));
   const [selectedChildId, setSelectedChildId] = useState(() => guardianChildren[0]?.id ?? "");
@@ -7162,6 +7290,8 @@ function ParentProfilePage() {
   const [tutorialFinishedChildId, setTutorialFinishedChildId] = useState("");
   const [tutorialTargetPosition, setTutorialTargetPosition] = useState<ParentTutorialTargetPosition | null>(null);
   const tutorialStorageKey = useMemo(() => parentTutorialStorageKey(session?.email), [session?.email]);
+  const legacyTutorialCompletion = readParentTutorialCompletion(tutorialStorageKey);
+  const tutorialCompleted = hasSeenFeature("parent.first-child.v1") || Boolean(legacyTutorialCompletion);
   const selectedChild = guardianChildren.find((child) => child.id === selectedChildId) ?? guardianChildren[0];
   const childHandoff = guardianChildren.find((child) => child.id === childHandoffId);
   const tutorialFinishedChild = guardianChildren.find((child) => child.id === tutorialFinishedChildId);
@@ -7284,10 +7414,27 @@ function ParentProfilePage() {
   ]);
 
   useEffect(() => {
-    if (guardianChildren.length || tutorialActive || readParentTutorialCompletion(tutorialStorageKey)) return;
-    setTutorialFinishedChildId("");
-    setTutorialStepId("add-child");
-  }, [guardianChildren.length, tutorialActive, tutorialStorageKey]);
+    if (!progressReady || guardianChildren.length || tutorialActive || tutorialCompleted) return;
+    const startWhenModalIsClosed = () => {
+      if (document.querySelector('[aria-modal="true"]')) return false;
+      setTutorialFinishedChildId("");
+      setTutorialStepId("add-child");
+      return true;
+    };
+    if (startWhenModalIsClosed()) return;
+    const observer = new MutationObserver(() => {
+      if (startWhenModalIsClosed()) observer.disconnect();
+    });
+    observer.observe(document.body, { attributes: true, attributeFilter: ["aria-modal"], childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [guardianChildren.length, progressReady, tutorialActive, tutorialCompleted]);
+
+  useEffect(() => {
+    if (progressReady && legacyTutorialCompletion && !hasSeenFeature("parent.first-child.v1")) {
+      markFeatureSeen("parent.first-child.v1");
+      markFeatureSeen("parent.add-child.v1");
+    }
+  }, [hasSeenFeature, legacyTutorialCompletion, markFeatureSeen, progressReady]);
 
   useEffect(() => {
     if (!tutorialStepId) {
@@ -7365,35 +7512,22 @@ function ParentProfilePage() {
     setTutorialStepId((currentStepId) => (currentStepId === stepId ? getNextParentTutorialStep(stepId) : currentStepId));
   };
 
-  const skipParentTutorial = () => {
-    writeParentTutorialCompletion(tutorialStorageKey, "skipped");
-    setTutorialStepId(null);
-    setTutorialTargetPosition(null);
-  };
-
   const finishParentTutorial = () => {
     writeParentTutorialCompletion(tutorialStorageKey, "completed");
+    markFeatureSeen("parent.first-child.v1");
+    markFeatureSeen("parent.add-child.v1");
     setTutorialStepId(null);
     setTutorialTargetPosition(null);
   };
 
   const openChildSide = (childId: string) => {
     writeParentTutorialCompletion(tutorialStorageKey, "completed");
+    markFeatureSeen("parent.first-child.v1");
+    markFeatureSeen("parent.add-child.v1");
     setTutorialStepId(null);
     setTutorialTargetPosition(null);
     setChildHandoffId("");
     loginChildAccount(childId);
-  };
-
-  const goBackParentTutorial = () => {
-    if (!tutorialStepId) return;
-    const currentIndex = parentTutorialStepOrder.indexOf(tutorialStepId);
-    const previousStepId = parentTutorialStepOrder[Math.max(currentIndex - 1, 0)];
-    if (tutorialStepId === "child-name") {
-      setChildModalMode(null);
-      setEditingChildId("");
-    }
-    setTutorialStepId(previousStepId);
   };
 
   const openAddChild = () => {
@@ -7652,15 +7786,38 @@ function ParentProfilePage() {
   };
 
   return (
-    <section className="manager-home-page parent-profile-page" aria-label="Parent profile page">
+    <section
+      className="manager-home-page parent-profile-page"
+      aria-label="Parent profile page"
+      data-guided-onboarding-defer={tutorialActive || (!guardianChildren.length && !tutorialCompleted) ? "true" : undefined}
+    >
       <header className="manager-home-profile-title manager-page-title-bar" aria-label="Parent profile page header">
         <ManagerPageTitleFrame title="Parent Profile" className="manager-home-profile-title-frame" />
         <nav className="manager-home-top-actions" aria-label="Parent profile quick actions">
-          <button className="manager-home-top-action parent-profile-settings-action" type="button" aria-label="Profile Settings" onClick={openParentProfileSettings}>
+          <button
+            className="manager-home-top-action parent-profile-settings-action"
+            type="button"
+            aria-label="Profile Settings"
+            onClick={openParentProfileSettings}
+            data-guided-onboarding-id="parent.profile-settings.v1"
+            data-guided-onboarding-title="Parent Settings"
+            data-guided-onboarding-instruction="Opens your personal details, password, theme, first-page choice, notifications, and color settings."
+            data-guided-onboarding-priority="200"
+          >
             <img className="manager-home-panel-icon" src={managerProfileSettingsIcon} alt="" draggable="false" />
             <span className="manager-home-top-action-label">Settings</span>
           </button>
-          <button data-parent-tutorial-target="add-child" className="manager-home-top-action parent-profile-add-action" type="button" aria-label="Add Child Profile" onClick={openAddChild}>
+          <button
+            data-parent-tutorial-target="add-child"
+            className="manager-home-top-action parent-profile-add-action"
+            type="button"
+            aria-label="Add Child Profile"
+            onClick={openAddChild}
+            data-guided-onboarding-id="parent.add-child.v1"
+            data-guided-onboarding-title="Add a Child"
+            data-guided-onboarding-instruction="Opens a child profile form and creates the username and password that child will use to sign in."
+            data-guided-onboarding-priority="210"
+          >
             <Plus size={28} aria-hidden="true" />
             <span className="manager-home-top-action-label">Add Child</span>
           </button>
@@ -7763,8 +7920,25 @@ function ParentProfilePage() {
           )}
 
           <nav className="parent-tool-tabs" aria-label="Parent student tools">
-            {parentProfileTabs.map((tab) => (
-              <button className={activeTab === tab.id ? "is-active" : ""} key={tab.id} type="button" aria-pressed={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>
+            {parentProfileTabs.map((tab, index) => (
+              <button
+                className={activeTab === tab.id ? "is-active" : ""}
+                key={tab.id}
+                type="button"
+                aria-pressed={activeTab === tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                data-guided-onboarding-id={`parent.tab.${tab.id}.v1`}
+                data-guided-onboarding-title={`${tab.label} Tab`}
+                data-guided-onboarding-instruction={
+                  tab.id === "dashboard" ? "Shows the selected child's schedule, attendance, belt, and next important actions." :
+                  tab.id === "classes" ? "Shows classes available to the selected child and the studio's current class details." :
+                  tab.id === "study" ? "Shows simple at-home practice guidance for the selected child." :
+                  tab.id === "test" ? "Shows belt-test readiness reminders for attendance, instructor approval, and family preparation." :
+                  tab.id === "messages" ? "Shows private app messages between your family and Cho's staff." :
+                  "Controls app-message alerts, device notifications, and push-notification connection status."
+                }
+                data-guided-onboarding-priority={String(220 + index)}
+              >
                 {tab.label}
               </button>
             ))}
@@ -7802,7 +7976,16 @@ function ParentProfilePage() {
                 <h2>Profile Settings</h2>
                 <p>Edit parent app theme and personal color settings.</p>
               </div>
-              <button className="student-modal-close" type="button" aria-label="Close parent profile settings" onClick={() => setParentProfileOpen(false)}>
+              <button
+                className="student-modal-close"
+                type="button"
+                aria-label="Close parent profile settings"
+                onClick={() => setParentProfileOpen(false)}
+                data-guided-onboarding-id="parent.profile-settings.close.v1"
+                data-guided-onboarding-title="Parent Settings Panel"
+                data-guided-onboarding-instruction="This panel saves parent-only preferences. Close it now to continue the guide without changing anything."
+                data-guided-onboarding-priority="201"
+              >
                 <X size={20} />
               </button>
             </header>
@@ -7880,10 +8063,8 @@ function ParentProfilePage() {
       {tutorialStepId && (
         <ParentFirstChildTutorialOverlay
           createdChild={tutorialStepId === "created-child" ? tutorialFinishedChild : undefined}
-          onBack={goBackParentTutorial}
           onFinish={finishParentTutorial}
           onOpenChildSide={tutorialFinishedChild ? () => openChildSide(tutorialFinishedChild.id) : undefined}
-          onSkip={skipParentTutorial}
           stepId={tutorialStepId}
           targetPosition={tutorialTargetPosition}
         />
@@ -8514,11 +8695,27 @@ function ManagerHomePage() {
       <header className="manager-home-profile-title manager-home-profile-title--with-live-chat manager-page-title-bar" aria-label="Profile page header">
         <ManagerPageTitleFrame title={profileTitle} className="manager-home-profile-title-frame" />
         <nav className="manager-home-top-actions" aria-label="Profile quick actions">
-          <Link className="manager-home-top-action manager-home-live-chat-link" to="/live-chat" aria-label="Live Chat">
+          <Link
+            className="manager-home-top-action manager-home-live-chat-link"
+            to="/live-chat"
+            aria-label="Live Chat"
+            data-guided-onboarding-id="shared.live-chat.v1"
+            data-guided-onboarding-title="Live Chat"
+            data-guided-onboarding-instruction="Opens the shared live room for real-time conversations with active Cho's members and staff."
+            data-guided-onboarding-priority="800"
+          >
             <img className="manager-home-live-chat-icon" src={messagesLauncherIcon} alt="" draggable="false" />
             <span className="manager-home-top-action-label">Live Chat</span>
           </Link>
-          <Link className="manager-home-top-action manager-home-panel-link" to="/manager" aria-label={panelLabel}>
+          <Link
+            className="manager-home-top-action manager-home-panel-link"
+            to="/manager"
+            aria-label={panelLabel}
+            data-guided-onboarding-id="staff.panel.v1"
+            data-guided-onboarding-title={panelLabel}
+            data-guided-onboarding-instruction="Opens the role-based app launcher. Only tools allowed for this account appear there."
+            data-guided-onboarding-priority="10"
+          >
             <img className="manager-home-panel-icon" src={managerPageIcon} alt="" draggable="false" />
             <span className="manager-home-top-action-label">{panelLabel}</span>
           </Link>
@@ -8538,7 +8735,15 @@ function ManagerHomePage() {
         >
           <section className="manager-home-overview" aria-label={isDeveloper ? "Developer home overview" : isManagerOwner ? "Manager home overview" : "Staff home overview"} ref={overviewContentRef}>
             <article className="manager-home-profile-card" aria-label={isDeveloper ? "Developer profile overview" : isManagerOwner ? "Manager profile overview" : "Staff profile overview"}>
-            <Link className="manager-home-profile-settings-link" to="/manager?profile=settings" aria-label="Profile Settings">
+            <Link
+              className="manager-home-profile-settings-link"
+              to="/manager?profile=settings"
+              aria-label="Profile Settings"
+              data-guided-onboarding-id="staff.profile-settings.v1"
+              data-guided-onboarding-title="Profile Settings"
+              data-guided-onboarding-instruction="Opens personal contact details, password, theme, first-page choice, notifications, and color settings."
+              data-guided-onboarding-priority="700"
+            >
               <img className="manager-home-profile-settings-icon" src={managerProfileSettingsIcon} alt="" draggable="false" />
             </Link>
             <button
@@ -8649,6 +8854,10 @@ function ManagerHomePage() {
           onPointerUp={(event) => finishOverviewHandlePointer(event, true)}
           ref={overviewHandleRef}
           type="button"
+          data-guided-onboarding-id="staff.profile-overview.v1"
+          data-guided-onboarding-title="Profile Overview Drawer"
+          data-guided-onboarding-instruction="Collapses or expands the profile and weekly schedule area to give the message feed more room."
+          data-guided-onboarding-priority="720"
         >
           <span className="manager-home-overview-handle-bar" aria-hidden="true" />
         </button>
@@ -8680,7 +8889,16 @@ function ManagerHomePage() {
                 {eventCount} Event {eventCount === 1 ? "Notification" : "Notifications"}
               </button>
               {selectedFeedCount === 0 ? (
-                <button className="manager-home-compose" type="button" aria-label="Compose" onClick={() => setIsComposeOpen(true)}>
+                <button
+                  className="manager-home-compose"
+                  type="button"
+                  aria-label="Compose"
+                  onClick={() => setIsComposeOpen(true)}
+                  data-guided-onboarding-id="staff.compose.v1"
+                  data-guided-onboarding-title="Compose a Message"
+                  data-guided-onboarding-instruction="Opens a message form for choosing recipients and sending a direct app message."
+                  data-guided-onboarding-priority="730"
+                >
                   <span>Compose</span>
                   <Plus size={16} />
                 </button>
@@ -8711,7 +8929,16 @@ function ManagerHomePage() {
                   onChange={(event) => setSearchQuery(event.target.value)}
                   onKeyDown={handleFeedSearchKeyDown}
                 />
-                <button className="manager-home-search-close" type="button" aria-label="Close search messages and event notifications" onClick={closeFeedSearch}>
+                <button
+                  className="manager-home-search-close"
+                  type="button"
+                  aria-label="Close search messages and event notifications"
+                  onClick={closeFeedSearch}
+                  data-guided-onboarding-id="staff.feed-search.close.v1"
+                  data-guided-onboarding-title="Feed Search"
+                  data-guided-onboarding-instruction="The feed is now filtered as you type. Close search to return to every message and notification."
+                  data-guided-onboarding-priority="741"
+                >
                   <X size={18} />
                 </button>
               </div>
@@ -8736,6 +8963,10 @@ function ManagerHomePage() {
                   aria-controls="manager-home-feed-search"
                   aria-expanded="false"
                   onClick={() => setIsFeedSearchOpen(true)}
+                  data-guided-onboarding-id="staff.feed-search.v1"
+                  data-guided-onboarding-title="Search the Feed"
+                  data-guided-onboarding-instruction="Opens a search field that filters messages and event notifications by their visible text."
+                  data-guided-onboarding-priority="740"
                 >
                   <Search size={24} />
                 </button>
@@ -8918,7 +9149,16 @@ function ManagerHomePage() {
                   <p>Manager message center</p>
                   <h2 id="manager-compose-title">Compose</h2>
                 </div>
-                <button className="manager-compose-close" type="button" aria-label="Close compose" onClick={closeComposeDialog}>
+                <button
+                  className="manager-compose-close"
+                  type="button"
+                  aria-label="Close compose"
+                  onClick={closeComposeDialog}
+                  data-guided-onboarding-id="staff.compose.close.v1"
+                  data-guided-onboarding-title="Message Composer"
+                  data-guided-onboarding-instruction="This form sends a real app message after recipients and message text are chosen. Close it now to continue safely."
+                  data-guided-onboarding-priority="731"
+                >
                   <X size={20} />
                 </button>
               </header>
@@ -9401,7 +9641,15 @@ function ManagerLauncherPage() {
         <header className="manager-launcher-topbar manager-page-title-bar" aria-label={panelHeaderAriaLabel}>
           <ManagerPageTitleFrame title={panelTitle} className="manager-page-title-frame--manager-panel" />
           <nav className="manager-home-top-actions" aria-label={panelQuickActionsLabel}>
-            <Link className="manager-home-top-action manager-launcher-profile-link" to="/profile" aria-label="Profile">
+            <Link
+              className="manager-home-top-action manager-launcher-profile-link"
+              to="/profile"
+              aria-label="Profile"
+              data-guided-onboarding-id="navigation.profile.v1"
+              data-guided-onboarding-title="Return to Profile"
+              data-guided-onboarding-instruction="Returns to your personal profile, weekly view, messages, and account settings."
+              data-guided-onboarding-priority="600"
+            >
               <img
                 className="manager-home-profile-action-photo"
                 src={profileActionPhoto}
@@ -9425,8 +9673,9 @@ function ManagerLauncherPage() {
             data-keyboard-secondary-navigation="true"
             hidden={isSidebarCollapsed}
           >
-            {launcherItems.map((item) => {
+            {launcherItems.map((item, index) => {
               const isSelected = item.icon === selectedLauncherItem.icon;
+              const onboardingCopy = managerLauncherOnboardingCopy[item.icon];
               return (
                 <Link
                   className={`manager-launcher-item${isSelected ? " is-selected" : ""}`}
@@ -9435,6 +9684,10 @@ function ManagerLauncherPage() {
                   title={item.label}
                   aria-current={isSelected ? "page" : undefined}
                   data-future={item.future ? "true" : undefined}
+                  data-guided-onboarding-id={`${isStudentPanel ? "student" : "staff"}.launcher.${item.icon}.v1`}
+                  data-guided-onboarding-title={onboardingCopy.title}
+                  data-guided-onboarding-instruction={onboardingCopy.instruction}
+                  data-guided-onboarding-priority={String(100 + index)}
                 >
                   <ManagerLauncherIcon icon={item.icon} />
                   <span className="manager-launcher-label">{item.label}</span>
@@ -9451,6 +9704,10 @@ function ManagerLauncherPage() {
             aria-expanded={!isSidebarCollapsed}
             title={sidebarToggleLabel}
             onClick={() => setIsSidebarCollapsed((current) => !current)}
+            data-guided-onboarding-id={`${isStudentPanel ? "student" : "staff"}.launcher-sidebar.v1`}
+            data-guided-onboarding-title="Launcher Sidebar"
+            data-guided-onboarding-instruction="Collapses or expands the app icons so the selected workspace can use more screen space."
+            data-guided-onboarding-priority="500"
           >
             <span className="manager-launcher-rail-toggle-bar" aria-hidden="true" />
           </button>
@@ -9467,7 +9724,16 @@ function ManagerLauncherPage() {
                 <h2>Profile Settings</h2>
                 <p>Edit {profileOwnerLabel.toLowerCase()} contact settings and app theme.</p>
               </div>
-              <button className="student-modal-close" type="button" aria-label={`Close ${profileOwnerLabel.toLowerCase()} profile settings`} onClick={closeProfileSettings}>
+              <button
+                className="student-modal-close"
+                type="button"
+                aria-label={`Close ${profileOwnerLabel.toLowerCase()} profile settings`}
+                onClick={closeProfileSettings}
+                data-guided-onboarding-id="staff.profile-settings.close.v1"
+                data-guided-onboarding-title={`${profileOwnerLabel} Settings Panel`}
+                data-guided-onboarding-instruction="This panel saves settings only for this login. Close it now to continue the guide without changing anything."
+                data-guided-onboarding-priority="701"
+              >
                 <X size={20} />
               </button>
             </header>
