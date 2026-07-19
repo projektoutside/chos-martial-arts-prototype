@@ -27443,7 +27443,7 @@ html[data-theme="light"] .student-panel-action-row a + a {
 
 .testing-update-history-modal,
 .modal-backdrop .testing-update-history-modal {
-  width: min(94vw, 560px);
+  width: min(100%, 560px);
   max-height: min(82vh, 680px);
   padding: 18px;
   overflow: hidden;
@@ -27451,7 +27451,10 @@ html[data-theme="light"] .student-panel-action-row a + a {
 }
 
 .testing-update-history-modal .modal-header {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
 }
 

@@ -32,7 +32,15 @@ export function TestingUpdateHistoryDialog({ onClose }: { onClose: () => void })
       >
         <div className="modal-header">
           <h2 id="testing-update-history-title">App updates</h2>
-          <button type="button" aria-label="Close app updates" onClick={onClose}>
+          <button
+            type="button"
+            aria-label="Close app updates"
+            onClick={onClose}
+            data-guided-onboarding-id="shared.profile-settings.app-updates.close.v1"
+            data-guided-onboarding-title="Close App Updates"
+            data-guided-onboarding-instruction="Closes the update history and returns to Profile Settings."
+            data-guided-onboarding-priority="701"
+          >
             Close
           </button>
         </div>

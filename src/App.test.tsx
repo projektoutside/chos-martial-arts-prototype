@@ -2785,8 +2785,8 @@ describe("login landing", () => {
     const dialog = await screen.findByRole("dialog", { name: "What's New" });
     expect(dialog).toHaveClass("testing-update-modal");
     expect(within(dialog).getByRole("heading", { name: "What's New" })).toBeInTheDocument();
-    expect(within(dialog).getByText("Version 0.1.6")).toBeVisible();
-    expect(within(dialog).getByRole("heading", { name: "A new Cho's app icon" })).toBeInTheDocument();
+    expect(within(dialog).getByText("Version 0.1.5-testing")).toBeVisible();
+    expect(within(dialog).getByRole("heading", { name: "App updates are always easy to find" })).toBeInTheDocument();
     const gotItButton = within(dialog).getByRole("button", { name: "Got it" });
     expect(gotItButton).toBeVisible();
     expect(gotItButton).toHaveClass("testing-update-action");
@@ -6834,7 +6834,11 @@ describe("post-login operations app", () => {
     renderLoggedInApp("/manager?profile=settings");
 
     const profileSettings = screen.getByRole("dialog", { name: "Manager profile settings" });
-    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+    const appUpdatesButton = within(profileSettings).getByRole("button", { name: "View App Updates" });
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-id", "shared.profile-settings.app-updates.v1");
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-title", "App Updates");
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-priority", "700");
+    fireEvent.click(appUpdatesButton);
 
     expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
@@ -6846,7 +6850,9 @@ describe("post-login operations app", () => {
     renderLoggedInApp("/manager?profile=settings", "staff");
 
     const profileSettings = screen.getByRole("dialog", { name: "Manager profile settings" });
-    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+    const appUpdatesButton = within(profileSettings).getByRole("button", { name: "View App Updates" });
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-id", "shared.profile-settings.app-updates.v1");
+    fireEvent.click(appUpdatesButton);
 
     expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
@@ -6940,7 +6946,9 @@ describe("post-login operations app", () => {
     fireEvent.click(within(profileOverview).getByRole("button", { name: "Profile Settings" }));
     const profileSettings = screen.getByRole("dialog", { name: "Student profile settings" });
 
-    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+    const appUpdatesButton = within(profileSettings).getByRole("button", { name: "View App Updates" });
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-id", "shared.profile-settings.app-updates.v1");
+    fireEvent.click(appUpdatesButton);
     expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
 
@@ -7083,7 +7091,9 @@ describe("post-login operations app", () => {
     fireEvent.click(screen.getByRole("button", { name: "Profile Settings" }));
     const profileSettings = screen.getByRole("dialog", { name: "Parent profile settings" });
 
-    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+    const appUpdatesButton = within(profileSettings).getByRole("button", { name: "View App Updates" });
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-id", "shared.profile-settings.app-updates.v1");
+    fireEvent.click(appUpdatesButton);
     expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
 

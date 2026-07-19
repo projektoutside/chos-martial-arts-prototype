@@ -30,7 +30,16 @@ describe("TestingUpdateHistoryDialog", () => {
     const onClose = vi.fn();
     const { rerender } = render(<TestingUpdateHistoryDialog onClose={onClose} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
+    const closeButton = screen.getByRole("button", { name: "Close app updates" });
+    expect(closeButton).toHaveAttribute("data-guided-onboarding-id", "shared.profile-settings.app-updates.close.v1");
+    expect(closeButton).toHaveAttribute("data-guided-onboarding-title", "Close App Updates");
+    expect(closeButton).toHaveAttribute(
+      "data-guided-onboarding-instruction",
+      "Closes the update history and returns to Profile Settings."
+    );
+    expect(closeButton).toHaveAttribute("data-guided-onboarding-priority", "701");
+
+    fireEvent.click(closeButton);
     expect(onClose).toHaveBeenCalledTimes(1);
 
     rerender(<TestingUpdateHistoryDialog onClose={onClose} />);

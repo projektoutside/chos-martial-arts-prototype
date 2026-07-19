@@ -6947,6 +6947,10 @@ function StudentProfilePage() {
                   className="profile-editing-tool-button"
                   aria-haspopup="dialog"
                   onClick={() => setStudentUpdateHistoryOpen(true)}
+                  data-guided-onboarding-id="shared.profile-settings.app-updates.v1"
+                  data-guided-onboarding-title="App Updates"
+                  data-guided-onboarding-instruction="Opens every testing update so you can review past changes whenever you want."
+                  data-guided-onboarding-priority="700"
                 >
                   View App Updates
                 </button>
@@ -8225,6 +8229,10 @@ function ParentProfilePage() {
                   className="profile-editing-tool-button"
                   aria-haspopup="dialog"
                   onClick={() => setParentUpdateHistoryOpen(true)}
+                  data-guided-onboarding-id="shared.profile-settings.app-updates.v1"
+                  data-guided-onboarding-title="App Updates"
+                  data-guided-onboarding-instruction="Opens every testing update so you can review past changes whenever you want."
+                  data-guided-onboarding-priority="700"
                 >
                   View App Updates
                 </button>
@@ -10015,6 +10023,10 @@ function ManagerLauncherPage() {
                   className="profile-editing-tool-button"
                   aria-haspopup="dialog"
                   onClick={() => setUpdateHistoryOpen(true)}
+                  data-guided-onboarding-id="shared.profile-settings.app-updates.v1"
+                  data-guided-onboarding-title="App Updates"
+                  data-guided-onboarding-instruction="Opens every testing update so you can review past changes whenever you want."
+                  data-guided-onboarding-priority="700"
                 >
                   View App Updates
                 </button>

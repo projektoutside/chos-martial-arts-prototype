@@ -1,9 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router";
 import { GuidedOnboardingProvider } from "./GuidedOnboarding";
 import { guidedOnboardingProgressStorageKey } from "./onboardingProgress";
+import { TestingUpdateHistoryDialog } from "./TestingUpdateHistoryDialog";
 
 function TutorialHarness({ email, onRequired, onUnrelated }: { email: string; onRequired: () => void; onUnrelated: () => void }) {
   const location = useLocation();
@@ -35,6 +37,36 @@ function renderHarness(email: string, onRequired = vi.fn(), onUnrelated = vi.fn(
       </MemoryRouter>
     )
   };
+}
+
+function AppUpdatesTutorialHarness({ email }: { email: string }) {
+  const [historyOpen, setHistoryOpen] = useState(false);
+  return (
+    <GuidedOnboardingProvider accountRole="staff" sessionEmail={email} enabled>
+      <section role="dialog" aria-modal="true" aria-label="Profile Settings">
+        <button
+          type="button"
+          onClick={() => setHistoryOpen(true)}
+          data-guided-onboarding-id="shared.profile-settings.app-updates.v1"
+          data-guided-onboarding-title="App Updates"
+          data-guided-onboarding-instruction="Opens every testing update so you can review past changes whenever you want."
+          data-guided-onboarding-priority="700"
+        >
+          View App Updates
+        </button>
+        <button
+          type="button"
+          data-guided-onboarding-id="staff.profile-settings.close.v1"
+          data-guided-onboarding-title="Profile Settings Panel"
+          data-guided-onboarding-instruction="Close Profile Settings to continue."
+          data-guided-onboarding-priority="701"
+        >
+          Close Profile Settings
+        </button>
+      </section>
+      {historyOpen && <TestingUpdateHistoryDialog onClose={() => setHistoryOpen(false)} />}
+    </GuidedOnboardingProvider>
+  );
 }
 
 describe("GuidedOnboardingProvider", () => {
@@ -89,5 +121,40 @@ describe("GuidedOnboardingProvider", () => {
 
     renderHarness("second.staff");
     expect(await screen.findByRole("heading", { name: "Test Feature" })).toBeInTheDocument();
+  });
+
+  it("guides App updates into its safe close action while keeping Profile Settings open", async () => {
+    const email = "updates.staff";
+    render(
+      <MemoryRouter initialEntries={["/profile"]}>
+        <AppUpdatesTutorialHarness email={email} />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("guided-onboarding-layer")).toHaveAttribute(
+        "data-guided-onboarding-active-id",
+        "shared.profile-settings.app-updates.v1"
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: "View App Updates" }));
+
+    expect(await screen.findByRole("dialog", { name: "App updates" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("guided-onboarding-layer")).toHaveAttribute(
+        "data-guided-onboarding-active-id",
+        "shared.profile-settings.app-updates.close.v1"
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
+
+    expect(screen.queryByRole("dialog", { name: "App updates" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Profile Settings" })).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem(guidedOnboardingProgressStorageKey(email)) ?? "{}")).toMatchObject({
+      seenFeatureIds: expect.arrayContaining([
+        "shared.profile-settings.app-updates.v1",
+        "shared.profile-settings.app-updates.close.v1"
+      ])
+    });
   });
 });

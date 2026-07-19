@@ -8,6 +8,17 @@ export interface TestingUpdateNotice {
 
 export const testingUpdateNotices: readonly TestingUpdateNotice[] = [
   {
+    id: "2026-07-19-app-update-history",
+    version: "0.1.5-testing",
+    date: "July 19, 2026",
+    title: "App updates are always easy to find",
+    changes: [
+      "After you sign in, each new testing update appears once in a short What's New message.",
+      "Profile Settings keeps the full App updates history so you can reopen it whenever you want.",
+      "A one-time guide points every role to View App Updates and shows how to return to Profile Settings."
+    ]
+  },
+  {
     id: "2026-07-10-new-installed-app-icon",
     version: "0.1.6",
     date: "July 10, 2026",
