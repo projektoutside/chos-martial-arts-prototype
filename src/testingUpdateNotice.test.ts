@@ -14,7 +14,7 @@ describe("testing update acknowledgements", () => {
   it("exposes newest-first versioned update history", () => {
     expect(testingUpdateNotices[0]).toMatchObject({
       id: "2026-07-19-app-update-history",
-      version: "0.1.5-testing",
+      version: "0.1.6-testing",
       title: "App updates are always easy to find"
     });
     expect(testingUpdateNotices[1]).toMatchObject({

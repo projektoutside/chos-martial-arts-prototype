@@ -9,7 +9,7 @@ export interface TestingUpdateNotice {
 export const testingUpdateNotices: readonly TestingUpdateNotice[] = [
   {
     id: "2026-07-19-app-update-history",
-    version: "0.1.5-testing",
+    version: "0.1.6-testing",
     date: "July 19, 2026",
     title: "App updates are always easy to find",
     changes: [
