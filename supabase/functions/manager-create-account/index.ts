@@ -121,7 +121,7 @@ Deno.serve(async (req: Request) => {
   const password = cleanString(body.password);
   const role = allowedRoles.has(cleanString(body.role)) ? cleanString(body.role) : "";
   const status = allowedStatuses.has(cleanString(body.status)) ? cleanString(body.status) : "active";
-  const contactEmail = cleanString(body.email).toLowerCase();
+  const contactEmail = cleanString(body.email).toLowerCase() || null;
   const phone = cleanString(body.phone) || null;
   const title = cleanString(body.title) || null;
   const notes = cleanString(body.notes) || null;
@@ -129,8 +129,8 @@ Deno.serve(async (req: Request) => {
   const access = normalizeAccess(body.access, role);
   const authEmail = authEmailForUsername(username);
 
-  if (!username || username.length < 3 || !displayName || !password || !contactEmail || !role) {
-    return jsonResponse({ error: "Display name, username, temporary password, email, and role are required." }, 400);
+  if (!username || username.length < 3 || !displayName || !password || !role) {
+    return jsonResponse({ error: "Display name, username, temporary password, and role are required." }, 400);
   }
   if (!isStrongActivationPassword(password)) {
     return jsonResponse({ error: accountPasswordPolicyText }, 400);
@@ -159,7 +159,7 @@ Deno.serve(async (req: Request) => {
       username,
       role,
       display_name: displayName,
-      contact_email: contactEmail
+      ...(contactEmail ? { contact_email: contactEmail } : {})
     },
     app_metadata: activationRequiredAppMetadata({ role })
   });
@@ -222,7 +222,7 @@ Deno.serve(async (req: Request) => {
   }
 
   return jsonResponse({
-    email: contactEmail,
+    email: authEmail,
     username,
     activationRequired: true,
     invitationStatus: "pending",

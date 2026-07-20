@@ -10091,8 +10091,6 @@ function CreateAccountsPage() {
     username: "",
     password: "",
     confirmPassword: "",
-    email: "",
-    phone: "",
     title: "Instructor",
     notes: "",
     access: defaultStaffAccess
@@ -10102,10 +10100,6 @@ function CreateAccountsPage() {
     username: "",
     password: "",
     confirmPassword: "",
-    studentEmail: "",
-    guardianName: "",
-    guardianPhone: "",
-    guardianEmail: "",
     program: "Youth Taekwondo",
     beltRank: "White",
     notes: ""
@@ -10115,8 +10109,6 @@ function CreateAccountsPage() {
     username: "",
     password: "",
     confirmPassword: "",
-    email: "",
-    phone: "",
     notes: ""
   });
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
@@ -10128,7 +10120,7 @@ function CreateAccountsPage() {
     username: string;
     password: string;
     role: AccountRole;
-    email: string;
+    email?: string;
     phone?: string;
     title?: string;
     notes?: string;
@@ -10171,6 +10163,12 @@ function CreateAccountsPage() {
     setFormMessage(message);
   };
 
+  const isAccountFormReady = (fullName: string, username: string, password: string, confirmPassword: string) => (
+    Boolean(fullName.trim())
+    && normalizeCreateUsername(username).length >= 3
+    && !validatePasswordFields(password, confirmPassword)
+  );
+
   const createStaff = async (event: FormEvent) => {
     event.preventDefault();
     const passwordError = validatePasswordFields(staffForm.password, staffForm.confirmPassword);
@@ -10180,7 +10178,7 @@ function CreateAccountsPage() {
     }
     const username = normalizeCreateUsername(staffForm.username);
     const displayName = staffForm.displayName.trim();
-    if (!displayName || !username || (isSupabaseAuthConfigured() && !staffForm.email.trim())) {
+    if (!displayName || username.length < 3) {
       showFormMessage("Enter a unique staff username and profile name.");
       return;
     }
@@ -10190,14 +10188,12 @@ function CreateAccountsPage() {
         username,
         password: staffForm.password,
         role: "staff",
-        email: staffForm.email.trim() || `${username}@chos.prototype`,
-        phone: staffForm.phone,
         title: staffForm.title,
         notes: staffForm.notes,
         access: staffForm.access
       });
       if (liveCreated !== "local") {
-        if (liveCreated === "created") setStaffForm({ displayName: "", username: "", password: "", confirmPassword: "", email: "", phone: "", title: "Instructor", notes: "", access: defaultStaffAccess });
+        if (liveCreated === "created") setStaffForm({ displayName: "", username: "", password: "", confirmPassword: "", title: "Instructor", notes: "", access: defaultStaffAccess });
         return;
       }
     }
@@ -10206,8 +10202,6 @@ function CreateAccountsPage() {
       username,
       password: staffForm.password,
       role: "staff",
-      email: staffForm.email,
-      phone: staffForm.phone,
       title: staffForm.title,
       notes: staffForm.notes,
       access: staffForm.access
@@ -10217,7 +10211,7 @@ function CreateAccountsPage() {
       return;
     }
     setFormMessage("");
-    setStaffForm({ displayName: "", username: "", password: "", confirmPassword: "", email: "", phone: "", title: "Instructor", notes: "", access: defaultStaffAccess });
+    setStaffForm({ displayName: "", username: "", password: "", confirmPassword: "", title: "Instructor", notes: "", access: defaultStaffAccess });
     showToast(`${account.displayName} staff account created.`);
   };
 
@@ -10230,12 +10224,8 @@ function CreateAccountsPage() {
     }
     const username = normalizeCreateUsername(studentForm.username);
     const studentName = studentForm.fullName.trim();
-    if (!studentName || !username) {
+    if (!studentName || username.length < 3) {
       showFormMessage("Enter the student name, username, and password.");
-      return;
-    }
-    if (!studentForm.studentEmail.trim() || !studentForm.guardianPhone.trim()) {
-      showFormMessage("Enter the student email and parent/guardian phone.");
       return;
     }
     const linkedStudentId = `student-${username.replace(/[^a-z0-9]+/g, "-")}`;
@@ -10245,8 +10235,6 @@ function CreateAccountsPage() {
         username,
         password: studentForm.password,
         role: "student",
-        email: studentForm.studentEmail.trim() || `${username}@chos.prototype`,
-        phone: studentForm.guardianPhone,
         title: `${studentForm.beltRank.trim() || "White"} Belt Student`,
         notes: studentForm.notes,
         access: [],
@@ -10257,32 +10245,30 @@ function CreateAccountsPage() {
           addOperationsStudent({
             studentId: linkedStudentId,
             fullName: studentForm.fullName,
-            studentEmail: studentForm.studentEmail,
-            guardianName: studentForm.guardianName,
-            guardianPhone: studentForm.guardianPhone,
-            guardianEmail: studentForm.guardianEmail,
+            studentEmail: "",
+            guardianPhone: "",
             program: studentForm.program,
             beltRank: studentForm.beltRank,
-            notes: studentForm.notes
+            notes: studentForm.notes,
+            allowEmptyContact: true
           });
-          setStudentForm({ fullName: "", username: "", password: "", confirmPassword: "", studentEmail: "", guardianName: "", guardianPhone: "", guardianEmail: "", program: "Youth Taekwondo", beltRank: "White", notes: "" });
+          setStudentForm({ fullName: "", username: "", password: "", confirmPassword: "", program: "Youth Taekwondo", beltRank: "White", notes: "" });
         }
         return;
       }
     }
     const student = addOperationsStudent({
       fullName: studentForm.fullName,
-      studentEmail: studentForm.studentEmail,
-      guardianName: studentForm.guardianName,
-      guardianPhone: studentForm.guardianPhone,
-      guardianEmail: studentForm.guardianEmail,
+      studentEmail: "",
+      guardianPhone: "",
       program: studentForm.program,
       status: "Active",
       beltRank: studentForm.beltRank,
-      notes: studentForm.notes
+      notes: studentForm.notes,
+      allowEmptyContact: true
     });
     if (!student) {
-      showFormMessage("Enter the student name, email, guardian phone, and belt rank.");
+      showFormMessage("Enter the student name and belt rank.");
       return;
     }
     const localStudentName = fullName(student);
@@ -10303,7 +10289,7 @@ function CreateAccountsPage() {
       return;
     }
     setFormMessage("");
-    setStudentForm({ fullName: "", username: "", password: "", confirmPassword: "", studentEmail: "", guardianName: "", guardianPhone: "", guardianEmail: "", program: "Youth Taekwondo", beltRank: "White", notes: "" });
+    setStudentForm({ fullName: "", username: "", password: "", confirmPassword: "", program: "Youth Taekwondo", beltRank: "White", notes: "" });
     showToast(`${account.displayName} student account created.`);
   };
 
@@ -10316,7 +10302,7 @@ function CreateAccountsPage() {
     }
     const username = normalizeCreateUsername(parentForm.username);
     const displayName = parentForm.displayName.trim();
-    if (!displayName || !username || (isSupabaseAuthConfigured() && !parentForm.email.trim())) {
+    if (!displayName || username.length < 3) {
       showFormMessage("Enter a unique parent username and profile name.");
       return;
     }
@@ -10326,13 +10312,11 @@ function CreateAccountsPage() {
         username,
         password: parentForm.password,
         role: "guardian",
-        email: parentForm.email.trim() || `${username}@chos.prototype`,
-        phone: parentForm.phone,
         notes: parentForm.notes,
         access: []
       });
       if (liveCreated !== "local") {
-        if (liveCreated === "created") setParentForm({ displayName: "", username: "", password: "", confirmPassword: "", email: "", phone: "", notes: "" });
+        if (liveCreated === "created") setParentForm({ displayName: "", username: "", password: "", confirmPassword: "", notes: "" });
         return;
       }
     }
@@ -10340,8 +10324,6 @@ function CreateAccountsPage() {
       displayName: parentForm.displayName,
       username,
       password: parentForm.password,
-      email: parentForm.email,
-      phone: parentForm.phone,
       notes: parentForm.notes
     });
     if (!account) {
@@ -10349,7 +10331,7 @@ function CreateAccountsPage() {
       return;
     }
     setFormMessage("");
-    setParentForm({ displayName: "", username: "", password: "", confirmPassword: "", email: "", phone: "", notes: "" });
+    setParentForm({ displayName: "", username: "", password: "", confirmPassword: "", notes: "" });
     showToast(`${account.displayName ?? account.email} parent account created.`);
   };
 
@@ -10415,8 +10397,6 @@ function CreateAccountsPage() {
               <label>Staff username<input autoComplete="username" value={staffForm.username} onChange={(event) => setStaffForm({ ...staffForm, username: event.target.value })} /></label>
               <label>Staff temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Staff temporary password" : "Staff password"} type="password" autoComplete="new-password" value={staffForm.password} onChange={(event) => setStaffForm({ ...staffForm, password: event.target.value })} /></label>
               <label>Confirm staff temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Confirm staff temporary password" : "Confirm staff password"} type="password" autoComplete="new-password" value={staffForm.confirmPassword} onChange={(event) => setStaffForm({ ...staffForm, confirmPassword: event.target.value })} /></label>
-              <label>Staff email<input type="email" value={staffForm.email} onChange={(event) => setStaffForm({ ...staffForm, email: event.target.value })} /></label>
-              <label>Staff phone<input value={staffForm.phone} onChange={(event) => setStaffForm({ ...staffForm, phone: event.target.value })} /></label>
               <label>Staff title<input value={staffForm.title} onChange={(event) => setStaffForm({ ...staffForm, title: event.target.value })} /></label>
             </div>
             <fieldset className="create-account-access-grid">
@@ -10430,7 +10410,7 @@ function CreateAccountsPage() {
             </fieldset>
             <label className="create-account-notes">Staff notes<textarea value={staffForm.notes} onChange={(event) => setStaffForm({ ...staffForm, notes: event.target.value })} /></label>
             <div className="student-editor-actions">
-              <button type="submit" disabled={isCreatingAccount}><CheckCircle2 size={18} /> Create Staff Account</button>
+              <button className="create-account-submit" type="submit" aria-label="Create Staff Account" disabled={isCreatingAccount || !isAccountFormReady(staffForm.displayName, staffForm.username, staffForm.password, staffForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
             </div>
           </form>
         )}
@@ -10442,16 +10422,12 @@ function CreateAccountsPage() {
               <label>Student username<input autoComplete="username" value={studentForm.username} onChange={(event) => setStudentForm({ ...studentForm, username: event.target.value })} /></label>
               <label>Student temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Student temporary password" : "Student password"} type="password" autoComplete="new-password" value={studentForm.password} onChange={(event) => setStudentForm({ ...studentForm, password: event.target.value })} /></label>
               <label>Confirm student temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Confirm student temporary password" : "Confirm student password"} type="password" autoComplete="new-password" value={studentForm.confirmPassword} onChange={(event) => setStudentForm({ ...studentForm, confirmPassword: event.target.value })} /></label>
-              <label>Student email<input type="email" value={studentForm.studentEmail} onChange={(event) => setStudentForm({ ...studentForm, studentEmail: event.target.value })} /></label>
-              <label>Parent/guardian phone<input value={studentForm.guardianPhone} onChange={(event) => setStudentForm({ ...studentForm, guardianPhone: event.target.value })} /></label>
-              <label>Parent/guardian name<input value={studentForm.guardianName} onChange={(event) => setStudentForm({ ...studentForm, guardianName: event.target.value })} /></label>
-              <label>Parent/guardian email<input type="email" value={studentForm.guardianEmail} onChange={(event) => setStudentForm({ ...studentForm, guardianEmail: event.target.value })} /></label>
               <label>Program<input value={studentForm.program} onChange={(event) => setStudentForm({ ...studentForm, program: event.target.value })} /></label>
               <label>Belt rank<input value={studentForm.beltRank} onChange={(event) => setStudentForm({ ...studentForm, beltRank: event.target.value })} /></label>
             </div>
             <label className="create-account-notes">Student notes<textarea value={studentForm.notes} onChange={(event) => setStudentForm({ ...studentForm, notes: event.target.value })} /></label>
             <div className="student-editor-actions">
-              <button type="submit" disabled={isCreatingAccount}><CheckCircle2 size={18} /> Create Student Account</button>
+              <button className="create-account-submit" type="submit" aria-label="Create Student Account" disabled={isCreatingAccount || !isAccountFormReady(studentForm.fullName, studentForm.username, studentForm.password, studentForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
             </div>
           </form>
         )}
@@ -10463,12 +10439,10 @@ function CreateAccountsPage() {
               <label>Parent username<input autoComplete="username" value={parentForm.username} onChange={(event) => setParentForm({ ...parentForm, username: event.target.value })} /></label>
               <label>Parent temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Parent temporary password" : "Parent password"} type="password" autoComplete="new-password" value={parentForm.password} onChange={(event) => setParentForm({ ...parentForm, password: event.target.value })} /></label>
               <label>Confirm parent temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Confirm parent temporary password" : "Confirm parent password"} type="password" autoComplete="new-password" value={parentForm.confirmPassword} onChange={(event) => setParentForm({ ...parentForm, confirmPassword: event.target.value })} /></label>
-              <label>Parent email<input type="email" value={parentForm.email} onChange={(event) => setParentForm({ ...parentForm, email: event.target.value })} /></label>
-              <label>Parent phone<input value={parentForm.phone} onChange={(event) => setParentForm({ ...parentForm, phone: event.target.value })} /></label>
             </div>
             <label className="create-account-notes">Parent notes<textarea value={parentForm.notes} onChange={(event) => setParentForm({ ...parentForm, notes: event.target.value })} /></label>
             <div className="student-editor-actions">
-              <button type="submit" disabled={isCreatingAccount}><CheckCircle2 size={18} /> Create Parent Account</button>
+              <button className="create-account-submit" type="submit" aria-label="Create Parent Account" disabled={isCreatingAccount || !isAccountFormReady(parentForm.displayName, parentForm.username, parentForm.password, parentForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
             </div>
           </form>
         )}

@@ -216,6 +216,7 @@ type StudentInput = {
   status?: string;
   beltRank: string;
   notes?: string;
+  allowEmptyContact?: boolean;
 };
 
 type RegisteredAccountInput = {
@@ -1337,7 +1338,7 @@ function normalizeStudentInput(student: StudentInput, fallbackEnrollmentDate = t
   const email = student.studentEmail.trim();
   const beltRank = student.beltRank.trim() || "White";
   const enrollmentDate = student.enrollmentDate?.trim() || fallbackEnrollmentDate;
-  if (!firstName || !phone || !email) return undefined;
+  if (!firstName || (!student.allowEmptyContact && (!phone || !email))) return undefined;
 
   return {
     firstName,
@@ -2991,7 +2992,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const nextStudents = [createdStudent, ...studentsRef.current];
       studentsRef.current = nextStudents;
       setStudents(nextStudents);
-      if (isCurrentStudentEnrollment(createdStudent)) {
+      if (isCurrentStudentEnrollment(createdStudent) && createdStudent.phone.trim()) {
         appendUniqueMessageLogs([
           makeMessageLog({
             kind: "welcome",

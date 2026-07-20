@@ -5055,12 +5055,14 @@ describe("post-login operations app", () => {
 
     expect(screen.getByRole("heading", { name: "Create Accounts" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Staff" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Create Staff Account" })).toBeDisabled();
+    expect(screen.queryByLabelText("Staff email")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Staff phone")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Jordan Lee" } });
     fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "jordan.staff" } });
     fireEvent.change(screen.getByLabelText("Staff password"), { target: { value: "StaffPass123!" } });
     fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "StaffPass123!" } });
-    fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "jordan@chos.prototype" } });
-    fireEvent.change(screen.getByLabelText("Staff phone"), { target: { value: "(262) 555-0111" } });
+    expect(screen.getByRole("button", { name: "Create Staff Account" })).toBeEnabled();
     expect(screen.queryByRole("checkbox", { name: "Create account access" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
 
@@ -5071,6 +5073,7 @@ describe("post-login operations app", () => {
         username: "jordan.staff",
         password: "StaffPass123!",
         role: "staff",
+        requiresPasswordChange: true,
         access: expect.not.arrayContaining(["create"])
       })
     ]));
@@ -5095,18 +5098,14 @@ describe("post-login operations app", () => {
     expect(screen.queryByRole("link", { name: "Create" })).not.toBeInTheDocument();
   });
 
-  it("rejects manager-created account passwords that do not meet the staging policy", async () => {
+  it("keeps manager-created account submission disabled until the temporary password meets the staging policy", () => {
     renderLoggedInApp("/manager?tool=create");
 
     fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Taylor Reed" } });
     fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "taylor.staff" } });
     fireEvent.change(screen.getByLabelText("Staff password"), { target: { value: "StaffPass123" } });
     fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "StaffPass123" } });
-    fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "taylor@chos.prototype" } });
-    fireEvent.change(screen.getByLabelText("Staff phone"), { target: { value: "(262) 555-0113" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
-
-    expect(await screen.findByText("Use at least 12 characters with uppercase, lowercase, a number, and a symbol.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create Staff Account" })).toBeDisabled();
     expect(window.localStorage.getItem("chos.managedAccounts.v1")).toBeNull();
   });
 
@@ -5174,14 +5173,14 @@ describe("post-login operations app", () => {
     const managerView = renderLoggedInApp("/manager?tool=create");
 
     fireEvent.click(screen.getByRole("button", { name: "Student" }));
+    expect(screen.getByRole("button", { name: "Create Student Account" })).toBeDisabled();
+    expect(screen.queryByLabelText("Student email")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Parent/guardian phone")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Student full name"), { target: { value: "Avery Kim" } });
     fireEvent.change(screen.getByLabelText("Student username"), { target: { value: "avery.student" } });
     fireEvent.change(screen.getByLabelText("Student password"), { target: { value: "StudentPass123!" } });
     fireEvent.change(screen.getByLabelText("Confirm student password"), { target: { value: "StudentPass123!" } });
-    fireEvent.change(screen.getByLabelText("Student email"), { target: { value: "avery@chos.prototype" } });
-    fireEvent.change(screen.getByLabelText("Parent/guardian phone"), { target: { value: "(262) 555-0122" } });
-    fireEvent.change(screen.getByLabelText("Program"), { target: { value: "Youth Taekwondo" } });
-    fireEvent.change(screen.getByLabelText("Belt rank"), { target: { value: "Yellow" } });
+    expect(screen.getByRole("button", { name: "Create Student Account" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Create Student Account" }));
 
     expect(screen.getByRole("article", { name: "Avery Kim student account" })).toHaveTextContent("Student");
@@ -5190,12 +5189,14 @@ describe("post-login operations app", () => {
         displayName: "Avery Kim",
         username: "avery.student",
         password: "StudentPass123!",
-        role: "student"
+        role: "student",
+        requiresPasswordChange: true
       })
     ]));
     expect(JSON.parse(window.localStorage.getItem("chos.operations.students.v1") ?? "[]")).toEqual(expect.arrayContaining([
-      expect.objectContaining({ firstName: "Avery", lastName: "Kim", email: "avery@chos.prototype", beltRank: "Yellow" })
+      expect.objectContaining({ firstName: "Avery", lastName: "Kim", email: "", phone: "", beltRank: "White" })
     ]));
+    expect(JSON.parse(window.localStorage.getItem("chos.messageLogs.v1") ?? "[]")).toEqual([]);
 
     managerView.unmount();
     clearActiveSession();
@@ -5515,11 +5516,14 @@ describe("post-login operations app", () => {
     const managerView = renderLoggedInApp("/manager?tool=create");
 
     fireEvent.click(screen.getByRole("button", { name: "Parent" }));
+    expect(screen.getByRole("button", { name: "Create Parent Account" })).toBeDisabled();
+    expect(screen.queryByLabelText("Parent email")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Parent phone")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Parent full name"), { target: { value: "Mina Miles" } });
     fireEvent.change(screen.getByLabelText("Parent username"), { target: { value: "mina.parent" } });
     fireEvent.change(screen.getByLabelText("Parent password"), { target: { value: "ParentPass123!" } });
     fireEvent.change(screen.getByLabelText("Confirm parent password"), { target: { value: "ParentPass123!" } });
-    fireEvent.change(screen.getByLabelText("Parent email"), { target: { value: "mina@chos.prototype" } });
+    expect(screen.getByRole("button", { name: "Create Parent Account" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Create Parent Account" }));
 
     expect(screen.getByRole("article", { name: "Mina Miles parent account" })).toHaveTextContent("Guardian");
@@ -5527,7 +5531,8 @@ describe("post-login operations app", () => {
       expect.objectContaining({
         email: "mina.parent",
         password: "ParentPass123!",
-        role: "guardian"
+        role: "guardian",
+        requiresPasswordChange: true
       })
     ]));
 
@@ -5554,7 +5559,6 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "dev.staff" } });
     fireEvent.change(screen.getByLabelText("Staff password"), { target: { value: "StaffPass123!" } });
     fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "StaffPass123!" } });
-    fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "devstaff@chos.prototype" } });
     fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
 
     expect(screen.getByRole("article", { name: "Dev Created Staff staff account" })).toBeInTheDocument();
@@ -5639,7 +5643,6 @@ describe("post-login operations app", () => {
       fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "remote.staff" } });
       fireEvent.change(screen.getByLabelText("Staff temporary password"), { target: { value: "RemoteStaffPass123!" } });
       fireEvent.change(screen.getByLabelText("Confirm staff temporary password"), { target: { value: "RemoteStaffPass123!" } });
-      fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "remote.staff@example.test" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
 
       await waitFor(() => expect(createAccountCalls()).toHaveLength(1));
@@ -5649,8 +5652,6 @@ describe("post-login operations app", () => {
       fireEvent.change(screen.getByLabelText("Student username"), { target: { value: "remote.student" } });
       fireEvent.change(screen.getByLabelText("Student temporary password"), { target: { value: "RemoteStudentPass123!" } });
       fireEvent.change(screen.getByLabelText("Confirm student temporary password"), { target: { value: "RemoteStudentPass123!" } });
-      fireEvent.change(screen.getByLabelText("Student email"), { target: { value: "remote.student@example.test" } });
-      fireEvent.change(screen.getByLabelText("Parent/guardian phone"), { target: { value: "(262) 555-0140" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Student Account" }));
 
       await waitFor(() => expect(createAccountCalls()).toHaveLength(2));
@@ -5660,16 +5661,16 @@ describe("post-login operations app", () => {
       fireEvent.change(screen.getByLabelText("Parent username"), { target: { value: "remote.parent" } });
       fireEvent.change(screen.getByLabelText("Parent temporary password"), { target: { value: "RemoteParentPass123!" } });
       fireEvent.change(screen.getByLabelText("Confirm parent temporary password"), { target: { value: "RemoteParentPass123!" } });
-      fireEvent.change(screen.getByLabelText("Parent email"), { target: { value: "remote.parent@example.test" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Parent Account" }));
 
       await waitFor(() => expect(createAccountCalls()).toHaveLength(3));
       const requestBodies = createAccountCalls().map(([, init]) => JSON.parse(String((init as RequestInit).body)));
       expect(requestBodies).toEqual([
-        expect.objectContaining({ username: "remote.staff", password: "RemoteStaffPass123!", role: "staff", email: "remote.staff@example.test", access: expect.arrayContaining(["dashboard"]) }),
-        expect.objectContaining({ username: "remote.student", password: "RemoteStudentPass123!", role: "student", email: "remote.student@example.test", studentId: "student-remote-student" }),
-        expect.objectContaining({ username: "remote.parent", password: "RemoteParentPass123!", role: "guardian", email: "remote.parent@example.test" })
+        expect.objectContaining({ username: "remote.staff", password: "RemoteStaffPass123!", role: "staff", access: expect.arrayContaining(["dashboard"]) }),
+        expect.objectContaining({ username: "remote.student", password: "RemoteStudentPass123!", role: "student", studentId: "student-remote-student" }),
+        expect.objectContaining({ username: "remote.parent", password: "RemoteParentPass123!", role: "guardian" })
       ]);
+      expect(requestBodies.every((body) => !("email" in body) && !("phone" in body))).toBe(true);
       expect(fetchMock).toHaveBeenCalledWith(
         "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/manager-create-account",
         expect.objectContaining({

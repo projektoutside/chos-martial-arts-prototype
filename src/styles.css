@@ -17208,6 +17208,29 @@ html.parent-tutorial-is-active {
   box-shadow: 0 0 0 3px rgba(184, 245, 226, 0.12);
 }
 
+.create-account-submit {
+  min-height: 44px;
+  border: 1px solid rgba(125, 230, 167, 0.62);
+  border-radius: 9px;
+  color: #07150e;
+  background: linear-gradient(135deg, #a8efbb, #54c978);
+  box-shadow: 0 8px 20px rgba(39, 163, 86, 0.24);
+  font: 900 0.86rem/1 var(--font-ui);
+}
+
+.create-account-submit:disabled {
+  border-color: rgba(218, 226, 255, 0.16);
+  color: var(--ops-muted);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+html[data-theme="light"] .create-account-submit:disabled {
+  border-color: rgba(25, 40, 62, 0.18);
+  background: rgba(25, 40, 62, 0.08);
+}
+
 .create-account-access-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
@@ -23055,7 +23078,6 @@ html[data-custom-colors="true"] .manager-profile-actions button,
 html[data-custom-colors="true"] .manager-theme-option.is-active,
 html[data-custom-colors="true"] .profile-editing-tool-button,
 html[data-custom-colors="true"] .profile-color-actions .profile-color-save,
-html[data-custom-colors="true"] .create-account-submit,
 html[data-custom-colors="true"] .manager-compose-submit {
   border-color: color-mix(in srgb, var(--user-visual-border) 72%, transparent);
   color: var(--user-visual-buttonText);

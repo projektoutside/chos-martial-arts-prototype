@@ -6,7 +6,7 @@ This app keeps the browser on publishable Supabase credentials only. Administrat
 
 1. Create or connect the Cho's Supabase project. Current staging is `chos-martial-arts-operations-app-staging` / `zfuwbbepsnmmlpgfkmhz`.
 2. Apply the migrations in `supabase/migrations`.
-3. Deploy both `supabase/functions/manager-create-account/index.ts` and `supabase/functions/activate-account/index.ts` when administrator-created live staff, student, and parent accounts are in scope. Both use `verify_jwt = false` because they perform their own bearer-token, Supabase Auth user, and active-profile checks; do not deploy them without those checks. Account creation keeps the service-role key server-side, stores the user's real email only as profile contact data, and creates an internal username-based Auth identity that requires a password change. Activation binds the password replacement to the bearer-token user and reauthenticates the assigned temporary password.
+3. Deploy both `supabase/functions/manager-create-account/index.ts` and `supabase/functions/activate-account/index.ts` when administrator-created live staff, student, and parent accounts are in scope. Both use `verify_jwt = false` because they perform their own bearer-token, Supabase Auth user, and active-profile checks; do not deploy them without those checks. Account creation keeps the service-role key server-side, creates an internal username-based Auth identity, accepts omitted contact email and phone data, stores absent profile/audit contact email as `null`, and requires a password change. Activation binds the password replacement to the bearer-token user and reauthenticates the assigned temporary password.
 4. Set the deployed app env vars:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_PUBLISHABLE_KEY`

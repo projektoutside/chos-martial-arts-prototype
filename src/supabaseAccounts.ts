@@ -57,7 +57,7 @@ type SupabaseCreateAccountInput = {
   password: string;
   role: AccountRole;
   status?: ManagedAccount["status"];
-  email: string;
+  email?: string;
   phone?: string;
   title?: string;
   notes?: string;
@@ -566,8 +566,9 @@ export async function createSupabaseManagedAccount(account: SupabaseCreateAccoun
   const password = account.password.trim();
   const displayName = account.displayName.trim();
   const role = account.role === "staff" || account.role === "student" || account.role === "guardian" ? account.role : "staff";
-  const email = account.email.trim().toLowerCase();
-  if (!username || !displayName || !email || !password) return { status: "error", message: "Enter a display name, username, temporary password, and real email before creating the account." };
+  const email = account.email?.trim().toLowerCase();
+  const authEmail = `${username}@accounts.chosmartialarts.app`;
+  if (!username || !displayName || !password) return { status: "error", message: "Enter a display name, username, and temporary password before creating the account." };
   if (!isStrongActivationPassword(password)) return { status: "error", message: accountPasswordPolicyText };
 
   const createUrl = `${supabaseUrl().replace(/\/+$/, "")}/functions/v1/manager-create-account`;
@@ -576,8 +577,8 @@ export async function createSupabaseManagedAccount(account: SupabaseCreateAccoun
     username,
     role,
     status: account.status ?? "active",
-    email,
     password,
+    ...(email ? { email } : {}),
     ...(account.phone?.trim() ? { phone: account.phone.trim() } : {}),
     ...(account.title?.trim() ? { title: account.title.trim() } : {}),
     ...(account.notes?.trim() ? { notes: account.notes.trim() } : {}),
@@ -602,7 +603,7 @@ export async function createSupabaseManagedAccount(account: SupabaseCreateAccoun
         status: "ok",
         activationRequired: true,
         username: typeof body.username === "string" ? body.username : username,
-        email: typeof body.email === "string" ? body.email : email
+        email: typeof body.email === "string" ? body.email : authEmail
       };
     }
     if (await isSupabaseBackendInactiveResponse(response)) return { status: "error", message: supabaseBackendInactiveMessage };

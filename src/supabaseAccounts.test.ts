@@ -546,11 +546,10 @@ describe("supabase account adapter", () => {
       username: "jordan.staff",
       password: "StaffPass123!",
       role: "staff",
-      email: "jordan@example.com",
       access: ["dashboard"]
     });
 
-    expect(result).toEqual({ status: "ok", activationRequired: true, username: "jordan.staff", email: "jordan@example.com" });
+    expect(result).toEqual({ status: "ok", activationRequired: true, username: "jordan.staff", email: "jordan.staff@accounts.chosmartialarts.app" });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://project.supabase.co/functions/v1/manager-create-account",
       expect.objectContaining({
@@ -563,7 +562,6 @@ describe("supabase account adapter", () => {
             username: "jordan.staff",
             role: "staff",
             status: "active",
-            email: "jordan@example.com",
             password: "StaffPass123!",
             access: ["dashboard"]
           })
@@ -575,8 +573,7 @@ describe("supabase account adapter", () => {
       displayName: "No Session",
       username: "no.session",
       password: "StaffPass123!",
-      role: "staff",
-      email: "no-session@example.com"
+      role: "staff"
     })).toEqual({
       status: "error",
       message: "Sign into an authorized Supabase Developer or Manager account before syncing created accounts."

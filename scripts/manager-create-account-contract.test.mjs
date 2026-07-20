@@ -34,6 +34,15 @@ test("new accounts use assigned usernames and temporary passwords that require a
   assert.doesNotMatch(source, /JSON\.stringify\([^)]*serviceRoleKey/);
 });
 
+test("contact data is optional while the internal Auth identity and nullable profile data remain required", async () => {
+  const source = await readFile(sourceUrl, "utf8");
+  assert.doesNotMatch(source, /!contactEmail/);
+  assert.match(source, /const contactEmail = cleanString\(body\.email\)\.toLowerCase\(\) \|\| null/);
+  assert.match(source, /contact_email: contactEmail/);
+  assert.match(source, /created_contact_email: contactEmail/);
+  assert.match(source, /email: authEmail/);
+});
+
 test("new profiles persist pending invitation state", async () => {
   const source = await readFile(sourceUrl, "utf8");
   assert.match(source, /invitation_status: "pending"/);
