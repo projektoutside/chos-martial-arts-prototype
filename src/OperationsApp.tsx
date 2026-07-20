@@ -132,7 +132,7 @@ import { buildTwilioSupabaseMessagingUrls, isSupabaseTwilioMessagingEndpoint, is
 import { validateTwilioRelayHealthResponseForBrowser, validateTwilioRelayPayloadForServer, type TwilioRelayHealthReadinessChecks } from "./twilioRelayContract";
 import { TestingUpdateHistoryDialog } from "./TestingUpdateHistoryDialog";
 import type { AccountRole, BeltRank, ChildAccount, ClassWeekday, DirectMessage, ManagedAccount, ManagerAccessKey, MerchandiseItem, MessageCampaign, MessageLog, MessageNotificationSettings, ScheduledClass, ScheduledTextCampaign, StudioClass, StudyGuideFolder, StudyGuideMaterial, StudentRecord, StudioEvent, TextAutomationRun, TrainingVideo, TrainingVideoFolder } from "./types";
-import { downloadTextFile, formatMoney, hasSmsOptOutLanguage, isDeveloperAccountEnabled, profileAvatarPathForSession, smsOptOutPreflightText, smsSegmentPreflightText, validateEmail } from "./utils";
+import { downloadTextFile, formatMoney, hasSmsOptOutLanguage, isDeveloperAccountEnabled, isReservedPrototypeUsername, profileAvatarPathForSession, smsOptOutPreflightText, smsSegmentPreflightText, validateEmail } from "./utils";
 
 const beltOptions = beltRanks.map((beltRank) => beltRank.name);
 const weekdayOptions: { value: ClassWeekday; label: string; short: string }[] = [
@@ -266,11 +266,12 @@ function isCurrentOperationsStudent(student: StudentRecord) {
   return (student.status?.trim() || "Active").toLowerCase() !== "inactive";
 }
 
-function selectSessionStudent(students: StudentRecord[], sessionEmail?: string, managedStudentId?: string) {
+function selectSessionStudent(students: StudentRecord[], sessionEmail?: string, managedStudentId?: string, failClosed = false) {
+  if (managedStudentId) return students.find((student) => student.id === managedStudentId);
   const normalizedEmail = sessionEmail?.toLowerCase();
+  const emailStudent = normalizedEmail ? students.find((student) => student.email.toLowerCase() === normalizedEmail) : undefined;
+  if (emailStudent || failClosed) return emailStudent;
   return (
-    (managedStudentId ? students.find((student) => student.id === managedStudentId) : undefined) ??
-    (normalizedEmail ? students.find((student) => student.email.toLowerCase() === normalizedEmail) : undefined) ??
     students.find((student) => (student.status ?? "Active").toLowerCase() === "active") ??
     students[0]
   );
@@ -3093,14 +3094,17 @@ function getSelectedStudentLauncherItem(search: string) {
 }
 
 function useStudentPanelSummary() {
-  const { currentChildAccount, session, students } = useAppState();
+  const { accountRole, currentChildAccount, currentManagedAccount, session, students } = useAppState();
   const selectedStudent = useMemo(() => {
+    const authoritativeStudentId = session?.studentId ?? currentManagedAccount?.studentId;
+    if (authoritativeStudentId) return students.find((student) => student.id === authoritativeStudentId);
     const sessionEmail = session?.email.toLowerCase();
     const sessionStudent = sessionEmail ? students.find((student) => student.email.toLowerCase() === sessionEmail) : undefined;
     if (sessionStudent) return sessionStudent;
     if (currentChildAccount) return undefined;
+    if (accountRole === "student") return undefined;
     return students.find((student) => (student.status ?? "Active").toLowerCase() === "active") ?? students[0];
-  }, [currentChildAccount, session?.email, students]);
+  }, [accountRole, currentChildAccount, currentManagedAccount?.studentId, session?.email, session?.studentId, students]);
   const studentProfile = readStudentProfile(session?.email, selectedStudent, currentChildAccount);
   const studentName = studentProfile.name || (selectedStudent ? fullName(selectedStudent) : currentChildAccount?.name.trim() || "Cho's Student");
   const studentFirstName = studentName.trim().split(/\s+/)[0] || "Student";
@@ -3421,7 +3425,7 @@ function completedReadinessItemCount(progress: StudentBeltProgress) {
 
 function StudentTestPage() {
   const { currentManagedAccount, session, students } = useAppState();
-  const selectedStudent = selectSessionStudent(students, session?.email, currentManagedAccount?.studentId);
+  const selectedStudent = selectSessionStudent(students, session?.email, session?.studentId ?? currentManagedAccount?.studentId, true);
   const progress = selectedStudent ? buildStudentBeltProgress(selectedStudent) : undefined;
   const studentName = selectedStudent ? fullName(selectedStudent) : "Cho's Student";
   const rankLabel = progress ? `${progress.rankName} Belt` : "No rank";
@@ -6012,16 +6016,19 @@ function HomeProfilePushSubscriptionControls({
 }
 
 function StudentProfilePage() {
-  const { currentChildAccount, directMessages, logout, scheduledClasses, sendDirectMessage, session, showToast, studioClasses, studioEvents, students } = useAppState();
+  const { accountRole, currentChildAccount, currentManagedAccount, directMessages, logout, scheduledClasses, sendDirectMessage, session, showToast, studioClasses, studioEvents, students } = useAppState();
   const navigate = useNavigate();
   const today = useLiveCalendarDate();
   const selectedStudent = useMemo(() => {
+    const authoritativeStudentId = session?.studentId ?? currentManagedAccount?.studentId;
+    if (authoritativeStudentId) return students.find((student) => student.id === authoritativeStudentId);
     const sessionEmail = session?.email.toLowerCase();
     const sessionStudent = sessionEmail ? students.find((student) => student.email.toLowerCase() === sessionEmail) : undefined;
     if (sessionStudent) return sessionStudent;
     if (currentChildAccount) return undefined;
+    if (accountRole === "student") return undefined;
     return students.find((student) => (student.status ?? "Active").toLowerCase() === "active") ?? students[0];
-  }, [currentChildAccount, session?.email, students]);
+  }, [accountRole, currentChildAccount, currentManagedAccount?.studentId, session?.email, session?.studentId, students]);
   const [studentProfile, setStudentProfile] = useState(() => readStudentProfile(session?.email, selectedStudent, currentChildAccount));
   const [studentProfileOpen, setStudentProfileOpen] = useState(false);
   const [studentUpdateHistoryOpen, setStudentUpdateHistoryOpen] = useState(false);
@@ -9684,7 +9691,7 @@ function ManagerLauncherPage() {
   const sidebarToggleLabel = isSidebarCollapsed ? `Expand ${launcherName} app launcher` : `Collapse ${launcherName} app launcher`;
   const managerProfileNotificationChannels = profileNotificationChannels(messageNotificationSettings);
   const managerProfilePushSubscriptionReady = Boolean(messageNotificationSettings.pushSubscriptionEndpoint?.trim());
-  const studentRecord = selectSessionStudent(students, session?.email, currentManagedAccount?.studentId);
+  const studentRecord = selectSessionStudent(students, session?.email, session?.studentId ?? currentManagedAccount?.studentId, isStudentPanel);
   const studentPanelProfile = isStudentPanel ? readStudentProfile(session?.email, studentRecord) : undefined;
   const profileAvatarPath = profileAvatarPathForSession(session?.email);
   const profileActionPhoto = isStudentPanel
@@ -10071,12 +10078,19 @@ function normalizeCreateUsername(username: string) {
     .replace(/^[._-]+|[._-]+$/g, "");
 }
 
+function studentIdForCreateUsername(username: string) {
+  const normalizedUsername = normalizeCreateUsername(username);
+  const encodedUsername = Array.from(normalizedUsername, (character) => character.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+  return `student-${encodedUsername}`;
+}
+
 const defaultStaffAccess = createAccountStaffAccessOptions.map((option) => option.key);
 
 function CreateAccountsPage() {
   const {
     accounts,
     addOperationsStudent,
+    childAccounts,
     createGuardianAccount,
     createManagedAccount,
     managedAccounts,
@@ -10169,6 +10183,14 @@ function CreateAccountsPage() {
     && !validatePasswordFields(password, confirmPassword)
   );
 
+  const localUsernameExists = (username: string) => {
+    const normalizedUsername = normalizeCreateUsername(username);
+    return isReservedPrototypeUsername(normalizedUsername)
+      || managedAccounts.some((account) => normalizeCreateUsername(account.username) === normalizedUsername)
+      || accounts.some((account) => normalizeCreateUsername(account.email) === normalizedUsername)
+      || childAccounts.some((account) => normalizeCreateUsername(account.username) === normalizedUsername);
+  };
+
   const createStaff = async (event: FormEvent) => {
     event.preventDefault();
     const passwordError = validatePasswordFields(staffForm.password, staffForm.confirmPassword);
@@ -10228,7 +10250,7 @@ function CreateAccountsPage() {
       showFormMessage("Enter the student name, username, and password.");
       return;
     }
-    const linkedStudentId = `student-${username.replace(/[^a-z0-9]+/g, "-")}`;
+    const linkedStudentId = studentIdForCreateUsername(username);
     if (isSupabaseAuthConfigured()) {
       const liveCreated = await createLiveSupabaseAccount({
         displayName: studentName,
@@ -10257,7 +10279,12 @@ function CreateAccountsPage() {
         return;
       }
     }
+    if (localUsernameExists(username)) {
+      showFormMessage("Enter a unique student username linked to an active student.");
+      return;
+    }
     const student = addOperationsStudent({
+      studentId: linkedStudentId,
       fullName: studentForm.fullName,
       studentEmail: "",
       guardianPhone: "",
@@ -10392,11 +10419,12 @@ function CreateAccountsPage() {
 
         {mode === "staff" && (
           <form className="create-account-form" aria-label="Create staff account" onSubmit={createStaff}>
+            <p className="operations-note create-account-readiness" id="create-staff-readiness">Complete the name, username, temporary password, and matching confirmation. The Create Account button turns green when ready.</p>
             <div className="student-form-grid">
-              <label>Staff full name<input value={staffForm.displayName} onChange={(event) => setStaffForm({ ...staffForm, displayName: event.target.value })} /></label>
-              <label>Staff username<input autoComplete="username" value={staffForm.username} onChange={(event) => setStaffForm({ ...staffForm, username: event.target.value })} /></label>
-              <label>Staff temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Staff temporary password" : "Staff password"} type="password" autoComplete="new-password" value={staffForm.password} onChange={(event) => setStaffForm({ ...staffForm, password: event.target.value })} /></label>
-              <label>Confirm staff temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Confirm staff temporary password" : "Confirm staff password"} type="password" autoComplete="new-password" value={staffForm.confirmPassword} onChange={(event) => setStaffForm({ ...staffForm, confirmPassword: event.target.value })} /></label>
+              <label>Staff full name<input required aria-required="true" aria-describedby="create-staff-readiness" value={staffForm.displayName} onChange={(event) => setStaffForm({ ...staffForm, displayName: event.target.value })} /></label>
+              <label>Staff username<input required aria-required="true" aria-describedby="create-staff-readiness" autoComplete="username" value={staffForm.username} onChange={(event) => setStaffForm({ ...staffForm, username: event.target.value })} /></label>
+              <label>Staff temporary password<input required aria-required="true" aria-describedby="create-staff-readiness" aria-label={liveSupabaseAccountsEnabled ? "Staff temporary password" : "Staff password"} type="password" autoComplete="new-password" value={staffForm.password} onChange={(event) => setStaffForm({ ...staffForm, password: event.target.value })} /></label>
+              <label>Confirm staff temporary password<input required aria-required="true" aria-describedby="create-staff-readiness" aria-label={liveSupabaseAccountsEnabled ? "Confirm staff temporary password" : "Confirm staff password"} type="password" autoComplete="new-password" value={staffForm.confirmPassword} onChange={(event) => setStaffForm({ ...staffForm, confirmPassword: event.target.value })} /></label>
               <label>Staff title<input value={staffForm.title} onChange={(event) => setStaffForm({ ...staffForm, title: event.target.value })} /></label>
             </div>
             <fieldset className="create-account-access-grid">
@@ -10410,39 +10438,41 @@ function CreateAccountsPage() {
             </fieldset>
             <label className="create-account-notes">Staff notes<textarea value={staffForm.notes} onChange={(event) => setStaffForm({ ...staffForm, notes: event.target.value })} /></label>
             <div className="student-editor-actions">
-              <button className="create-account-submit" type="submit" aria-label="Create Staff Account" disabled={isCreatingAccount || !isAccountFormReady(staffForm.displayName, staffForm.username, staffForm.password, staffForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
+              <button className="create-account-submit" type="submit" aria-label="Create Staff Account" aria-describedby="create-staff-readiness" disabled={isCreatingAccount || !isAccountFormReady(staffForm.displayName, staffForm.username, staffForm.password, staffForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
             </div>
           </form>
         )}
 
         {mode === "student" && (
           <form className="create-account-form" aria-label="Create student account" onSubmit={createStudent}>
+            <p className="operations-note create-account-readiness" id="create-student-readiness">Complete the name, username, temporary password, and matching confirmation. The Create Account button turns green when ready.</p>
             <div className="student-form-grid">
-              <label>Student full name<input value={studentForm.fullName} onChange={(event) => setStudentForm({ ...studentForm, fullName: event.target.value })} /></label>
-              <label>Student username<input autoComplete="username" value={studentForm.username} onChange={(event) => setStudentForm({ ...studentForm, username: event.target.value })} /></label>
-              <label>Student temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Student temporary password" : "Student password"} type="password" autoComplete="new-password" value={studentForm.password} onChange={(event) => setStudentForm({ ...studentForm, password: event.target.value })} /></label>
-              <label>Confirm student temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Confirm student temporary password" : "Confirm student password"} type="password" autoComplete="new-password" value={studentForm.confirmPassword} onChange={(event) => setStudentForm({ ...studentForm, confirmPassword: event.target.value })} /></label>
+              <label>Student full name<input required aria-required="true" aria-describedby="create-student-readiness" value={studentForm.fullName} onChange={(event) => setStudentForm({ ...studentForm, fullName: event.target.value })} /></label>
+              <label>Student username<input required aria-required="true" aria-describedby="create-student-readiness" autoComplete="username" value={studentForm.username} onChange={(event) => setStudentForm({ ...studentForm, username: event.target.value })} /></label>
+              <label>Student temporary password<input required aria-required="true" aria-describedby="create-student-readiness" aria-label={liveSupabaseAccountsEnabled ? "Student temporary password" : "Student password"} type="password" autoComplete="new-password" value={studentForm.password} onChange={(event) => setStudentForm({ ...studentForm, password: event.target.value })} /></label>
+              <label>Confirm student temporary password<input required aria-required="true" aria-describedby="create-student-readiness" aria-label={liveSupabaseAccountsEnabled ? "Confirm student temporary password" : "Confirm student password"} type="password" autoComplete="new-password" value={studentForm.confirmPassword} onChange={(event) => setStudentForm({ ...studentForm, confirmPassword: event.target.value })} /></label>
               <label>Program<input value={studentForm.program} onChange={(event) => setStudentForm({ ...studentForm, program: event.target.value })} /></label>
               <label>Belt rank<input value={studentForm.beltRank} onChange={(event) => setStudentForm({ ...studentForm, beltRank: event.target.value })} /></label>
             </div>
             <label className="create-account-notes">Student notes<textarea value={studentForm.notes} onChange={(event) => setStudentForm({ ...studentForm, notes: event.target.value })} /></label>
             <div className="student-editor-actions">
-              <button className="create-account-submit" type="submit" aria-label="Create Student Account" disabled={isCreatingAccount || !isAccountFormReady(studentForm.fullName, studentForm.username, studentForm.password, studentForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
+              <button className="create-account-submit" type="submit" aria-label="Create Student Account" aria-describedby="create-student-readiness" disabled={isCreatingAccount || !isAccountFormReady(studentForm.fullName, studentForm.username, studentForm.password, studentForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
             </div>
           </form>
         )}
 
         {mode === "parent" && (
           <form className="create-account-form" aria-label="Create parent account" onSubmit={createParent}>
+            <p className="operations-note create-account-readiness" id="create-parent-readiness">Complete the name, username, temporary password, and matching confirmation. The Create Account button turns green when ready.</p>
             <div className="student-form-grid">
-              <label>Parent full name<input value={parentForm.displayName} onChange={(event) => setParentForm({ ...parentForm, displayName: event.target.value })} /></label>
-              <label>Parent username<input autoComplete="username" value={parentForm.username} onChange={(event) => setParentForm({ ...parentForm, username: event.target.value })} /></label>
-              <label>Parent temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Parent temporary password" : "Parent password"} type="password" autoComplete="new-password" value={parentForm.password} onChange={(event) => setParentForm({ ...parentForm, password: event.target.value })} /></label>
-              <label>Confirm parent temporary password<input aria-label={liveSupabaseAccountsEnabled ? "Confirm parent temporary password" : "Confirm parent password"} type="password" autoComplete="new-password" value={parentForm.confirmPassword} onChange={(event) => setParentForm({ ...parentForm, confirmPassword: event.target.value })} /></label>
+              <label>Parent full name<input required aria-required="true" aria-describedby="create-parent-readiness" value={parentForm.displayName} onChange={(event) => setParentForm({ ...parentForm, displayName: event.target.value })} /></label>
+              <label>Parent username<input required aria-required="true" aria-describedby="create-parent-readiness" autoComplete="username" value={parentForm.username} onChange={(event) => setParentForm({ ...parentForm, username: event.target.value })} /></label>
+              <label>Parent temporary password<input required aria-required="true" aria-describedby="create-parent-readiness" aria-label={liveSupabaseAccountsEnabled ? "Parent temporary password" : "Parent password"} type="password" autoComplete="new-password" value={parentForm.password} onChange={(event) => setParentForm({ ...parentForm, password: event.target.value })} /></label>
+              <label>Confirm parent temporary password<input required aria-required="true" aria-describedby="create-parent-readiness" aria-label={liveSupabaseAccountsEnabled ? "Confirm parent temporary password" : "Confirm parent password"} type="password" autoComplete="new-password" value={parentForm.confirmPassword} onChange={(event) => setParentForm({ ...parentForm, confirmPassword: event.target.value })} /></label>
             </div>
             <label className="create-account-notes">Parent notes<textarea value={parentForm.notes} onChange={(event) => setParentForm({ ...parentForm, notes: event.target.value })} /></label>
             <div className="student-editor-actions">
-              <button className="create-account-submit" type="submit" aria-label="Create Parent Account" disabled={isCreatingAccount || !isAccountFormReady(parentForm.displayName, parentForm.username, parentForm.password, parentForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
+              <button className="create-account-submit" type="submit" aria-label="Create Parent Account" aria-describedby="create-parent-readiness" disabled={isCreatingAccount || !isAccountFormReady(parentForm.displayName, parentForm.username, parentForm.password, parentForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
             </div>
           </form>
         )}
@@ -14000,11 +14030,11 @@ function CheckInsPage() {
   const { accountRole, currentManagedAccount, session, students, checkIns, recordStudentCheckIn, showToast } = useAppState();
   const today = toDateKey(useLiveCalendarDate());
   const isStudentMode = accountRole === "student";
-  const sessionStudent = isStudentMode ? selectSessionStudent(students, session?.email, currentManagedAccount?.studentId) : undefined;
+  const sessionStudent = isStudentMode ? selectSessionStudent(students, session?.email, session?.studentId ?? currentManagedAccount?.studentId, true) : undefined;
   const checkInStudents = useMemo(() => students.filter(isCurrentOperationsStudent), [students]);
   const firstStudentId = checkInStudents[0]?.id ?? "";
   const [selectedStudentId, setSelectedStudentId] = useState(firstStudentId);
-  const selectedStudent = sessionStudent ?? checkInStudents.find((student) => student.id === selectedStudentId) ?? checkInStudents[0];
+  const selectedStudent = isStudentMode ? sessionStudent : checkInStudents.find((student) => student.id === selectedStudentId) ?? checkInStudents[0];
   const selectedStudentCheckIns = selectedStudent ? checkIns.filter((checkIn) => checkIn.studentId === selectedStudent.id) : [];
   const todayStudentCheckIn = selectedStudentCheckIns.find((checkIn) => checkIn.date === today);
   const knownCheckInDates = [

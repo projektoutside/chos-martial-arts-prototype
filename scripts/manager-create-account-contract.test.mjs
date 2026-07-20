@@ -53,7 +53,9 @@ test("custom-color account creation submit styling preserves enabled-green and d
   assert.ok(enabledRule > genericCustomColorRule);
   assert.ok(disabledRule > genericCustomColorRule);
   assert.match(styles.slice(enabledRule, disabledRule), /background: linear-gradient\(135deg, #a8efbb, #54c978\)/);
-  assert.match(styles.slice(disabledRule), /background: rgba\(255, 255, 255, 0\.07\)/);
+  assert.match(styles.slice(disabledRule), /border-color: color-mix\(in srgb, var\(--user-visual-border\) 82%, var\(--user-visual-text\)\)/);
+  assert.match(styles.slice(disabledRule), /background: color-mix\(in srgb, var\(--user-visual-elevatedSurface\) 82%, var\(--user-visual-border\)\)/);
+  assert.match(styles, /html\[data-theme="light"\] \.create-account-submit:disabled \{[\s\S]*?border-color: #667085;[\s\S]*?background: #eaecf0;/);
 });
 
 test("new profiles persist pending invitation state", async () => {

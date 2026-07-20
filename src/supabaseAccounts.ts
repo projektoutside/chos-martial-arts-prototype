@@ -40,6 +40,7 @@ export type SupabaseStoredSession = {
   projectRef?: string;
   authEmail?: string;
   profileUsername?: string;
+  studentId?: string;
 };
 
 export type SupabaseLoginResult =
@@ -48,8 +49,8 @@ export type SupabaseLoginResult =
   | { status: "inactive" }
   | { status: "backend-inactive"; message: string }
   | { status: "error"; message: string }
-  | { status: "activation-required"; sessionEmail: string; role: AccountRole; profile: SupabaseProfileResponse }
-  | { status: "authenticated"; sessionEmail: string; role: AccountRole; profile: SupabaseProfileResponse };
+  | { status: "activation-required"; sessionEmail: string; role: AccountRole; profile: SupabaseProfileResponse; studentId?: string }
+  | { status: "authenticated"; sessionEmail: string; role: AccountRole; profile: SupabaseProfileResponse; studentId?: string };
 
 type SupabaseCreateAccountInput = {
   displayName: string;
@@ -234,7 +235,8 @@ function saveSupabaseAuthSession(response: SupabasePasswordResponse, profile?: S
     userId: response.user.id,
     projectRef: supabaseSessionProjectScope(),
     authEmail: response.user.email?.trim().toLowerCase(),
-    profileUsername: profile ? normalizeSupabaseUsername(profile.username) : undefined
+    profileUsername: profile ? normalizeSupabaseUsername(profile.username) : undefined,
+    studentId: profile?.student_id?.trim() || undefined
   };
   window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify(storedSession));
 }
@@ -433,6 +435,11 @@ export async function signInSupabaseAccount(credentials: { username: string; pas
     const profileUsername = normalizeSupabaseUsername(profile.username);
     const managerAliasMatch = (username === legacyManagerUsername || username === liveManagerUsername) && profileUsername === liveManagerUsername;
     if (!cleanedInput.includes("@") && profileUsername !== username && !managerAliasMatch) return { status: "invalid" };
+    const studentId = profile.student_id?.trim() || undefined;
+    if (profile.role === "student" && !studentId) {
+      clearSupabaseAuthSession();
+      return { status: "invalid" };
+    }
 
     saveSupabaseAuthSession(session, profile);
     if (requiresPasswordChange(session.user.app_metadata)) {
@@ -440,14 +447,16 @@ export async function signInSupabaseAccount(credentials: { username: string; pas
         status: "activation-required",
         sessionEmail: sessionEmailForProfile(profile),
         role: profile.role,
-        profile
+        profile,
+        studentId
       };
     }
     return {
       status: "authenticated",
       sessionEmail: sessionEmailForProfile(profile),
       role: profile.role,
-      profile
+      profile,
+      studentId
     };
   } catch (error) {
     if (isSupabaseBackendInactiveError(error)) return { status: "backend-inactive", message: supabaseBackendInactiveMessage };

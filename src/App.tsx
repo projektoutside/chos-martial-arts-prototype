@@ -385,7 +385,7 @@ function LoginLandingPage({
   const [setupMessage, setSetupMessage] = useState("");
   const [activationOpen, setActivationOpen] = useState(false);
   const [activationStep, setActivationStep] = useState<"credentials" | "password">("credentials");
-  const [activationHostedSession, setActivationHostedSession] = useState<{ sessionEmail: string; role: AccountRole } | null>(null);
+  const [activationHostedSession, setActivationHostedSession] = useState<{ sessionEmail: string; role: AccountRole; studentId?: string } | null>(null);
   const [activationPending, setActivationPending] = useState(false);
   const [activationMessage, setActivationMessage] = useState("");
   const [activationForm, setActivationForm] = useState({
@@ -495,13 +495,13 @@ function LoginLandingPage({
       try {
         const supabaseLogin = await signInSupabaseAccount(loginForm);
         if (supabaseLogin.status === "authenticated") {
-          login(supabaseLogin.sessionEmail, true, supabaseLogin.role);
+          login(supabaseLogin.sessionEmail, true, supabaseLogin.role, supabaseLogin.studentId);
           navigate("/");
           return;
         }
         if (supabaseLogin.status === "activation-required") {
           setActivationForm({ username: loginForm.username, temporaryPassword: loginForm.password, password: "", confirmation: "" });
-          setActivationHostedSession({ sessionEmail: supabaseLogin.sessionEmail, role: supabaseLogin.role });
+          setActivationHostedSession({ sessionEmail: supabaseLogin.sessionEmail, role: supabaseLogin.role, studentId: supabaseLogin.studentId });
           setActivationStep("password");
           setActivationMessage("");
           setActivationOpen(true);
@@ -602,7 +602,7 @@ function LoginLandingPage({
         const result = await signInSupabaseAccount({ username: activationForm.username, password: activationForm.temporaryPassword });
         setActivationPending(false);
         if (result.status === "activation-required") {
-          setActivationHostedSession({ sessionEmail: result.sessionEmail, role: result.role });
+          setActivationHostedSession({ sessionEmail: result.sessionEmail, role: result.role, studentId: result.studentId });
           setActivationStep("password");
           return;
         }
@@ -654,7 +654,7 @@ function LoginLandingPage({
         setActivationMessage("Your temporary sign-in expired. Start account access again.");
         return;
       }
-      login(activationHostedSession.sessionEmail, true, activationHostedSession.role);
+      login(activationHostedSession.sessionEmail, true, activationHostedSession.role, activationHostedSession.studentId);
     } else {
       const result = activateCreatedAccount({
         username: activationForm.username,
@@ -771,6 +771,7 @@ function LoginLandingPage({
               </>
             ) : (
               <>
+                <label className="sr-only"><span>Account name for password manager</span><input aria-label="Account name for password manager" autoComplete="username" value={activationForm.username} readOnly tabIndex={-1} /></label>
                 <label><span>New password</span><input aria-label="New account password" type="password" autoComplete="new-password" value={activationForm.password} onChange={(event) => setActivationForm({ ...activationForm, password: event.target.value })} /></label>
                 <label><span>Confirm password</span><input aria-label="Confirm account password" type="password" autoComplete="new-password" value={activationForm.confirmation} onChange={(event) => setActivationForm({ ...activationForm, confirmation: event.target.value })} /></label>
               </>

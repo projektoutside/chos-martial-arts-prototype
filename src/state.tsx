@@ -437,7 +437,7 @@ interface AppState {
   placeOrder: (customer: CustomerInfo, notes: string) => Order | undefined;
   saveBooking: (booking: BookingDetails) => void;
   saveContact: (contact: ContactSubmission) => void;
-  login: (email: string, remembered: boolean, role?: AccountRole) => void;
+  login: (email: string, remembered: boolean, role?: AccountRole, studentId?: string) => void;
   loginRegisteredAccount: (credentials: { username: string; password: string }) => AccountRecord | undefined;
   loginCreatedAccount: (credentials: { username: string; password: string }) => CreatedAccountLoginResult | undefined;
   activateCreatedAccount: (credentials: { username: string; temporaryPassword: string; password: string }) => CreatedAccountActivationResult;
@@ -2599,8 +2599,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   );
 
   const login = useCallback(
-    (email: string, remembered: boolean, role?: AccountRole) => {
-      setSession({ email, remembered, createdAt: new Date().toISOString() });
+    (email: string, remembered: boolean, role?: AccountRole, studentId?: string) => {
+      setSession({ email, remembered, createdAt: new Date().toISOString(), studentId: studentId?.trim() || undefined });
       if (role) saveRoleForEmail(email, role);
     },
     [saveRoleForEmail, setSession]
@@ -2733,7 +2733,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
             return { status: "activation-required", account: managedAccount };
           }
           saveRoleForEmail(managedAccount.username, managedAccount.role);
-          setSession({ email: managedAccount.username, remembered: true, createdAt: new Date().toISOString() });
+          setSession({ email: managedAccount.username, remembered: true, createdAt: new Date().toISOString(), studentId: managedAccount.studentId });
           return { status: "authenticated", account: managedAccount };
         }
       }
@@ -2796,7 +2796,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           }
           updateManagedAccountsState(updatedAccounts);
           saveRoleForEmail(updatedAccount.username, updatedAccount.role);
-          setSession({ email: updatedAccount.username, remembered: true, createdAt: new Date().toISOString() });
+          setSession({ email: updatedAccount.username, remembered: true, createdAt: new Date().toISOString(), studentId: updatedAccount.studentId });
           return { status: "ok", username: updatedAccount.username, account: updatedAccount };
         }
       }
@@ -2981,11 +2981,19 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     (student: StudentInput) => {
       const normalizedStudent = normalizeStudentInput(student);
       if (!normalizedStudent) return undefined;
-      const matchingStudent = studentsRef.current.find((item) => studentEnrollmentKey(item) === studentEnrollmentKey(normalizedStudent));
-      if (matchingStudent) return matchingStudent;
+      const explicitStudentId = student.studentId?.trim();
+      if (explicitStudentId) {
+        const existingById = studentsRef.current.find((item) => item.id === explicitStudentId);
+        if (existingById) {
+          return studentEnrollmentKey(existingById) === studentEnrollmentKey(normalizedStudent) ? existingById : undefined;
+        }
+      } else {
+        const matchingStudent = studentsRef.current.find((item) => studentEnrollmentKey(item) === studentEnrollmentKey(normalizedStudent));
+        if (matchingStudent) return matchingStudent;
+      }
       const createdStudent: StudentRecord = {
         ...normalizedStudent,
-        id: student.studentId?.trim() || createPrototypeId("student"),
+        id: explicitStudentId || createPrototypeId("student"),
         classesAttended: 0,
         missedClassCount: 0
       };

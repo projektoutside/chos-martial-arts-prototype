@@ -1753,6 +1753,59 @@ function StudentCreationDoubleCallHarness() {
   );
 }
 
+function renderHostedStudentApp(path: string, studentId: string, students: Record<string, unknown>[]) {
+  window.localStorage.setItem("chos.operations.students.v1", JSON.stringify(students));
+  window.localStorage.setItem("chos.managedAccounts.v1", JSON.stringify([{
+    id: "hosted-student-account",
+    displayName: "Hosted Student",
+    username: "hosted.student",
+    password: "unused",
+    role: "student",
+    status: "active",
+    access: [],
+    studentId: "student-wrong",
+    createdAt: "2026-07-19T00:00:00.000Z"
+  }]));
+  seedActiveSession({
+    email: "hosted.student",
+    remembered: true,
+    createdAt: "2026-07-19T00:00:00.000Z",
+    studentId
+  } as AccountSession);
+  window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "hosted.student", role: "student" }]));
+
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <AppStateProvider>
+        <App />
+      </AppStateProvider>
+    </MemoryRouter>
+  );
+}
+
+function ExplicitStudentIdCreationHarness() {
+  const { addOperationsStudent, students } = useAppState();
+  const [result, setResult] = useState("none");
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          const dotted = addOperationsStudent({ studentId: "student-alex-dot", fullName: "Alex Lee", studentEmail: "", guardianPhone: "", beltRank: "White", allowEmptyContact: true });
+          const dashed = addOperationsStudent({ studentId: "student-alex-dash", fullName: "Alex Lee", studentEmail: "", guardianPhone: "", beltRank: "White", allowEmptyContact: true });
+          const conflicting = addOperationsStudent({ studentId: "student-alex-dot", fullName: "Different Student", studentEmail: "", guardianPhone: "", beltRank: "White", allowEmptyContact: true });
+          setResult(`${dotted?.id ?? "none"},${dashed?.id ?? "none"},${conflicting?.id ?? "none"}`);
+        }}
+      >
+        Create explicitly linked students
+      </button>
+      <p>Harness explicit student ids: {result}</p>
+      <p>Harness explicit student count: {students.length}</p>
+    </div>
+  );
+}
+
 function ManagedStudentAccountCreationHarness({ studentId }: { studentId: string }) {
   const state = useAppState() as unknown as {
     createManagedAccount?: (account: {
@@ -2996,7 +3049,7 @@ describe("login landing", () => {
     expect(screen.queryByRole("button", { name: "Sign in as Guest" })).not.toBeInTheDocument();
   });
 
-  it("activates a hosted account with assigned credentials and a new personal password", async () => {
+  it("activates a hosted student account and preserves its authoritative student id", async () => {
     vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
     vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
     vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
@@ -3008,25 +3061,25 @@ describe("login landing", () => {
           access_token: "temporary-account-token",
           expires_in: 3600,
           user: {
-            id: "new-staff-user-id",
-            email: "jordan.staff@accounts.chosmartialarts.app",
+            id: "new-student-user-id",
+            email: "jordan.student@accounts.chosmartialarts.app",
             app_metadata: { requires_password_change: true }
           }
         }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (requestUrl.includes("/rest/v1/profiles")) {
         return new Response(JSON.stringify([{
-          id: "new-staff-user-id",
-          username: "jordan.staff",
+          id: "new-student-user-id",
+          username: "jordan.student",
           contact_email: "jordan@example.com",
           display_name: "Jordan Lee",
-          role: "staff",
+          role: "student",
           status: "active",
           phone: null,
           title: null,
           notes: null,
-          access: ["dashboard"],
-          student_id: null,
+          access: [],
+          student_id: "student-jordan-authoritative",
           created_by: "manager-user-id",
           created_at: "2026-07-16T00:00:00.000Z"
         }]), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -3041,16 +3094,25 @@ describe("login landing", () => {
     try {
       renderLoggedOutApp("/");
       fireEvent.click(screen.getByRole("button", { name: "Access New Account" }));
-      fireEvent.change(screen.getByLabelText("Account name"), { target: { value: "jordan.staff" } });
+      fireEvent.change(screen.getByLabelText("Account name"), { target: { value: "jordan.student" } });
       fireEvent.change(screen.getByLabelText("Temporary password"), { target: { value: "TemporaryPass123!" } });
       fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
       expect(await screen.findByText("Create your personal password")).toBeInTheDocument();
+      const passwordManagerUsername = screen.getByLabelText("Account name for password manager");
+      expect(passwordManagerUsername).toHaveAttribute("autocomplete", "username");
+      expect(passwordManagerUsername).toHaveAttribute("readonly");
+      expect(passwordManagerUsername).toHaveValue("jordan.student");
+      expect(passwordManagerUsername.closest("form")).toBe(screen.getByLabelText("New account password").closest("form"));
       fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "PermanentPass123!" } });
       fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "PermanentPass123!" } });
       fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
 
       expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
+      expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toEqual(expect.objectContaining({
+        email: "jordan.student",
+        studentId: "student-jordan-authoritative"
+      }));
       expect(fetchMock).toHaveBeenCalledWith(
         "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/activate-account",
         expect.objectContaining({
@@ -5039,6 +5101,24 @@ describe("post-login operations app", () => {
     expect(within(screen.getByRole("tablist", { name: "Live chat rooms" })).getByRole("tab", { name: "Cho's Room" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("uses the hosted session student id authoritatively and fails closed when it is unknown", () => {
+    const students = [
+      { id: "student-wrong", firstName: "Wrong", lastName: "Student", ...completeStudentSafetyFields, email: "", phone: "", status: "Active", beltRank: "White", classesAttended: 3, missedClassCount: 0, joinedAt: "2026-01-01" },
+      { id: "student-right", firstName: "Right", lastName: "Student", ...completeStudentSafetyFields, email: "", phone: "", status: "Active", beltRank: "Blue", classesAttended: 20, missedClassCount: 0, joinedAt: "2026-01-01" }
+    ];
+    const linkedView = renderHostedStudentApp("/manager?tool=test", "student-right", students);
+
+    expect(screen.getByLabelText("Student belt progress")).toHaveTextContent("Right Student");
+    expect(screen.getByLabelText("Student belt progress")).not.toHaveTextContent("Wrong Student");
+
+    linkedView.unmount();
+    clearActiveSession();
+    renderHostedStudentApp("/manager?tool=test", "student-missing", students);
+
+    expect(screen.getByLabelText("Student belt progress")).toHaveTextContent("No student record is linked to this account yet.");
+    expect(screen.getByLabelText("Student belt progress")).not.toHaveTextContent("Wrong Student");
+  });
+
   it("opens the manager panel from the manager home icon button", () => {
     renderLoggedInApp("/profile");
 
@@ -5109,6 +5189,44 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "StaffPass123" } });
     expect(screen.getByRole("button", { name: "Create Staff Account" })).toBeDisabled();
     expect(window.localStorage.getItem("chos.managedAccounts.v1")).toBeNull();
+  });
+
+  it("keeps required account fields and disabled-submit guidance available to assistive technology", () => {
+    renderLoggedInApp("/manager?tool=create");
+
+    const expectations = [
+      { tab: "Staff", fields: ["Staff full name", "Staff username", "Staff password", "Confirm staff password"], button: "Create Staff Account", readinessId: "create-staff-readiness" },
+      { tab: "Student", fields: ["Student full name", "Student username", "Student password", "Confirm student password"], button: "Create Student Account", readinessId: "create-student-readiness" },
+      { tab: "Parent", fields: ["Parent full name", "Parent username", "Parent password", "Confirm parent password"], button: "Create Parent Account", readinessId: "create-parent-readiness" }
+    ];
+
+    for (const expectation of expectations) {
+      fireEvent.click(screen.getByRole("button", { name: expectation.tab }));
+      for (const label of expectation.fields) {
+        const field = screen.getByLabelText(label);
+        expect(field).toBeRequired();
+        expect(field).toHaveAttribute("aria-required", "true");
+        expect(field).toHaveAttribute("aria-describedby", expectation.readinessId);
+      }
+      expect(screen.getByRole("button", { name: expectation.button })).toHaveAttribute("aria-describedby", expectation.readinessId);
+      expect(document.getElementById(expectation.readinessId)).toHaveTextContent("Complete the name, username, temporary password, and matching confirmation.");
+    }
+  });
+
+  it("does not persist a student when its local username is reserved", () => {
+    window.localStorage.setItem("chos.operations.students.v1", JSON.stringify([]));
+    renderLoggedInApp("/manager?tool=create");
+
+    fireEvent.click(screen.getByRole("button", { name: "Student" }));
+    fireEvent.change(screen.getByLabelText("Student full name"), { target: { value: "Reserved Student" } });
+    fireEvent.change(screen.getByLabelText("Student username"), { target: { value: "manager1" } });
+    fireEvent.change(screen.getByLabelText("Student password"), { target: { value: "StudentPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm student password"), { target: { value: "StudentPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Student Account" }));
+
+    expect(screen.getByText("Enter a unique student username linked to an active student.")).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("chos.operations.students.v1") ?? "[]")).toEqual([]);
+    expect(screen.queryByRole("article", { name: "Reserved Student student account" })).not.toBeInTheDocument();
   });
 
   it("lets managers deactivate and reactivate custom logins", async () => {
@@ -5650,13 +5768,15 @@ describe("post-login operations app", () => {
       await waitFor(() => expect(createAccountCalls()).toHaveLength(1));
 
       fireEvent.click(screen.getByRole("button", { name: "Student" }));
-      fireEvent.change(screen.getByLabelText("Student full name"), { target: { value: "Remote Student" } });
-      fireEvent.change(screen.getByLabelText("Student username"), { target: { value: "remote.student" } });
-      fireEvent.change(screen.getByLabelText("Student temporary password"), { target: { value: "RemoteStudentPass123!" } });
-      fireEvent.change(screen.getByLabelText("Confirm student temporary password"), { target: { value: "RemoteStudentPass123!" } });
-      fireEvent.click(screen.getByRole("button", { name: "Create Student Account" }));
-
-      await waitFor(() => expect(createAccountCalls()).toHaveLength(2));
+      for (const [index, username] of ["alex.lee", "alex-lee", "alex_lee"].entries()) {
+        fireEvent.change(screen.getByLabelText("Student full name"), { target: { value: `Remote Student ${index + 1}` } });
+        fireEvent.change(screen.getByLabelText("Student username"), { target: { value: username } });
+        fireEvent.change(screen.getByLabelText("Student temporary password"), { target: { value: "RemoteStudentPass123!" } });
+        fireEvent.change(screen.getByLabelText("Confirm student temporary password"), { target: { value: "RemoteStudentPass123!" } });
+        fireEvent.click(screen.getByRole("button", { name: "Create Student Account" }));
+        await waitFor(() => expect(createAccountCalls()).toHaveLength(index + 2));
+        await waitFor(() => expect(screen.getByLabelText("Student full name")).toHaveValue(""));
+      }
 
       fireEvent.click(screen.getByRole("button", { name: "Parent" }));
       fireEvent.change(screen.getByLabelText("Parent full name"), { target: { value: "Remote Parent" } });
@@ -5665,13 +5785,18 @@ describe("post-login operations app", () => {
       fireEvent.change(screen.getByLabelText("Confirm parent temporary password"), { target: { value: "RemoteParentPass123!" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Parent Account" }));
 
-      await waitFor(() => expect(createAccountCalls()).toHaveLength(3));
+      await waitFor(() => expect(createAccountCalls()).toHaveLength(5));
       const requestBodies = createAccountCalls().map(([, init]) => JSON.parse(String((init as RequestInit).body)));
       expect(requestBodies).toEqual([
         expect.objectContaining({ username: "remote.staff", password: "RemoteStaffPass123!", role: "staff", access: expect.arrayContaining(["dashboard"]) }),
-        expect.objectContaining({ username: "remote.student", password: "RemoteStudentPass123!", role: "student", studentId: "student-remote-student" }),
+        expect.objectContaining({ username: "alex.lee", password: "RemoteStudentPass123!", role: "student" }),
+        expect.objectContaining({ username: "alex-lee", password: "RemoteStudentPass123!", role: "student" }),
+        expect.objectContaining({ username: "alex_lee", password: "RemoteStudentPass123!", role: "student" }),
         expect.objectContaining({ username: "remote.parent", password: "RemoteParentPass123!", role: "guardian" })
       ]);
+      const studentIds = requestBodies.filter((body) => body.role === "student").map((body) => body.studentId);
+      expect(new Set(studentIds).size).toBe(3);
+      expect(studentIds.every((studentId) => /^student-[a-z0-9]+$/.test(studentId))).toBe(true);
       expect(requestBodies.every((body) => !("email" in body) && !("phone" in body))).toBe(true);
       expect(fetchMock).toHaveBeenCalledWith(
         "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/manager-create-account",
@@ -11142,6 +11267,23 @@ describe("post-login operations app", () => {
     expect(JSON.parse(window.localStorage.getItem("chos.operations.messages.v1") ?? "[]")).toEqual([
       expect.objectContaining({ kind: "welcome", recipientName: "Ari Nguyen", recipientPhone: "(262) 555-0101", status: "queued" })
     ]);
+  });
+
+  it("treats explicit student ids as primary and rejects conflicting reuse", async () => {
+    window.localStorage.setItem("chos.operations.students.v1", JSON.stringify([]));
+
+    render(
+      <MemoryRouter initialEntries={["/students"]}>
+        <AppStateProvider>
+          <ExplicitStudentIdCreationHarness />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Create explicitly linked students" }));
+
+    expect(await screen.findByText("Harness explicit student ids: student-alex-dot,student-alex-dash,none")).toBeInTheDocument();
+    expect(screen.getByText("Harness explicit student count: 2")).toBeInTheDocument();
   });
 
   it("tells staff inactive students cannot receive quick outreach from the student modal", async () => {

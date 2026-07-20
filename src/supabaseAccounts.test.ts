@@ -112,6 +112,29 @@ describe("supabase account adapter", () => {
     expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ authEmail: "jordan@example.com", profileUsername: "jordan.staff" }));
   });
 
+  it("carries the authoritative student id through student sign-in and stored auth state", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ access_token: "student-token", expires_in: 3600, user: { id: "student-user-1", email: "alex.student@accounts.chosmartialarts.app" } }))
+      .mockResolvedValueOnce(jsonResponse([{ id: "student-user-1", username: "alex.student", contact_email: null, display_name: "Alex Student", role: "student", status: "active", phone: null, title: null, notes: null, access: [], student_id: "student-authoritative-42", created_by: null, created_at: "2026-07-19" }]));
+    globalThis.fetch = fetchMock;
+
+    await expect(signInSupabaseAccount({ username: "alex.student", password: "StrongPass123!" })).resolves.toEqual(expect.objectContaining({
+      status: "authenticated",
+      studentId: "student-authoritative-42"
+    }));
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ studentId: "student-authoritative-42" }));
+  });
+
+  it("fails closed when a hosted student profile has no student id", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ access_token: "student-token", expires_in: 3600, user: { id: "student-user-1", email: "alex.student@accounts.chosmartialarts.app" } }))
+      .mockResolvedValueOnce(jsonResponse([{ id: "student-user-1", username: "alex.student", contact_email: null, display_name: "Alex Student", role: "student", status: "active", phone: null, title: null, notes: null, access: [], student_id: null, created_by: null, created_at: "2026-07-19" }]));
+    globalThis.fetch = fetchMock;
+
+    await expect(signInSupabaseAccount({ username: "alex.student", password: "StrongPass123!" })).resolves.toEqual({ status: "invalid" });
+    expect(readSupabaseAuthSession()).toBeUndefined();
+  });
+
   it("loads the signed-in user's authoritative first-login profile", async () => {
     window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
       accessToken: "manager-access-token",

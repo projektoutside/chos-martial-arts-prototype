@@ -181,6 +181,7 @@ export interface AccountSession {
   email: string;
   remembered: boolean;
   createdAt: string;
+  studentId?: string;
 }
 
 export type AccountRole = "guardian" | "student" | "staff";
