@@ -18,7 +18,7 @@
 - Never place a password in logs, URLs, error text, analytics, or any new browser-storage property.
 - Do not create the Cho application session until activation succeeds.
 - Preserve the launch animation, portrait positioning, subpath routing, light/dark themes, and phone/tablet/desktop behavior.
-- Deployment order must avoid leaving newly flagged accounts with no activation endpoint: deploy `activate-account` first, verify it rejects unauthenticated requests, then ship the frontend and updated `manager-create-account` function in the same release window.
+- Deployment order must avoid leaving newly flagged accounts with no activation endpoint or student lookup: deploy and verify `activate-account`, apply and verify `20260720010000_get_my_student_record.sql`, deploy and verify the updated `manager-create-account`, then deploy the frontend in the same release window.
 
 ## File Structure
 

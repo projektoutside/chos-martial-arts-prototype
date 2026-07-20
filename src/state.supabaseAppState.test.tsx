@@ -39,10 +39,11 @@ function deferred<T>() {
 }
 
 function Harness() {
-  const { accounts, addOperationsStudent, managedAccounts, students } = useAppState();
+  const { accountRole, accounts, addOperationsStudent, managedAccounts, students } = useAppState();
   return (
     <div>
       <p data-testid="students">{students.map((student) => student.id).join(",")}</p>
+      <p data-testid="account-role">{accountRole ?? "unknown"}</p>
       <p data-testid="credential-counts">{accounts.length}:{managedAccounts.length}</p>
       <button
         type="button"
@@ -195,6 +196,54 @@ describe("Supabase-backed app state provider", () => {
       ]));
     });
     expect(window.localStorage.getItem("chos.operations.students.v1")).toBeNull();
+  });
+
+  it("rehydrates the hosted role and loads only the signed-in student's RPC-filtered record", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "student-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "student-user-id",
+      projectRef: "project",
+      authEmail: "hosted.student@accounts.chosmartialarts.app",
+      profileUsername: "hosted.student",
+      role: "student",
+      studentId: "student-own"
+    }));
+    const appSession = { email: "hosted.student", remembered: true, createdAt: "2026-07-19T00:00:00.000Z" };
+    window.localStorage.setItem("chos.session.v1", JSON.stringify(appSession));
+    window.sessionStorage.setItem("chos.session.v1", JSON.stringify(appSession));
+    const ownStudent = { id: "student-own", firstName: "Own", lastName: "Student", email: "", phone: "", status: "Active", beltRank: "Blue", classesAttended: 20, missedClassCount: 0, joinedAt: "2026-01-01" };
+    const otherStudent = { ...ownStudent, id: "student-other", firstName: "Other" };
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = new URL(String(url));
+      if (requestUrl.pathname === "/rest/v1/rpc/get_my_student_record") return jsonResponse(ownStudent);
+      if (requestUrl.pathname === "/rest/v1/app_state_items") {
+        const requestedKey = requestUrl.searchParams.get("key")?.replace(/^eq\./, "");
+        if (requestedKey === "chos.operations.students.v1") return jsonResponse([{ key: requestedKey, value: [ownStudent, otherStudent] }]);
+        return jsonResponse([]);
+      }
+      if (requestUrl.pathname === "/rest/v1/direct_messages" || requestUrl.pathname === "/rest/v1/message_logs") return jsonResponse([]);
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    render(
+      <AppStateProvider>
+        <Harness />
+      </AppStateProvider>
+    );
+
+    expect(await screen.findByTestId("account-role")).toHaveTextContent("student");
+    await waitFor(() => expect(screen.getByTestId("students")).toHaveTextContent("student-own"));
+    expect(screen.getByTestId("students")).not.toHaveTextContent("student-other");
+    expect(fetchMock.mock.calls.some(([url]) => {
+      const requestUrl = new URL(String(url));
+      return requestUrl.pathname === "/rest/v1/app_state_items" && requestUrl.searchParams.get("key") === "eq.chos.operations.students.v1";
+    })).toBe(false);
+    expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toEqual(expect.objectContaining({
+      role: "student",
+      studentId: "student-own"
+    }));
   });
 
   it("does not overwrite a local app-state mutation when remote hydration returns late", async () => {

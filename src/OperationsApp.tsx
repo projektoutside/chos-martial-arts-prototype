@@ -4921,7 +4921,9 @@ function liveChatRoleLabel(accountRole: AccountRole | undefined, isDeveloper: bo
   return isDeveloper ? "Developer" : isManagerOwner ? "Manager" : "Staff";
 }
 
-function liveChatSessionStudent(students: StudentRecord[], sessionEmail?: string) {
+function liveChatSessionStudent(students: StudentRecord[], sessionEmail?: string, sessionStudentId?: string) {
+  const linkedStudentId = sessionStudentId?.trim();
+  if (linkedStudentId) return students.find((student) => student.id === linkedStudentId);
   const normalizedEmail = sessionEmail?.trim().toLowerCase();
   if (!normalizedEmail) return undefined;
   return students.find((student) => student.email.trim().toLowerCase() === normalizedEmail);
@@ -5061,7 +5063,7 @@ function LiveChatRoomFrame({
   const { accountRole, currentChildAccount, managerAccountAccess, messageNotificationSettings, session, students, updateMessageNotificationSettings } = useAppState();
   const isManagerOwner = managerAccountAccess.isManagerOwner;
   const isDeveloper = managerAccountAccess.isDeveloper;
-  const sessionStudent = useMemo(() => liveChatSessionStudent(students, session?.email), [session?.email, students]);
+  const sessionStudent = useMemo(() => liveChatSessionStudent(students, session?.email, session?.studentId), [session?.email, session?.studentId, students]);
   const profileAvatarPath = accountRole === "student" && sessionStudent?.profileImagePath
     ? sessionStudent.profileImagePath
     : profileAvatarPathForSession(session?.email);
@@ -5602,7 +5604,7 @@ function ProfileLiveChatPanel({ idPrefix }: { idPrefix: string }) {
 function LiveChatPage() {
   const { accountRole, currentChildAccount, logout, managerAccountAccess, session, students } = useAppState();
   const isManagerOwner = managerAccountAccess.isManagerOwner;
-  const sessionStudent = useMemo(() => liveChatSessionStudent(students, session?.email), [session?.email, students]);
+  const sessionStudent = useMemo(() => liveChatSessionStudent(students, session?.email, session?.studentId), [session?.email, session?.studentId, students]);
   const profileAvatarPath = accountRole === "student" && sessionStudent?.profileImagePath
     ? sessionStudent.profileImagePath
     : profileAvatarPathForSession(session?.email);
@@ -10056,6 +10058,7 @@ function ManagerLauncherPage() {
 type CreateAccountMode = "staff" | "student" | "parent";
 
 const createdAccountPasswordPolicyText = accountPasswordPolicyText;
+const createAccountReadinessText = "Required: full name; username with at least 3 characters; temporary password with at least 12 characters, uppercase, lowercase, a number, a symbol, and no leading or trailing spaces; exact matching confirmation. The Create Account button becomes enabled only when all criteria are met and is green when ready.";
 const createAccountStaffAccessOptions: { key: ManagerAccessKey; label: string; detail: string }[] = [
   { key: "dashboard", label: "Dashboard", detail: "Calendar and daily overview" },
   { key: "messages", label: "Messages", detail: "Live chat and text tools" },
@@ -10419,7 +10422,7 @@ function CreateAccountsPage() {
 
         {mode === "staff" && (
           <form className="create-account-form" aria-label="Create staff account" onSubmit={createStaff}>
-            <p className="operations-note create-account-readiness" id="create-staff-readiness">Complete the name, username, temporary password, and matching confirmation. The Create Account button turns green when ready.</p>
+            <p className="operations-note create-account-readiness" id="create-staff-readiness">{createAccountReadinessText}</p>
             <div className="student-form-grid">
               <label>Staff full name<input required aria-required="true" aria-describedby="create-staff-readiness" value={staffForm.displayName} onChange={(event) => setStaffForm({ ...staffForm, displayName: event.target.value })} /></label>
               <label>Staff username<input required aria-required="true" aria-describedby="create-staff-readiness" autoComplete="username" value={staffForm.username} onChange={(event) => setStaffForm({ ...staffForm, username: event.target.value })} /></label>
@@ -10445,7 +10448,7 @@ function CreateAccountsPage() {
 
         {mode === "student" && (
           <form className="create-account-form" aria-label="Create student account" onSubmit={createStudent}>
-            <p className="operations-note create-account-readiness" id="create-student-readiness">Complete the name, username, temporary password, and matching confirmation. The Create Account button turns green when ready.</p>
+            <p className="operations-note create-account-readiness" id="create-student-readiness">{createAccountReadinessText}</p>
             <div className="student-form-grid">
               <label>Student full name<input required aria-required="true" aria-describedby="create-student-readiness" value={studentForm.fullName} onChange={(event) => setStudentForm({ ...studentForm, fullName: event.target.value })} /></label>
               <label>Student username<input required aria-required="true" aria-describedby="create-student-readiness" autoComplete="username" value={studentForm.username} onChange={(event) => setStudentForm({ ...studentForm, username: event.target.value })} /></label>
@@ -10463,7 +10466,7 @@ function CreateAccountsPage() {
 
         {mode === "parent" && (
           <form className="create-account-form" aria-label="Create parent account" onSubmit={createParent}>
-            <p className="operations-note create-account-readiness" id="create-parent-readiness">Complete the name, username, temporary password, and matching confirmation. The Create Account button turns green when ready.</p>
+            <p className="operations-note create-account-readiness" id="create-parent-readiness">{createAccountReadinessText}</p>
             <div className="student-form-grid">
               <label>Parent full name<input required aria-required="true" aria-describedby="create-parent-readiness" value={parentForm.displayName} onChange={(event) => setParentForm({ ...parentForm, displayName: event.target.value })} /></label>
               <label>Parent username<input required aria-required="true" aria-describedby="create-parent-readiness" autoComplete="username" value={parentForm.username} onChange={(event) => setParentForm({ ...parentForm, username: event.target.value })} /></label>
@@ -14569,6 +14572,24 @@ function ManagerPanelRoute() {
 }
 
 export function OperationsApp() {
+  const { accountRole, logout } = useAppState();
+
+  if (!accountRole) {
+    return (
+      <main className="manager-shell">
+        <section className="operations-page" aria-label="Account access unavailable">
+          <div className="operations-page-head">
+            <div className="operations-page-title-copy">
+              <h1>Account access unavailable</h1>
+              <p>Your signed-in account does not have a verified role. Sign out, then contact a manager if this continues.</p>
+            </div>
+          </div>
+          <button type="button" onClick={logout}>Log Out</button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <OperationsShell>
       <Routes>

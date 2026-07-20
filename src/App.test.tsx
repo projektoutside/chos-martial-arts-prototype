@@ -3111,6 +3111,7 @@ describe("login landing", () => {
       expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
       expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toEqual(expect.objectContaining({
         email: "jordan.student",
+        role: "student",
         studentId: "student-jordan-authoritative"
       }));
       expect(fetchMock).toHaveBeenCalledWith(
@@ -5119,6 +5120,45 @@ describe("post-login operations app", () => {
     expect(screen.getByLabelText("Student belt progress")).not.toHaveTextContent("Wrong Student");
   });
 
+  it("uses the authoritative hosted student id for live chat identity", () => {
+    const students = [
+      { id: "student-wrong", firstName: "Wrong", lastName: "Student", ...completeStudentSafetyFields, email: "wrong@example.test", phone: "", status: "Active", beltRank: "White", classesAttended: 3, missedClassCount: 0, joinedAt: "2026-01-01" },
+      { id: "student-right", firstName: "Right", lastName: "Student", ...completeStudentSafetyFields, email: "right@example.test", phone: "", status: "Active", beltRank: "Blue", classesAttended: 20, missedClassCount: 0, joinedAt: "2026-01-01" }
+    ];
+    renderHostedStudentApp("/live-chat", "student-right", students);
+
+    const roster = screen.getByLabelText("Live chat members");
+    expect(within(roster).getByRole("article", { name: "Right Student, Student" })).toBeInTheDocument();
+    expect(within(roster).queryByRole("article", { name: "Cho's Student, Student" })).not.toBeInTheDocument();
+  });
+
+  it("blocks every hosted route when the persisted session has no known role", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: "unknown.hosted", remembered: true, createdAt: "2026-07-19T00:00:00.000Z" });
+    window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+      accessToken: "unknown-role-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "unknown-role-user",
+      projectRef: "project",
+      authEmail: "unknown.hosted@accounts.chosmartialarts.app",
+      profileUsername: "unknown.hosted"
+    }));
+    globalThis.fetch = vi.fn(async () => new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+
+    render(
+      <MemoryRouter initialEntries={["/manager"]}>
+        <AppStateProvider>
+          <App />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByLabelText("Account access unavailable")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager app launcher")).not.toBeInTheDocument();
+  });
+
   it("opens the manager panel from the manager home icon button", () => {
     renderLoggedInApp("/profile");
 
@@ -5209,7 +5249,7 @@ describe("post-login operations app", () => {
         expect(field).toHaveAttribute("aria-describedby", expectation.readinessId);
       }
       expect(screen.getByRole("button", { name: expectation.button })).toHaveAttribute("aria-describedby", expectation.readinessId);
-      expect(document.getElementById(expectation.readinessId)).toHaveTextContent("Complete the name, username, temporary password, and matching confirmation.");
+      expect(document.getElementById(expectation.readinessId)).toHaveTextContent("Required: full name; username with at least 3 characters; temporary password with at least 12 characters, uppercase, lowercase, a number, a symbol, and no leading or trailing spaces; exact matching confirmation. The Create Account button becomes enabled only when all criteria are met and is green when ready.");
     }
   });
 

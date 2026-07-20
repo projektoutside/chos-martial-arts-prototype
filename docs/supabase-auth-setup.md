@@ -5,8 +5,8 @@ This app keeps the browser on publishable Supabase credentials only. Administrat
 ## Required project setup
 
 1. Create or connect the Cho's Supabase project. Current staging is `chos-martial-arts-operations-app-staging` / `zfuwbbepsnmmlpgfkmhz`.
-2. Apply the migrations in `supabase/migrations`.
-3. Deploy both `supabase/functions/manager-create-account/index.ts` and `supabase/functions/activate-account/index.ts` when administrator-created live staff, student, and parent accounts are in scope. Both use `verify_jwt = false` because they perform their own bearer-token, Supabase Auth user, and active-profile checks; do not deploy them without those checks. Account creation keeps the service-role key server-side, creates an internal username-based Auth identity, accepts omitted contact email and phone data, stores absent profile/audit contact email as `null`, and requires a password change. Activation binds the password replacement to the bearer-token user and reauthenticates the assigned temporary password.
+2. Apply the existing baseline migrations required to create Auth profiles and app state. For this account-release migration, follow the mandatory rollout order below.
+3. Deploy the account functions only in the documented order when administrator-created live staff, student, and parent accounts are in scope. Both use `verify_jwt = false` because they perform their own bearer-token, Supabase Auth user, and active-profile checks; do not deploy them without those checks. Account creation keeps the service-role key server-side, creates an internal username-based Auth identity, accepts omitted contact email and phone data, stores absent profile/audit contact email as `null`, and requires a password change. Activation binds the password replacement to the bearer-token user and reauthenticates the assigned temporary password.
 4. Set the deployed app env vars:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_PUBLISHABLE_KEY`
@@ -22,6 +22,12 @@ node scripts/seed-supabase-manager.mjs
 ```
 
 `MANAGER_PASSWORD` is required and must be at least 12 characters with uppercase, lowercase, a number, and a symbol. Store the actual value in 1Password or the approved secret store, not in this repository or chat. The seed script creates or updates only the owner login by default. To delete every other Supabase Auth user, run it with `--delete-extra-auth-users --yes-delete-extra-auth-users`; do that only after confirming the target project is the correct environment.
+
+### Mandatory hosted account rollout order
+
+For this release, deploy and verify `activate-account` first, including its unauthenticated rejection and temporary-password reauthentication behavior. Next, apply and verify `20260720010000_get_my_student_record.sql`; confirm an authenticated student receives only the one active student row linked through `profiles.student_id`, while anonymous, unlinked, inactive, and non-student callers receive no roster data. Then deploy and verify the updated `manager-create-account` so newly created users cannot be flagged for activation before the activation path and student lookup are ready. Finally, deploy the frontend and verify sign-in, activation, refresh, student profile, and live-chat identity against the hosted project.
+
+The `get_my_student_record` function is exposed in `public` only because PostgREST RPC discovery requires an exposed schema. It is `SECURITY DEFINER` with an empty search path, resolves `auth.uid()` to an active student profile, returns one JSON object or `null`, and grants execution only to `authenticated`; it never returns the shared roster array.
 
 Do not run Cho's migrations, seed scripts, smoke checks, or Edge Function deploys against MongTeng's Supabase project `mongteng-food-market-ordering-app-staging` / `jqvclzlvrhdcsfhhvekr`. This app also refuses that project ref at runtime if it is accidentally placed in `VITE_SUPABASE_URL`.
 

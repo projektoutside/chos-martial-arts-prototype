@@ -7,7 +7,7 @@ import { createDemoState, demoStorageKey } from "./demoData";
 import { parseOperationsBackupSnapshot, type OperationsBackupData } from "./operationsBackup";
 import { getClassReminderCandidates, getLeadCandidates, getMerchandiseTargetStock, getStudentCelebrationEvents, getStudentProfileIssues, hasGuardianSmsConsent, hasStaffSmsConsent, hasStudentSmsConsent, isAttendanceGapFollowUpDue, isBeltTestInviteDue, isLowStockMerchandiseItem, isMilestoneEncouragementDue, isMissedClassFollowUpDue, isNewStudentCheckInDue, isPausedStudentReviewDue, isProfileUpdateRequestDue, isQueuedMessageDeliverable, isStaleOneTimeScheduledClass, isTrialConversionDue } from "./operationsReports";
 import { buildStudentBeltProgress } from "./studentProgress";
-import { changeSupabaseAccountPassword, clearSupabaseAuthSession, isSupabaseAuthConfigured, readSupabaseAuthSession, supabaseAuthEmailForUsername } from "./supabaseAccounts";
+import { changeSupabaseAccountPassword, clearSupabaseAuthSession, fetchSupabaseOwnStudentRecord, isSupabaseAuthConfigured, readSupabaseAuthSession, supabaseAuthEmailForUsername } from "./supabaseAccounts";
 import { deleteSupabaseAppStateItem, fetchSupabaseAppStateItem, isSupabaseAppStateRemoteBacked, persistSupabaseAppStateItem } from "./supabaseAppStatePersistence";
 import { deleteSupabaseDirectMessages, deleteSupabaseMessageLogs, fetchSupabaseDirectMessages, fetchSupabaseMessageLogs, persistSupabaseDirectMessages, persistSupabaseMessageLogs } from "./supabaseMessagePersistence";
 import { normalizeTwilioInboundSmsWebhookForServer, normalizeTwilioStatusCallbackForServer, type TwilioInboundSmsWebhook } from "./twilioRelayContract";
@@ -768,9 +768,9 @@ function hasValidManagedStudentLink(account: Pick<ManagedAccount, "role" | "stud
   return Boolean(studentId && students.some((student) => student.id === studentId && isCurrentStudentEnrollment(student)));
 }
 
-function hasSupabaseAuthSessionForAppSession(normalizedEmail: string) {
+function scopedSupabaseAuthSessionForAppSession(normalizedEmail: string) {
   const session = readSupabaseAuthSession();
-  if (!session) return false;
+  if (!session) return undefined;
   const expectedUsername = normalizedEmail === prototypeManagerLogin.email.toLowerCase()
     ? prototypeManagerLogin.username
     : normalizedEmail === "manager1@chos.prototype"
@@ -779,27 +779,33 @@ function hasSupabaseAuthSessionForAppSession(normalizedEmail: string) {
         ? prototypeDeveloperLogin.username
       : normalizedEmail;
   const normalizedExpectedUsername = normalizeCreatedAccountUsername(expectedUsername);
-  if (session.profileUsername && normalizeCreatedAccountUsername(session.profileUsername) === normalizedExpectedUsername) return true;
+  if (session.profileUsername && normalizeCreatedAccountUsername(session.profileUsername) === normalizedExpectedUsername) return session;
   if (!session.authEmail) {
     clearSupabaseAuthSession();
-    return false;
+    return undefined;
   }
-  if (session.authEmail === supabaseAuthEmailForUsername(expectedUsername)) return true;
+  if (session.authEmail === supabaseAuthEmailForUsername(expectedUsername)) return session;
   if (
     normalizedExpectedUsername === prototypeManagerLogin.username.toLowerCase()
     && session.authEmail === "manager123@accounts.chosmartialarts.app"
-  ) return true;
+  ) return session;
   clearSupabaseAuthSession();
-  return false;
+  return undefined;
 }
 
 function validatePrototypeSession(session: AccountSession | undefined) {
   if (!session?.email) return undefined;
   const normalizedEmail = session.email.toLowerCase();
   const supabaseConfigured = isSupabaseAuthConfigured();
-  const hasScopedSupabaseSession = supabaseConfigured && hasSupabaseAuthSessionForAppSession(normalizedEmail);
-  if (supabaseConfigured && !hasScopedSupabaseSession) return undefined;
-  if (hasScopedSupabaseSession) return session;
+  const scopedSupabaseSession = supabaseConfigured ? scopedSupabaseAuthSessionForAppSession(normalizedEmail) : undefined;
+  if (supabaseConfigured && !scopedSupabaseSession) return undefined;
+  if (scopedSupabaseSession) {
+    return {
+      ...session,
+      role: scopedSupabaseSession.role,
+      studentId: scopedSupabaseSession.role === "student" ? scopedSupabaseSession.studentId?.trim() || undefined : undefined
+    };
+  }
   if (isPrototypeManagerOwnerEmail(normalizedEmail)) return session;
   if (isPrototypeDeveloperEmail(normalizedEmail)) return session;
   const managedAccounts = readStoredArray<ManagedAccount>(keys.managedAccounts);
@@ -825,7 +831,11 @@ function validatePrototypeSession(session: AccountSession | undefined) {
 function readPrototypeSession() {
   const session = readSessionStorage<AccountSession | undefined>(keys.session, undefined);
   const validatedSession = validatePrototypeSession(session);
-  if (validatedSession) return validatedSession;
+  if (validatedSession) {
+    writeStorage(keys.session, validatedSession);
+    writeSessionStorage(keys.session, validatedSession);
+    return validatedSession;
+  }
   removeSessionStorage(keys.session);
   removeStorage(keys.session);
   return undefined;
@@ -1878,6 +1888,10 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const supabaseLocalCredentialsDisabled = isSupabaseAuthConfigured();
   const supabaseRemoteScope = session?.email ?? "signed-out";
   const supabaseAppStateOptions = { remoteBacked: supabaseAppStateRemoteBacked, remoteScope: supabaseRemoteScope };
+  const supabaseStudentSession = isSupabaseAuthConfigured() && session?.role === "student";
+  const supabaseStudentStateOptions = supabaseStudentSession
+    ? { remoteBacked: true, remoteFallback: [] as StudentRecord[], remoteScope: supabaseRemoteScope, remoteStore: "none" as const }
+    : supabaseAppStateOptions;
   const supabaseLocalCredentialOptions = { localDisabled: supabaseLocalCredentialsDisabled };
 
   const [cart, setCart] = useStoredState<CartItem[]>(keys.cart, [], supabaseAppStateOptions);
@@ -1891,7 +1905,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [managedAccounts, setManagedAccounts] = useStoredState<ManagedAccount[]>(keys.managedAccounts, [], supabaseLocalCredentialOptions);
   const [childAccounts, setChildAccounts] = useStoredState<ChildAccount[]>(keys.childAccounts, seedChildAccounts, supabaseLocalCredentialOptions);
   const [coupon, setCoupon] = useStoredState<Coupon | undefined>(keys.coupon, undefined, supabaseAppStateOptions);
-  const [students, setStudents] = useStoredState<StudentRecord[]>(keys.students, seedStudents, supabaseAppStateOptions);
+  const [students, setStudents] = useStoredState<StudentRecord[]>(keys.students, seedStudents, supabaseStudentStateOptions);
   const [studioClasses, setStudioClasses] = useStoredState<StudioClass[]>(keys.studioClasses, seedStudioClasses, supabaseAppStateOptions);
   const [scheduledClasses, setScheduledClasses] = useStoredState<ScheduledClass[]>(keys.scheduledClasses, seedScheduledClasses, supabaseAppStateOptions);
   const [messageCampaigns, setMessageCampaigns] = useStoredState<MessageCampaign[]>(keys.messageCampaigns, [], supabaseAppStateOptions);
@@ -1908,6 +1922,18 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [studyGuideFolders, setStudyGuideFolders] = useStoredState<StudyGuideFolder[]>(keys.studyGuideFolders, [], supabaseAppStateOptions);
   const [studyGuideMaterials, setStudyGuideMaterials] = useStoredState<StudyGuideMaterial[]>(keys.studyGuideMaterials, [], supabaseAppStateOptions);
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  useEffect(() => {
+    if (!supabaseStudentSession) return;
+    let cancelled = false;
+    void fetchSupabaseOwnStudentRecord().then((result) => {
+      if (cancelled) return;
+      setStudents(result.status === "ok" && result.data ? [result.data] : []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.email, session?.studentId, setStudents, supabaseStudentSession]);
   const toastTimersRef = useRef<Map<string, number>>(new Map());
   const cartRef = useRef(cart);
   const ordersRef = useRef(orders);
@@ -2428,7 +2454,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     const normalizedEmail = session.email.toLowerCase();
     const registeredRole: AccountRole | undefined = currentRegisteredAccount ? normalizeRegisteredAccountRole(currentRegisteredAccount.role) : undefined;
     const childRole: AccountRole | undefined = currentChildAccount ? "student" : undefined;
-    return inferBuiltInPrototypeAccountRole(session.email) ?? currentManagedAccount?.role ?? registeredRole ?? childRole ?? accountRoles.find((record) => record.email.toLowerCase() === normalizedEmail)?.role ?? inferPrototypeAccountRole(session.email);
+    return inferBuiltInPrototypeAccountRole(session.email) ?? session.role ?? currentManagedAccount?.role ?? registeredRole ?? childRole ?? accountRoles.find((record) => record.email.toLowerCase() === normalizedEmail)?.role ?? inferPrototypeAccountRole(session.email);
   }, [accountRoles, currentChildAccount, currentManagedAccount, currentRegisteredAccount, session]);
   const managerAccountAccess = useMemo<ManagerAccountAccess>(() => {
     const isDeveloper = isPrototypeDeveloperEmail(session?.email);
@@ -2600,7 +2626,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
   const login = useCallback(
     (email: string, remembered: boolean, role?: AccountRole, studentId?: string) => {
-      setSession({ email, remembered, createdAt: new Date().toISOString(), studentId: studentId?.trim() || undefined });
+      setSession({ email, remembered, createdAt: new Date().toISOString(), role, studentId: studentId?.trim() || undefined });
       if (role) saveRoleForEmail(email, role);
     },
     [saveRoleForEmail, setSession]
@@ -2615,7 +2641,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const account = accountsRef.current.find((item) => item.email.trim().toLowerCase() === normalizedEmail && item.password === password);
       if (!account) return undefined;
       saveRoleForEmail(account.email, normalizeRegisteredAccountRole(account.role));
-      setSession({ email: account.email, remembered: true, createdAt: new Date().toISOString() });
+      setSession({ email: account.email, remembered: true, createdAt: new Date().toISOString(), role: normalizeRegisteredAccountRole(account.role) });
       return account;
     },
     [saveRoleForEmail, setSession]
@@ -2693,7 +2719,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const child = childAccountsRef.current.find((item) => item.id === childId);
       if (!child || isReservedPrototypeUsername(child.username) || !session || child.parentEmail.toLowerCase() !== session.email.toLowerCase()) return;
       saveRoleForEmail(child.username, "student");
-      setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString() });
+      setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString(), role: "student" });
     },
     [saveRoleForEmail, session, setSession]
   );
@@ -2706,7 +2732,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const child = childAccountsRef.current.find((item) => item.username.toLowerCase() === normalizedUsername.toLowerCase() && item.password === password);
       if (!child) return undefined;
       saveRoleForEmail(child.username, "student");
-      setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString() });
+      setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString(), role: "student" });
       return child;
     },
     [saveRoleForEmail, setSession]
@@ -2733,7 +2759,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
             return { status: "activation-required", account: managedAccount };
           }
           saveRoleForEmail(managedAccount.username, managedAccount.role);
-          setSession({ email: managedAccount.username, remembered: true, createdAt: new Date().toISOString(), studentId: managedAccount.studentId });
+          setSession({ email: managedAccount.username, remembered: true, createdAt: new Date().toISOString(), role: managedAccount.role, studentId: managedAccount.studentId });
           return { status: "authenticated", account: managedAccount };
         }
       }
@@ -2747,7 +2773,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
             return { status: "activation-required", account: registeredAccount };
           }
           saveRoleForEmail(registeredAccount.email, normalizeRegisteredAccountRole(registeredAccount.role));
-          setSession({ email: registeredAccount.email, remembered: true, createdAt: new Date().toISOString() });
+          setSession({ email: registeredAccount.email, remembered: true, createdAt: new Date().toISOString(), role: normalizeRegisteredAccountRole(registeredAccount.role) });
           return { status: "authenticated", account: registeredAccount };
         }
       }
@@ -2756,7 +2782,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         const child = childAccountsRef.current.find((item) => item.username.toLowerCase() === normalizedChildUsername.toLowerCase() && item.password === password);
         if (child) {
           saveRoleForEmail(child.username, "student");
-          setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString() });
+          setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString(), role: "student" });
           return { status: "authenticated", account: child };
         }
       }
@@ -2796,7 +2822,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           }
           updateManagedAccountsState(updatedAccounts);
           saveRoleForEmail(updatedAccount.username, updatedAccount.role);
-          setSession({ email: updatedAccount.username, remembered: true, createdAt: new Date().toISOString(), studentId: updatedAccount.studentId });
+          setSession({ email: updatedAccount.username, remembered: true, createdAt: new Date().toISOString(), role: updatedAccount.role, studentId: updatedAccount.studentId });
           return { status: "ok", username: updatedAccount.username, account: updatedAccount };
         }
       }
@@ -2817,7 +2843,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           }
           updateAccountsState(updatedAccounts);
           saveRoleForEmail(updatedAccount.email, normalizeRegisteredAccountRole(updatedAccount.role));
-          setSession({ email: updatedAccount.email, remembered: true, createdAt: new Date().toISOString() });
+          setSession({ email: updatedAccount.email, remembered: true, createdAt: new Date().toISOString(), role: normalizeRegisteredAccountRole(updatedAccount.role) });
           return { status: "ok", username: updatedAccount.email, account: updatedAccount };
         }
       }

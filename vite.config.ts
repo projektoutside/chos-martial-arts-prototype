@@ -17,6 +17,7 @@ export default defineConfig({
       "scripts/activate-account-contract.test.mjs",
       "scripts/guided-onboarding-contract.test.mjs",
       "scripts/manager-create-account-contract.test.mjs",
+      "scripts/own-student-record-contract.test.mjs",
       "scripts/validate-play-release-input.test.mjs",
       "scripts/verify-android-variant.test.mjs",
       "scripts/verify-demo-artifact.test.mjs"

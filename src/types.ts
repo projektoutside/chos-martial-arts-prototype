@@ -181,6 +181,7 @@ export interface AccountSession {
   email: string;
   remembered: boolean;
   createdAt: string;
+  role?: AccountRole;
   studentId?: string;
 }
 

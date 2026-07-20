@@ -122,7 +122,55 @@ describe("supabase account adapter", () => {
       status: "authenticated",
       studentId: "student-authoritative-42"
     }));
-    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ studentId: "student-authoritative-42" }));
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ role: "student", studentId: "student-authoritative-42" }));
+  });
+
+  it("loads only the signed-in student's server-filtered roster record", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "student-access-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "student-user",
+      projectRef: "project",
+      role: "student",
+      studentId: "student-own"
+    }));
+    const ownStudent = { id: "student-own", firstName: "Own", lastName: "Student" };
+    const fetchMock = vi.fn(async () => jsonResponse(ownStudent));
+    globalThis.fetch = fetchMock as typeof fetch;
+    const adapter = await import("./supabaseAccounts") as typeof import("./supabaseAccounts") & {
+      fetchSupabaseOwnStudentRecord?: () => Promise<{ status: string; data?: unknown }>;
+    };
+
+    expect(adapter.fetchSupabaseOwnStudentRecord).toBeTypeOf("function");
+    if (!adapter.fetchSupabaseOwnStudentRecord) return;
+    await expect(adapter.fetchSupabaseOwnStudentRecord()).resolves.toEqual({ status: "ok", data: ownStudent });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/rest/v1/rpc/get_my_student_record",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer student-access-token" }),
+        body: "{}"
+      })
+    );
+  });
+
+  it("fails closed when the own-student RPC returns a different roster id", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "student-access-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "student-user",
+      projectRef: "project",
+      role: "student",
+      studentId: "student-own"
+    }));
+    globalThis.fetch = vi.fn(async () => jsonResponse({ id: "student-other", firstName: "Other", lastName: "Student" })) as typeof fetch;
+    const adapter = await import("./supabaseAccounts") as typeof import("./supabaseAccounts") & {
+      fetchSupabaseOwnStudentRecord?: () => Promise<{ status: string; data?: unknown }>;
+    };
+
+    expect(adapter.fetchSupabaseOwnStudentRecord).toBeTypeOf("function");
+    if (!adapter.fetchSupabaseOwnStudentRecord) return;
+    await expect(adapter.fetchSupabaseOwnStudentRecord()).resolves.toEqual(expect.objectContaining({ status: "error" }));
   });
 
   it("fails closed when a hosted student profile has no student id", async () => {

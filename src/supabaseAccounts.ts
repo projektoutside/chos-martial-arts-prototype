@@ -1,4 +1,4 @@
-import type { AccountRole, ManagedAccount, ManagerAccessKey } from "./types";
+import type { AccountRole, ManagedAccount, ManagerAccessKey, StudentRecord } from "./types";
 import { isDeveloperAccountEnabled, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
 import { resolveAppEnvironment } from "./appEnvironment";
 import { accountPasswordPolicyText, isStrongActivationPassword, requiresPasswordChange, validateActivationPassword } from "../supabase/functions/_shared/account-activation";
@@ -40,6 +40,7 @@ export type SupabaseStoredSession = {
   projectRef?: string;
   authEmail?: string;
   profileUsername?: string;
+  role?: AccountRole;
   studentId?: string;
 };
 
@@ -236,6 +237,7 @@ function saveSupabaseAuthSession(response: SupabasePasswordResponse, profile?: S
     projectRef: supabaseSessionProjectScope(),
     authEmail: response.user.email?.trim().toLowerCase(),
     profileUsername: profile ? normalizeSupabaseUsername(profile.username) : undefined,
+    role: profile?.role,
     studentId: profile?.student_id?.trim() || undefined
   };
   window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify(storedSession));
@@ -324,6 +326,53 @@ export function readSupabaseAuthSession() {
   } catch {
     clearSupabaseAuthSession();
     return undefined;
+  }
+}
+
+export type SupabaseOwnStudentRecordResult =
+  | { status: "not-configured" }
+  | { status: "session-expired"; message: string }
+  | { status: "ok"; data: StudentRecord | undefined }
+  | { status: "error"; message: string };
+
+export async function fetchSupabaseOwnStudentRecord(): Promise<SupabaseOwnStudentRecordResult> {
+  if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
+  const session = readSupabaseAuthSession();
+  if (!session) return { status: "session-expired", message: "Your sign-in session has expired." };
+  const expectedStudentId = session.studentId?.trim();
+  if (session.role !== "student" || !expectedStudentId) {
+    return { status: "error", message: "Your student profile link is unavailable." };
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl().replace(/\/+$/, "")}/rest/v1/rpc/get_my_student_record`, {
+      method: "POST",
+      headers: {
+        apikey: supabasePublicKey(),
+        Authorization: `Bearer ${session.accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: "{}"
+    });
+    if (!response.ok) {
+      if (await isSupabaseBackendInactiveResponse(response)) return { status: "error", message: supabaseBackendInactiveMessage };
+      if (response.status === 401 || response.status === 403) clearSupabaseAuthSession();
+      return response.status === 401 || response.status === 403
+        ? { status: "session-expired", message: "Your sign-in session has expired." }
+        : { status: "error", message: "Your student profile could not be loaded." };
+    }
+    const data = await response.json() as unknown;
+    if (data === null) return { status: "ok", data: undefined };
+    if (typeof data !== "object" || Array.isArray(data) || typeof (data as { id?: unknown }).id !== "string") {
+      return { status: "error", message: "Your student profile response was invalid." };
+    }
+    if ((data as { id: string }).id !== expectedStudentId) {
+      return { status: "error", message: "Your student profile link did not match your account." };
+    }
+    return { status: "ok", data: data as StudentRecord };
+  } catch (error) {
+    if (isSupabaseBackendInactiveError(error)) return { status: "error", message: supabaseBackendInactiveMessage };
+    return { status: "error", message: "Your student profile could not be loaded." };
   }
 }
 
