@@ -17219,9 +17219,9 @@ html.parent-tutorial-is-active {
 }
 
 .create-account-submit:disabled {
-  border-color: rgba(218, 226, 255, 0.16);
-  color: var(--ops-muted);
-  background: rgba(255, 255, 255, 0.07);
+  border-color: #667085;
+  color: #344054;
+  background: #eaecf0;
   box-shadow: none;
   cursor: not-allowed;
   opacity: 1;
@@ -23094,9 +23094,9 @@ html[data-custom-colors="true"] .create-account-submit:not(:disabled) {
 }
 
 html[data-custom-colors="true"] .create-account-submit:disabled {
-  border-color: color-mix(in srgb, var(--user-visual-border) 82%, var(--user-visual-text));
-  color: color-mix(in srgb, var(--user-visual-text) 76%, var(--user-visual-mutedText));
-  background: color-mix(in srgb, var(--user-visual-elevatedSurface) 82%, var(--user-visual-border));
+  border-color: #667085;
+  color: #344054;
+  background: #eaecf0;
   box-shadow: none;
 }
 

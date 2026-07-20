@@ -6,6 +6,7 @@ import {
   readSupabaseAuthSession,
   supabaseBackendInactiveMessage
 } from "./supabaseAccounts";
+import type { StudentRecord } from "./types";
 
 type SupabaseAppStateResult<T = undefined> =
   | { status: "ok"; data: T }
@@ -100,6 +101,50 @@ export async function persistSupabaseAppStateItem<T>(key: string, value: T): Pro
       body: JSON.stringify({ key, value })
     }
   );
+}
+
+async function mutateSupabaseStudentRoster(upserts: readonly StudentRecord[], deleteIds: readonly string[]): Promise<SupabaseAppStateResult<StudentRecord[]>> {
+  const unavailable = unavailableMessage();
+  if (unavailable) return { status: "unavailable", message: unavailable };
+
+  const headers = authHeaders({ "Content-Type": "application/json" });
+  if (!headers) return { status: "unavailable", message: "Supabase sign-in required for app state persistence." };
+
+  const { url } = getSupabaseBrowserConfig();
+  try {
+    const response = await fetch(`${url.replace(/\/+$/, "")}/rest/v1/rpc/mutate_student_roster`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ p_upserts: upserts, p_delete_ids: deleteIds })
+    });
+    if (!response.ok) {
+      const message = await readErrorMessage(response);
+      return { status: message === supabaseBackendInactiveMessage ? "unavailable" : "error", message };
+    }
+    const data = await response.json() as unknown;
+    if (!Array.isArray(data)) return { status: "error", message: "Supabase returned an invalid student roster." };
+    return { status: "ok", data: data as StudentRecord[] };
+  } catch (error) {
+    if (isSupabaseBackendInactiveError(error)) return { status: "unavailable", message: supabaseBackendInactiveMessage };
+    return { status: "error", message: error instanceof Error ? error.message : "Supabase student roster persistence failed." };
+  }
+}
+
+export async function initializeSupabaseStudentRoster(): Promise<SupabaseAppStateResult<StudentRecord[]>> {
+  return mutateSupabaseStudentRoster([], []);
+}
+
+export async function persistSupabaseStudentRosterChanges(
+  previous: readonly StudentRecord[],
+  next: readonly StudentRecord[]
+): Promise<SupabaseAppStateResult> {
+  const previousById = new Map(previous.map((student) => [student.id, student]));
+  const nextIds = new Set(next.map((student) => student.id));
+  const upserts = next.filter((student) => JSON.stringify(previousById.get(student.id)) !== JSON.stringify(student));
+  const deleteIds = previous.filter((student) => !nextIds.has(student.id)).map((student) => student.id);
+  if (!upserts.length && !deleteIds.length) return { status: "ok", data: undefined };
+  const result = await mutateSupabaseStudentRoster(upserts, deleteIds);
+  return result.status === "ok" ? { status: "ok", data: undefined } : result;
 }
 
 export async function deleteSupabaseAppStateItem(key: string): Promise<SupabaseAppStateResult> {

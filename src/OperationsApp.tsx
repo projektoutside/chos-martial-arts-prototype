@@ -10058,7 +10058,7 @@ function ManagerLauncherPage() {
 type CreateAccountMode = "staff" | "student" | "parent";
 
 const createdAccountPasswordPolicyText = accountPasswordPolicyText;
-const createAccountReadinessText = "Required: full name; username with at least 3 characters; temporary password with at least 12 characters, uppercase, lowercase, a number, a symbol, and no leading or trailing spaces; exact matching confirmation. The Create Account button becomes enabled only when all criteria are met and is green when ready.";
+const createAccountReadinessText = "Required: full name; username with at least 3 letters, numbers, dots, underscores, or hyphens; temporary password with at least 12 characters, uppercase, lowercase, a number, a symbol, and no leading or trailing spaces; exact matching confirmation. The Create Account button becomes enabled and green when these field checks pass. Username availability and hosted authorization are confirmed after submission.";
 const createAccountStaffAccessOptions: { key: ManagerAccessKey; label: string; detail: string }[] = [
   { key: "dashboard", label: "Dashboard", detail: "Calendar and daily overview" },
   { key: "messages", label: "Messages", detail: "Live chat and text tools" },
@@ -10099,6 +10099,7 @@ function CreateAccountsPage() {
     managedAccounts,
     managerAccountAccess,
     showToast,
+    syncOperationsStudent,
     updateManagedAccountStatus
   } = useAppState();
   const [mode, setMode] = useState<CreateAccountMode>("staff");
@@ -10143,6 +10144,8 @@ function CreateAccountsPage() {
     notes?: string;
     access?: ManagerAccessKey[];
     studentId?: string;
+    program?: string;
+    beltRank?: string;
   }) => {
     if (!isSupabaseAuthConfigured()) return "local";
     if (!readSupabaseAuthSession()) {
@@ -10154,6 +10157,9 @@ function CreateAccountsPage() {
     try {
       const result = await createSupabaseManagedAccount({ ...account, status: "active" });
       if (result.status === "ok") {
+        if (result.student) {
+          syncOperationsStudent(result.student);
+        }
         const message = `${result.username} was created. Give the user their account name and temporary password so they can choose a personal password.`;
         setFormMessage(message);
         showToast(message);
@@ -10263,22 +10269,12 @@ function CreateAccountsPage() {
         title: `${studentForm.beltRank.trim() || "White"} Belt Student`,
         notes: studentForm.notes,
         access: [],
-        studentId: linkedStudentId
+        studentId: linkedStudentId,
+        program: studentForm.program,
+        beltRank: studentForm.beltRank
       });
       if (liveCreated !== "local") {
-        if (liveCreated === "created") {
-          addOperationsStudent({
-            studentId: linkedStudentId,
-            fullName: studentForm.fullName,
-            studentEmail: "",
-            guardianPhone: "",
-            program: studentForm.program,
-            beltRank: studentForm.beltRank,
-            notes: studentForm.notes,
-            allowEmptyContact: true
-          });
-          setStudentForm({ fullName: "", username: "", password: "", confirmPassword: "", program: "Youth Taekwondo", beltRank: "White", notes: "" });
-        }
+        if (liveCreated === "created") setStudentForm({ fullName: "", username: "", password: "", confirmPassword: "", program: "Youth Taekwondo", beltRank: "White", notes: "" });
         return;
       }
     }
@@ -14572,7 +14568,26 @@ function ManagerPanelRoute() {
 }
 
 export function OperationsApp() {
-  const { accountRole, logout } = useAppState();
+  const { accountRole, logout, retryStudentAccessVerification, studentAccessVerification, studentAccessVerificationRequired } = useAppState();
+
+  if (accountRole === "student" && studentAccessVerificationRequired && studentAccessVerification.status !== "ready") {
+    const loading = studentAccessVerification.status === "loading" || studentAccessVerification.status === "not-required";
+    const retryable = studentAccessVerification.status === "error";
+    return (
+      <main className="manager-shell">
+        <section className="operations-page" aria-label={loading ? "Verifying student access" : "Student access unavailable"}>
+          <div className="operations-page-head">
+            <div className="operations-page-title-copy">
+              <h1>{loading ? "Verifying Student Access" : "Student Access Unavailable"}</h1>
+              <p>{loading ? "Checking the active student record linked to this account." : studentAccessVerification.message ?? "This account does not have a verified active student record."}</p>
+            </div>
+          </div>
+          {retryable && <button type="button" onClick={retryStudentAccessVerification}>Retry Verification</button>}
+          {!loading && <button type="button" onClick={logout}>Log Out</button>}
+        </section>
+      </main>
+    );
+  }
 
   if (!accountRole) {
     return (

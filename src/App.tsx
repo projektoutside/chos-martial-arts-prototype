@@ -11,7 +11,7 @@ import { useSoftKeyboardEditor } from "./softKeyboardEditor";
 import { useAppState } from "./state";
 import { acknowledgeSupabaseWelcome, activateSupabaseAccount, clearSupabaseAuthSession, completeSupabaseInvitePassword, fetchSupabaseProfileOnboarding, isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, readSupabaseAuthSession, readSupabaseInviteCallback, signInSupabaseAccount, type SupabaseProfileOnboarding } from "./supabaseAccounts";
 import { validateAccountPasswordChange } from "./accountPassword";
-import type { AccountRole } from "./types";
+import type { AccountRole, ManagerAccessKey } from "./types";
 import { FirstLoginWelcomeDialog } from "./FirstLoginWelcomeDialog";
 import { DemoEnvironmentBadge } from "./DemoEnvironmentBadge";
 import { initializeAppTheme } from "./theme";
@@ -372,6 +372,8 @@ function LoginLandingPage({
   const loginLandingRef = useRef<HTMLElement | null>(null);
   const portraitStageRef = useRef<HTMLDivElement | null>(null);
   const usernameFieldRef = useRef<HTMLLabelElement | null>(null);
+  const activationUsernameRef = useRef<HTMLInputElement | null>(null);
+  const activationNewPasswordRef = useRef<HTMLInputElement | null>(null);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -385,7 +387,7 @@ function LoginLandingPage({
   const [setupMessage, setSetupMessage] = useState("");
   const [activationOpen, setActivationOpen] = useState(false);
   const [activationStep, setActivationStep] = useState<"credentials" | "password">("credentials");
-  const [activationHostedSession, setActivationHostedSession] = useState<{ sessionEmail: string; role: AccountRole; studentId?: string } | null>(null);
+  const [activationHostedSession, setActivationHostedSession] = useState<{ sessionEmail: string; role: AccountRole; studentId?: string; access?: ManagerAccessKey[] } | null>(null);
   const [activationPending, setActivationPending] = useState(false);
   const [activationMessage, setActivationMessage] = useState("");
   const [activationForm, setActivationForm] = useState({
@@ -396,6 +398,12 @@ function LoginLandingPage({
   });
   const supabaseConfigured = isSupabaseAuthConfigured();
   const loginLandingStyle = { "--login-bg-image": `url("${publicAsset("NewFinalBackground.png")}")` } as CSSProperties;
+
+  useEffect(() => {
+    if (!activationOpen) return;
+    if (activationStep === "credentials") activationUsernameRef.current?.focus();
+    else activationNewPasswordRef.current?.focus();
+  }, [activationOpen, activationStep]);
 
   useEffect(() => {
     const landing = loginLandingRef.current;
@@ -495,13 +503,13 @@ function LoginLandingPage({
       try {
         const supabaseLogin = await signInSupabaseAccount(loginForm);
         if (supabaseLogin.status === "authenticated") {
-          login(supabaseLogin.sessionEmail, true, supabaseLogin.role, supabaseLogin.studentId);
+          login(supabaseLogin.sessionEmail, true, supabaseLogin.role, supabaseLogin.studentId, supabaseLogin.profile.access ?? undefined);
           navigate("/");
           return;
         }
         if (supabaseLogin.status === "activation-required") {
           setActivationForm({ username: loginForm.username, temporaryPassword: loginForm.password, password: "", confirmation: "" });
-          setActivationHostedSession({ sessionEmail: supabaseLogin.sessionEmail, role: supabaseLogin.role, studentId: supabaseLogin.studentId });
+          setActivationHostedSession({ sessionEmail: supabaseLogin.sessionEmail, role: supabaseLogin.role, studentId: supabaseLogin.studentId, access: supabaseLogin.profile.access ?? undefined });
           setActivationStep("password");
           setActivationMessage("");
           setActivationOpen(true);
@@ -602,7 +610,7 @@ function LoginLandingPage({
         const result = await signInSupabaseAccount({ username: activationForm.username, password: activationForm.temporaryPassword });
         setActivationPending(false);
         if (result.status === "activation-required") {
-          setActivationHostedSession({ sessionEmail: result.sessionEmail, role: result.role, studentId: result.studentId });
+          setActivationHostedSession({ sessionEmail: result.sessionEmail, role: result.role, studentId: result.studentId, access: result.profile.access ?? undefined });
           setActivationStep("password");
           return;
         }
@@ -654,7 +662,7 @@ function LoginLandingPage({
         setActivationMessage("Your temporary sign-in expired. Start account access again.");
         return;
       }
-      login(activationHostedSession.sessionEmail, true, activationHostedSession.role, activationHostedSession.studentId);
+      login(activationHostedSession.sessionEmail, true, activationHostedSession.role, activationHostedSession.studentId, activationHostedSession.access);
     } else {
       const result = activateCreatedAccount({
         username: activationForm.username,
@@ -766,13 +774,13 @@ function LoginLandingPage({
             <p>{activationStep === "credentials" ? "Enter the account name and temporary password a Developer or Manager gave you." : "Your temporary credentials are correct. Replace the temporary password before entering the app."}</p>
             {activationStep === "credentials" ? (
               <>
-                <label><span>Account name</span><input aria-label="Account name" autoComplete="username" value={activationForm.username} onChange={(event) => setActivationForm({ ...activationForm, username: event.target.value })} /></label>
+                <label><span>Account name</span><input ref={activationUsernameRef} aria-label="Account name" autoComplete="username" value={activationForm.username} onChange={(event) => setActivationForm({ ...activationForm, username: event.target.value })} /></label>
                 <label><span>Temporary password</span><input aria-label="Temporary password" type="password" autoComplete="current-password" value={activationForm.temporaryPassword} onChange={(event) => setActivationForm({ ...activationForm, temporaryPassword: event.target.value })} /></label>
               </>
             ) : (
               <>
                 <label className="sr-only"><span>Account name for password manager</span><input aria-label="Account name for password manager" autoComplete="username" value={activationForm.username} readOnly tabIndex={-1} /></label>
-                <label><span>New password</span><input aria-label="New account password" type="password" autoComplete="new-password" value={activationForm.password} onChange={(event) => setActivationForm({ ...activationForm, password: event.target.value })} /></label>
+                <label><span>New password</span><input ref={activationNewPasswordRef} aria-label="New account password" type="password" autoComplete="new-password" value={activationForm.password} onChange={(event) => setActivationForm({ ...activationForm, password: event.target.value })} /></label>
                 <label><span>Confirm password</span><input aria-label="Confirm account password" type="password" autoComplete="new-password" value={activationForm.confirmation} onChange={(event) => setActivationForm({ ...activationForm, confirmation: event.target.value })} /></label>
               </>
             )}

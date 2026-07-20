@@ -1753,6 +1753,38 @@ function StudentCreationDoubleCallHarness() {
   );
 }
 
+function HostedStaffAccessProbe() {
+  const { accountRole, managerAccountAccess } = useAppState();
+  return <p data-testid="hosted-staff-access-probe">{accountRole}:{managerAccountAccess.allowedTools.join(",")}</p>;
+}
+
+function InitialHostedStaffLoginProbe() {
+  const { accountRole, login, managerAccountAccess } = useAppState();
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+            accessToken: "initial-hosted-staff-token",
+            expiresAt: Date.now() + 60 * 60 * 1000,
+            userId: "initial-hosted-staff-user",
+            projectRef: "project",
+            authEmail: "initial.hosted@accounts.chosmartialarts.app",
+            profileUsername: "initial.hosted",
+            role: "staff",
+            access: ["dashboard"]
+          }));
+          login("initial.hosted", true, "staff", undefined, ["dashboard"]);
+        }}
+      >
+        Complete hosted sign in
+      </button>
+      <p data-testid="initial-hosted-staff-access-probe">{accountRole ?? "unknown"}:{managerAccountAccess.allowedTools.join(",")}</p>
+    </div>
+  );
+}
+
 function renderHostedStudentApp(path: string, studentId: string, students: Record<string, unknown>[]) {
   window.localStorage.setItem("chos.operations.students.v1", JSON.stringify(students));
   window.localStorage.setItem("chos.managedAccounts.v1", JSON.stringify([{
@@ -3044,6 +3076,7 @@ describe("login landing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Access New Account" }));
     expect(screen.getByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
     expect(screen.getByLabelText("Account name")).toHaveAttribute("autocomplete", "username");
+    expect(screen.getByLabelText("Account name")).toHaveFocus();
     expect(screen.getByLabelText("Temporary password")).toHaveAttribute("autocomplete", "current-password");
     expect(screen.queryByText(/public sign.?up/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign in as Guest" })).not.toBeInTheDocument();
@@ -3086,6 +3119,20 @@ describe("login landing", () => {
       }
       if (requestUrl.includes("/functions/v1/activate-account")) {
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.includes("/rest/v1/rpc/get_my_student_record")) {
+        return new Response(JSON.stringify({
+          id: "student-jordan-authoritative",
+          firstName: "Jordan",
+          lastName: "Lee",
+          email: "",
+          phone: "",
+          status: "Active",
+          beltRank: "White",
+          classesAttended: 0,
+          missedClassCount: 0,
+          joinedAt: "2026-07-16"
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
     });
@@ -5102,6 +5149,28 @@ describe("post-login operations app", () => {
     expect(within(screen.getByRole("tablist", { name: "Live chat rooms" })).getByRole("tab", { name: "Cho's Room" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("moves focus to the new-password field after temporary credentials are accepted", async () => {
+    window.localStorage.setItem("chos.managedAccounts.v1", JSON.stringify([{
+      id: "focus-local-staff",
+      displayName: "Focus Staff",
+      username: "focus.staff",
+      password: "TemporaryPass123!",
+      requiresPasswordChange: true,
+      role: "staff",
+      status: "active",
+      access: ["dashboard"],
+      createdAt: "2026-07-19T00:00:00.000Z"
+    }]));
+    renderLoggedOutApp("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "Access New Account" }));
+    fireEvent.change(screen.getByLabelText("Account name"), { target: { value: "focus.staff" } });
+    fireEvent.change(screen.getByLabelText("Temporary password"), { target: { value: "TemporaryPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(await screen.findByLabelText("New account password")).toHaveFocus();
+  });
+
   it("uses the hosted session student id authoritatively and fails closed when it is unknown", () => {
     const students = [
       { id: "student-wrong", firstName: "Wrong", lastName: "Student", ...completeStudentSafetyFields, email: "", phone: "", status: "Active", beltRank: "White", classesAttended: 3, missedClassCount: 0, joinedAt: "2026-01-01" },
@@ -5157,6 +5226,65 @@ describe("post-login operations app", () => {
 
     expect(await screen.findByLabelText("Account access unavailable")).toBeInTheDocument();
     expect(screen.queryByLabelText("Manager app launcher")).not.toBeInTheDocument();
+  });
+
+  it("rejects a malformed persisted hosted role instead of opening manager surfaces", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: "unknown.hosted", remembered: true, createdAt: "2026-07-19T00:00:00.000Z", role: "admin" } as unknown as AccountSession);
+    window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+      accessToken: "unknown-role-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "unknown-role-user",
+      projectRef: "project",
+      authEmail: "unknown.hosted@accounts.chosmartialarts.app",
+      profileUsername: "unknown.hosted",
+      role: "admin"
+    }));
+
+    render(<MemoryRouter initialEntries={["/manager"]}><AppStateProvider><App /></AppStateProvider></MemoryRouter>);
+
+    expect(await screen.findByTestId("auth-gate")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager app launcher")).not.toBeInTheDocument();
+  });
+
+  it("restores hosted staff access from the authoritative persisted role after refresh", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: "hosted.staff", remembered: true, createdAt: "2026-07-19T00:00:00.000Z", role: "staff" });
+    window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+      accessToken: "hosted-staff-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "hosted-staff-user",
+      projectRef: "project",
+      authEmail: "hosted.staff@accounts.chosmartialarts.app",
+      profileUsername: "hosted.staff",
+      role: "staff",
+      access: ["dashboard"]
+    }));
+    globalThis.fetch = vi.fn(async () => new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+
+    const probeView = render(<AppStateProvider><HostedStaffAccessProbe /></AppStateProvider>);
+    expect(screen.getByTestId("hosted-staff-access-probe")).toHaveTextContent("staff:dashboard");
+    probeView.unmount();
+
+    render(<MemoryRouter initialEntries={["/dashboard"]}><AppStateProvider><App /></AppStateProvider></MemoryRouter>);
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+  });
+
+  it("uses authoritative hosted staff permissions on the initial login render", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    globalThis.fetch = vi.fn(async () => new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+
+    render(<AppStateProvider><InitialHostedStaffLoginProbe /></AppStateProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Complete hosted sign in" }));
+
+    expect(await screen.findByTestId("initial-hosted-staff-access-probe")).toHaveTextContent("staff:dashboard");
+    expect(screen.getByTestId("initial-hosted-staff-access-probe")).not.toHaveTextContent("reports");
   });
 
   it("opens the manager panel from the manager home icon button", () => {
@@ -5249,7 +5377,7 @@ describe("post-login operations app", () => {
         expect(field).toHaveAttribute("aria-describedby", expectation.readinessId);
       }
       expect(screen.getByRole("button", { name: expectation.button })).toHaveAttribute("aria-describedby", expectation.readinessId);
-      expect(document.getElementById(expectation.readinessId)).toHaveTextContent("Required: full name; username with at least 3 characters; temporary password with at least 12 characters, uppercase, lowercase, a number, a symbol, and no leading or trailing spaces; exact matching confirmation. The Create Account button becomes enabled only when all criteria are met and is green when ready.");
+      expect(document.getElementById(expectation.readinessId)).toHaveTextContent("Required: full name; username with at least 3 letters, numbers, dots, underscores, or hyphens; temporary password with at least 12 characters, uppercase, lowercase, a number, a symbol, and no leading or trailing spaces; exact matching confirmation. The Create Account button becomes enabled and green when these field checks pass. Username availability and hosted authorization are confirmed after submission.");
     }
   });
 
@@ -5772,15 +5900,37 @@ describe("post-login operations app", () => {
     }));
     const originalFetch = globalThis.fetch;
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      const requestUrl = String(url);
-      if (requestUrl.includes("/rest/v1/direct_messages") || requestUrl.includes("/rest/v1/message_logs")) {
+      const requestUrl = new URL(String(url));
+      if (requestUrl.pathname === "/rest/v1/app_state_items") {
+        return new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.pathname === "/rest/v1/rpc/mutate_student_roster") {
+        return new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.pathname === "/rest/v1/direct_messages" || requestUrl.pathname === "/rest/v1/message_logs") {
         return new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       const body = JSON.parse(String(init?.body ?? "{}"));
+      const nameParts = String(body.displayName ?? "").split(/\s+/).filter(Boolean);
       return new Response(JSON.stringify({
-        email: body.email,
+        email: `${body.username}@accounts.chosmartialarts.app`,
         username: body.username,
         activationRequired: true,
+        student: body.role === "student" ? {
+          id: body.studentId,
+          firstName: nameParts[0],
+          lastName: nameParts.slice(1).join(" "),
+          email: "",
+          phone: "",
+          enrollmentDate: "2026-07-20",
+          joinedAt: "2026-07-20",
+          profileUpdatedAt: "2026-07-20",
+          program: body.program ?? "Youth Taekwondo",
+          status: "Active",
+          beltRank: body.beltRank ?? "White",
+          classesAttended: 0,
+          missedClassCount: 0
+        } : null,
         account: {
           id: `${body.role}-remote-id`,
           username: body.username,
@@ -5826,6 +5976,9 @@ describe("post-login operations app", () => {
       fireEvent.click(screen.getByRole("button", { name: "Create Parent Account" }));
 
       await waitFor(() => expect(createAccountCalls()).toHaveLength(5));
+      const studentMutationCalls = () => fetchMock.mock.calls.filter(([url]) => new URL(String(url)).pathname === "/rest/v1/rpc/mutate_student_roster");
+      const studentUpsertCalls = () => studentMutationCalls().filter(([, init]) => JSON.parse(String((init as RequestInit).body)).p_upserts.length > 0);
+      await waitFor(() => expect(studentUpsertCalls()).toHaveLength(3));
       const requestBodies = createAccountCalls().map(([, init]) => JSON.parse(String((init as RequestInit).body)));
       expect(requestBodies).toEqual([
         expect.objectContaining({ username: "remote.staff", password: "RemoteStaffPass123!", role: "staff", access: expect.arrayContaining(["dashboard"]) }),
@@ -5837,6 +5990,12 @@ describe("post-login operations app", () => {
       const studentIds = requestBodies.filter((body) => body.role === "student").map((body) => body.studentId);
       expect(new Set(studentIds).size).toBe(3);
       expect(studentIds.every((studentId) => /^student-[a-z0-9]+$/.test(studentId))).toBe(true);
+      expect(studentUpsertCalls().map(([, init]) => JSON.parse(String((init as RequestInit).body)).p_upserts[0].id)).toEqual(studentIds);
+      expect(studentUpsertCalls().map(([, init]) => JSON.parse(String((init as RequestInit).body)).p_upserts[0].joinedAt)).toEqual([
+        "2026-07-20",
+        "2026-07-20",
+        "2026-07-20"
+      ]);
       expect(requestBodies.every((body) => !("email" in body) && !("phone" in body))).toBe(true);
       expect(fetchMock).toHaveBeenCalledWith(
         "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/manager-create-account",

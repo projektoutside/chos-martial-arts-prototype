@@ -7,6 +7,7 @@ import {
   createSupabaseManagedAccount,
   getSupabaseBrowserConfig,
   fetchSupabaseProfileOnboarding,
+  fetchSupabaseOwnStudentRecord,
   isSupabaseAuthConfigured,
   isChoSupabaseProjectUrlAllowed,
   isSupabaseBackendInactiveError,
@@ -170,7 +171,67 @@ describe("supabase account adapter", () => {
 
     expect(adapter.fetchSupabaseOwnStudentRecord).toBeTypeOf("function");
     if (!adapter.fetchSupabaseOwnStudentRecord) return;
-    await expect(adapter.fetchSupabaseOwnStudentRecord()).resolves.toEqual(expect.objectContaining({ status: "error" }));
+    await expect(adapter.fetchSupabaseOwnStudentRecord()).resolves.toEqual(expect.objectContaining({ status: "denied" }));
+  });
+
+  it("denies an inactive roster record even if a backend response is malformed", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "student-access-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "student-user",
+      projectRef: "project",
+      role: "student",
+      studentId: "student-own"
+    }));
+    globalThis.fetch = vi.fn(async () => jsonResponse({ id: "student-own", status: "Inactive" })) as typeof fetch;
+
+    await expect(fetchSupabaseOwnStudentRecord()).resolves.toEqual(expect.objectContaining({ status: "denied" }));
+  });
+
+  it("does not let a stale denied student request clear a newer auth session", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "old-student-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "old-student-user",
+      projectRef: "project",
+      role: "student",
+      studentId: "student-old"
+    }));
+    let resolveResponse!: (response: Response) => void;
+    globalThis.fetch = vi.fn(() => new Promise<Response>((resolve) => { resolveResponse = resolve; })) as typeof fetch;
+
+    const pendingRequest = fetchSupabaseOwnStudentRecord();
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "new-staff-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "new-staff-user",
+      projectRef: "project",
+      role: "staff",
+      access: ["dashboard"]
+    }));
+    resolveResponse(jsonResponse({ error: "JWT expired" }, { status: 401 }));
+
+    await expect(pendingRequest).resolves.toEqual({ status: "stale" });
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ accessToken: "new-staff-token", userId: "new-staff-user" }));
+  });
+
+  it("reports an expired session when no newer session replaced the denied request", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "expired-student-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "expired-student-user",
+      projectRef: "project",
+      role: "student",
+      studentId: "student-expired"
+    }));
+    let resolveResponse!: (response: Response) => void;
+    globalThis.fetch = vi.fn(() => new Promise<Response>((resolve) => { resolveResponse = resolve; })) as typeof fetch;
+
+    const pendingRequest = fetchSupabaseOwnStudentRecord();
+    clearSupabaseAuthSession();
+    resolveResponse(jsonResponse({ error: "JWT expired" }, { status: 401 }));
+
+    await expect(pendingRequest).resolves.toEqual({ status: "session-expired", message: "Your sign-in session has expired." });
   });
 
   it("fails closed when a hosted student profile has no student id", async () => {
@@ -496,6 +557,21 @@ describe("supabase account adapter", () => {
     expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
   });
 
+  it("clears a stored session whose persisted role is not supported", () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "malformed-role-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "malformed-role-user",
+      projectRef: "project",
+      authEmail: "malformed.role@accounts.chosmartialarts.app",
+      profileUsername: "malformed.role",
+      role: "admin"
+    }));
+
+    expect(readSupabaseAuthSession()).toBeUndefined();
+    expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
+  });
+
   it("classifies paused or unreachable Supabase auth as backend-inactive instead of invalid credentials", async () => {
     expect(await isSupabaseBackendInactiveResponse(jsonResponse({ message: "Project is paused" }, { status: 404 }))).toBe(true);
     expect(isSupabaseBackendInactiveError({ message: "Project is inactive", status: 503 })).toBe(true);
@@ -599,6 +675,9 @@ describe("supabase account adapter", () => {
       }
       if (requestUrl.includes("/functions/v1/manager-create-account")) {
         return jsonResponse({
+          activationRequired: true,
+          username: "jordan.staff",
+          email: "jordan.staff@accounts.chosmartialarts.app",
           account: {
             id: "staff-user-id",
             username: "jordan.staff",
@@ -648,6 +727,35 @@ describe("supabase account adapter", () => {
     })).toEqual({
       status: "error",
       message: "Sign into an authorized Supabase Developer or Manager account before syncing created accounts."
+    });
+  });
+
+  it("does not report student creation success unless the returned roster record is complete and exact", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "manager-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "manager-user-id",
+      projectRef: "project",
+      authEmail: "manager1@accounts.chosmartialarts.app",
+      profileUsername: "manager1",
+      role: "staff"
+    }));
+    globalThis.fetch = vi.fn(async () => jsonResponse({
+      activationRequired: true,
+      username: "alex.student",
+      email: "alex.student@accounts.chosmartialarts.app",
+      student: { id: "wrong-student-id" }
+    })) as typeof fetch;
+
+    await expect(createSupabaseManagedAccount({
+      displayName: "Alex Student",
+      username: "alex.student",
+      password: "StudentPass123!",
+      role: "student",
+      studentId: "student-alex"
+    })).resolves.toEqual({
+      status: "error",
+      message: "Account creation completed, but the server response could not be verified. Contact an administrator before retrying."
     });
   });
 
@@ -757,7 +865,7 @@ describe("supabase account adapter", () => {
       profileUsername: "manager1"
     }));
     const fetchMock = vi.fn(async () => jsonResponse({
-      email: "new.staff@example.com",
+      email: "new.staff@accounts.chosmartialarts.app",
       username: "new.staff",
       activationRequired: true
     }));
@@ -767,13 +875,12 @@ describe("supabase account adapter", () => {
       displayName: "New Staff",
       username: "new.staff",
       password: "StaffPass123!",
-      role: "staff",
-      email: "new.staff@example.com"
+      role: "staff"
     })).resolves.toEqual({
       status: "ok",
       activationRequired: true,
       username: "new.staff",
-      email: "new.staff@example.com"
+      email: "new.staff@accounts.chosmartialarts.app"
     });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://project.supabase.co/functions/v1/manager-create-account",

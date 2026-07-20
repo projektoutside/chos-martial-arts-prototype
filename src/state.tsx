@@ -8,7 +8,7 @@ import { parseOperationsBackupSnapshot, type OperationsBackupData } from "./oper
 import { getClassReminderCandidates, getLeadCandidates, getMerchandiseTargetStock, getStudentCelebrationEvents, getStudentProfileIssues, hasGuardianSmsConsent, hasStaffSmsConsent, hasStudentSmsConsent, isAttendanceGapFollowUpDue, isBeltTestInviteDue, isLowStockMerchandiseItem, isMilestoneEncouragementDue, isMissedClassFollowUpDue, isNewStudentCheckInDue, isPausedStudentReviewDue, isProfileUpdateRequestDue, isQueuedMessageDeliverable, isStaleOneTimeScheduledClass, isTrialConversionDue } from "./operationsReports";
 import { buildStudentBeltProgress } from "./studentProgress";
 import { changeSupabaseAccountPassword, clearSupabaseAuthSession, fetchSupabaseOwnStudentRecord, isSupabaseAuthConfigured, readSupabaseAuthSession, supabaseAuthEmailForUsername } from "./supabaseAccounts";
-import { deleteSupabaseAppStateItem, fetchSupabaseAppStateItem, isSupabaseAppStateRemoteBacked, persistSupabaseAppStateItem } from "./supabaseAppStatePersistence";
+import { deleteSupabaseAppStateItem, fetchSupabaseAppStateItem, initializeSupabaseStudentRoster, isSupabaseAppStateRemoteBacked, persistSupabaseAppStateItem, persistSupabaseStudentRosterChanges } from "./supabaseAppStatePersistence";
 import { deleteSupabaseDirectMessages, deleteSupabaseMessageLogs, fetchSupabaseDirectMessages, fetchSupabaseMessageLogs, persistSupabaseDirectMessages, persistSupabaseMessageLogs } from "./supabaseMessagePersistence";
 import { normalizeTwilioInboundSmsWebhookForServer, normalizeTwilioStatusCallbackForServer, type TwilioInboundSmsWebhook } from "./twilioRelayContract";
 import type {
@@ -268,6 +268,11 @@ type ManagerAccountAccess = {
   allowedTools: ManagerAccessKey[];
 };
 
+type StudentAccessVerification = {
+  status: "not-required" | "loading" | "ready" | "denied" | "error";
+  message?: string;
+};
+
 type MerchandiseInput = {
   name: string;
   category: string;
@@ -402,6 +407,9 @@ interface AppState {
   managedAccounts: ManagedAccount[];
   currentManagedAccount?: ManagedAccount;
   managerAccountAccess: ManagerAccountAccess;
+  studentAccessVerification: StudentAccessVerification;
+  studentAccessVerificationRequired: boolean;
+  retryStudentAccessVerification: () => void;
   childAccounts: ChildAccount[];
   guardianChildren: ChildAccount[];
   currentChildAccount?: ChildAccount;
@@ -437,7 +445,7 @@ interface AppState {
   placeOrder: (customer: CustomerInfo, notes: string) => Order | undefined;
   saveBooking: (booking: BookingDetails) => void;
   saveContact: (contact: ContactSubmission) => void;
-  login: (email: string, remembered: boolean, role?: AccountRole, studentId?: string) => void;
+  login: (email: string, remembered: boolean, role?: AccountRole, studentId?: string, access?: ManagerAccessKey[]) => void;
   loginRegisteredAccount: (credentials: { username: string; password: string }) => AccountRecord | undefined;
   loginCreatedAccount: (credentials: { username: string; password: string }) => CreatedAccountLoginResult | undefined;
   activateCreatedAccount: (credentials: { username: string; temporaryPassword: string; password: string }) => CreatedAccountActivationResult;
@@ -454,6 +462,7 @@ interface AppState {
   addChildAccount: (child: { name: string; age: string; beltSlug: string; username: string; password: string }) => ChildAccount | undefined;
   updateChildAccount: (childId: string, child: { name: string; age: string; beltSlug: string; username: string; password: string }) => ChildAccount | undefined;
   addOperationsStudent: (student: StudentInput) => StudentRecord | undefined;
+  syncOperationsStudent: (student: StudentRecord) => StudentRecord | undefined;
   updateOperationsStudent: (studentId: string, student: StudentInput) => StudentRecord | undefined;
   deleteOperationsStudent: (studentId: string) => StudentRecord | undefined;
   addStudioClass: (studioClass: StudioClassInput) => StudioClass | undefined;
@@ -606,7 +615,7 @@ function cleanupRetiredStudentPrototypeStorage() {
 function useStoredState<T>(
   key: string,
   fallback: T,
-  options?: { localDisabled?: boolean; remoteBacked?: boolean; remoteFallback?: T; remoteScope?: string; remoteStore?: "app-state" | "none" }
+  options?: { localDisabled?: boolean; remoteBacked?: boolean; remoteFallback?: T; remoteScope?: string; remoteStore?: "app-state" | "student-roster" | "none" }
 ) {
   const remoteBacked = Boolean(options?.remoteBacked);
   const useRemoteAppState = remoteBacked && options?.remoteStore !== "none";
@@ -632,7 +641,13 @@ function useStoredState<T>(
         if (result.status !== "ok") return;
         if (localMutationVersionRef.current !== hydrationMutationVersion) return;
         if (result.data === undefined) {
-          if (remoteFallback !== undefined) void persistSupabaseAppStateItem(key, remoteFallback);
+          if (options?.remoteStore === "student-roster") {
+            void initializeSupabaseStudentRoster().then((initialization) => {
+              if (cancelled || initialization.status !== "ok") return;
+              if (localMutationVersionRef.current !== hydrationMutationVersion) return;
+              setValue(initialization.data as unknown as T);
+            });
+          } else if (remoteFallback !== undefined) void persistSupabaseAppStateItem(key, remoteFallback);
           return;
         }
         setValue(result.data);
@@ -658,7 +673,12 @@ function useStoredState<T>(
           removeStorage(key);
           if (useRemoteAppState) {
             remoteWriteChainRef.current = remoteWriteChainRef.current.then(async () => {
-              if (resolved === undefined) await deleteSupabaseAppStateItem(key);
+              if (options?.remoteStore === "student-roster") {
+                await persistSupabaseStudentRosterChanges(
+                  previous as unknown as readonly StudentRecord[],
+                  resolved as unknown as readonly StudentRecord[]
+                );
+              } else if (resolved === undefined) await deleteSupabaseAppStateItem(key);
               else await persistSupabaseAppStateItem(key, resolved);
             });
           }
@@ -670,7 +690,7 @@ function useStoredState<T>(
         return resolved;
       });
     },
-    [key, localDisabled, remoteBacked, useRemoteAppState]
+    [key, localDisabled, options?.remoteStore, remoteBacked, useRemoteAppState]
   );
   return [value, update] as const;
 }
@@ -795,6 +815,7 @@ function scopedSupabaseAuthSessionForAppSession(normalizedEmail: string) {
 
 function validatePrototypeSession(session: AccountSession | undefined) {
   if (!session?.email) return undefined;
+  if (session.role !== undefined && session.role !== "staff" && session.role !== "student" && session.role !== "guardian") return undefined;
   const normalizedEmail = session.email.toLowerCase();
   const supabaseConfigured = isSupabaseAuthConfigured();
   const scopedSupabaseSession = supabaseConfigured ? scopedSupabaseAuthSessionForAppSession(normalizedEmail) : undefined;
@@ -803,7 +824,8 @@ function validatePrototypeSession(session: AccountSession | undefined) {
     return {
       ...session,
       role: scopedSupabaseSession.role,
-      studentId: scopedSupabaseSession.role === "student" ? scopedSupabaseSession.studentId?.trim() || undefined : undefined
+      studentId: scopedSupabaseSession.role === "student" ? scopedSupabaseSession.studentId?.trim() || undefined : undefined,
+      access: scopedSupabaseSession.role === "staff" ? scopedSupabaseSession.access : undefined
     };
   }
   if (isPrototypeManagerOwnerEmail(normalizedEmail)) return session;
@@ -1886,12 +1908,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useSessionState();
   const supabaseAppStateRemoteBacked = isSupabaseAppStateRemoteBacked();
   const supabaseLocalCredentialsDisabled = isSupabaseAuthConfigured();
+  const storedSupabaseSession = supabaseLocalCredentialsDisabled ? readSupabaseAuthSession() : undefined;
   const supabaseRemoteScope = session?.email ?? "signed-out";
   const supabaseAppStateOptions = { remoteBacked: supabaseAppStateRemoteBacked, remoteScope: supabaseRemoteScope };
-  const supabaseStudentSession = isSupabaseAuthConfigured() && session?.role === "student";
-  const supabaseStudentStateOptions = supabaseStudentSession
+  const supabaseStudentCredential = storedSupabaseSession?.role === "student";
+  const supabaseStudentSession = supabaseStudentCredential && session?.role === "student";
+  const supabaseStudentStateOptions = supabaseStudentCredential
     ? { remoteBacked: true, remoteFallback: [] as StudentRecord[], remoteScope: supabaseRemoteScope, remoteStore: "none" as const }
-    : supabaseAppStateOptions;
+    : { ...supabaseAppStateOptions, remoteStore: "student-roster" as const };
   const supabaseLocalCredentialOptions = { localDisabled: supabaseLocalCredentialsDisabled };
 
   const [cart, setCart] = useStoredState<CartItem[]>(keys.cart, [], supabaseAppStateOptions);
@@ -1922,18 +1946,49 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [studyGuideFolders, setStudyGuideFolders] = useStoredState<StudyGuideFolder[]>(keys.studyGuideFolders, [], supabaseAppStateOptions);
   const [studyGuideMaterials, setStudyGuideMaterials] = useStoredState<StudyGuideMaterial[]>(keys.studyGuideMaterials, [], supabaseAppStateOptions);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [studentAccessVerification, setStudentAccessVerification] = useState<StudentAccessVerification>(() => (
+    supabaseStudentSession ? { status: "loading" } : { status: "not-required" }
+  ));
+  const [studentAccessVerificationAttempt, setStudentAccessVerificationAttempt] = useState(0);
+
+  const retryStudentAccessVerification = useCallback(() => {
+    setStudentAccessVerificationAttempt((attempt) => attempt + 1);
+  }, []);
 
   useEffect(() => {
-    if (!supabaseStudentSession) return;
+    if (!supabaseStudentSession) {
+      setStudentAccessVerification({ status: "not-required" });
+      return;
+    }
     let cancelled = false;
+    setStudentAccessVerification({ status: "loading" });
     void fetchSupabaseOwnStudentRecord().then((result) => {
       if (cancelled) return;
-      setStudents(result.status === "ok" && result.data ? [result.data] : []);
+      if (result.status === "stale") return;
+      if (result.status === "ok" && result.data) {
+        setStudents([result.data]);
+        setStudentAccessVerification({ status: "ready" });
+        return;
+      }
+      setStudents([]);
+      if (result.status === "session-expired") {
+        setStudentAccessVerification({ status: "denied", message: result.message });
+        setSession(undefined);
+        return;
+      }
+      if (result.status === "denied") {
+        setStudentAccessVerification({ status: "denied", message: result.message });
+        return;
+      }
+      setStudentAccessVerification({
+        status: "error",
+        message: result.status === "error" ? result.message : "Student access verification is unavailable."
+      });
     });
     return () => {
       cancelled = true;
     };
-  }, [session?.email, session?.studentId, setStudents, supabaseStudentSession]);
+  }, [session?.email, session?.studentId, setSession, setStudents, storedSupabaseSession?.accessToken, studentAccessVerificationAttempt, supabaseStudentSession]);
   const toastTimersRef = useRef<Map<string, number>>(new Map());
   const cartRef = useRef(cart);
   const ordersRef = useRef(orders);
@@ -2454,7 +2509,10 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     const normalizedEmail = session.email.toLowerCase();
     const registeredRole: AccountRole | undefined = currentRegisteredAccount ? normalizeRegisteredAccountRole(currentRegisteredAccount.role) : undefined;
     const childRole: AccountRole | undefined = currentChildAccount ? "student" : undefined;
-    return inferBuiltInPrototypeAccountRole(session.email) ?? session.role ?? currentManagedAccount?.role ?? registeredRole ?? childRole ?? accountRoles.find((record) => record.email.toLowerCase() === normalizedEmail)?.role ?? inferPrototypeAccountRole(session.email);
+    const persistedRole = accountRoles.find((record) => record.email.toLowerCase() === normalizedEmail)?.role;
+    const validSessionRole = session.role === "staff" || session.role === "student" || session.role === "guardian" ? session.role : undefined;
+    const validPersistedRole = persistedRole === "staff" || persistedRole === "student" || persistedRole === "guardian" ? persistedRole : undefined;
+    return inferBuiltInPrototypeAccountRole(session.email) ?? validSessionRole ?? currentManagedAccount?.role ?? registeredRole ?? childRole ?? validPersistedRole ?? inferPrototypeAccountRole(session.email);
   }, [accountRoles, currentChildAccount, currentManagedAccount, currentRegisteredAccount, session]);
   const managerAccountAccess = useMemo<ManagerAccountAccess>(() => {
     const isDeveloper = isPrototypeDeveloperEmail(session?.email);
@@ -2462,9 +2520,16 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     const normalizedEmail = session?.email.toLowerCase();
     const storedRole = normalizedEmail ? accountRoles.find((record) => record.email.toLowerCase() === normalizedEmail)?.role : undefined;
     const builtInRole = normalizedEmail ? inferBuiltInPrototypeAccountRole(normalizedEmail) : undefined;
+    const hostedStaffAccess = normalizedEmail
+      && storedSupabaseSession?.profileUsername?.toLowerCase() === normalizedEmail
+      && storedSupabaseSession.role === "staff"
+      ? [...new Set((storedSupabaseSession.access ?? []).filter((key) => key !== "create" && managerAccessKeySet.has(key)))]
+      : undefined;
     const allowedTools = isManagerOwner
       ? ownerManagerAccess
-      : currentManagedAccount
+      : hostedStaffAccess !== undefined
+        ? hostedStaffAccess
+        : currentManagedAccount
         ? currentManagedAccount.role === "staff"
           ? normalizeManagedAccountAccess(currentManagedAccount.role, currentManagedAccount.access)
           : []
@@ -2476,7 +2541,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
             ? []
             : !builtInRole && storedRole === "staff"
               ? staffManagerAccess
-              : [];
+              : accountRole === "staff" && session?.access !== undefined
+                ? [...new Set((session.access ?? []).filter((key) => key !== "create" && managerAccessKeySet.has(key)))]
+                : [];
 
     return {
       isManagerOwner,
@@ -2485,7 +2552,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       canGrantCreateAccess: isManagerOwner,
       allowedTools
     };
-  }, [accountRoles, currentChildAccount, currentManagedAccount, currentRegisteredAccount, session]);
+  }, [accountRole, accountRoles, currentChildAccount, currentManagedAccount, currentRegisteredAccount, session, storedSupabaseSession]);
   const guardianChildren = useMemo(
     () => (session ? childAccounts.filter((child) => child.parentEmail.toLowerCase() === session.email.toLowerCase()) : []),
     [childAccounts, session]
@@ -2625,8 +2692,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   );
 
   const login = useCallback(
-    (email: string, remembered: boolean, role?: AccountRole, studentId?: string) => {
-      setSession({ email, remembered, createdAt: new Date().toISOString(), role, studentId: studentId?.trim() || undefined });
+    (email: string, remembered: boolean, role?: AccountRole, studentId?: string, access?: ManagerAccessKey[]) => {
+      setSession({ email, remembered, createdAt: new Date().toISOString(), role, studentId: studentId?.trim() || undefined, access: role === "staff" ? access : undefined });
       if (role) saveRoleForEmail(email, role);
     },
     [saveRoleForEmail, setSession]
@@ -3039,6 +3106,19 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       return createdStudent;
     },
     [appendUniqueMessageLogs, setStudents]
+  );
+
+  const syncOperationsStudent = useCallback(
+    (student: StudentRecord) => {
+      const studentId = student.id.trim();
+      if (!studentId) return undefined;
+      const syncedStudent = { ...student, id: studentId };
+      const nextStudents = [syncedStudent, ...studentsRef.current.filter((item) => item.id !== studentId)];
+      studentsRef.current = nextStudents;
+      setStudents(nextStudents);
+      return syncedStudent;
+    },
+    [setStudents]
   );
 
   const updateOperationsStudent = useCallback(
@@ -4395,6 +4475,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     managedAccounts,
     currentManagedAccount,
     managerAccountAccess,
+    studentAccessVerification,
+    studentAccessVerificationRequired: Boolean(supabaseStudentSession),
+    retryStudentAccessVerification,
     childAccounts,
     guardianChildren,
     currentChildAccount,
@@ -4447,6 +4530,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     addChildAccount,
     updateChildAccount,
     addOperationsStudent,
+    syncOperationsStudent,
     updateOperationsStudent,
     deleteOperationsStudent,
     addStudioClass,

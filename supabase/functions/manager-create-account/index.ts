@@ -40,6 +40,8 @@ type AccountRequest = {
   notes?: unknown;
   access?: unknown;
   studentId?: unknown;
+  program?: unknown;
+  beltRank?: unknown;
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -126,6 +128,8 @@ Deno.serve(async (req: Request) => {
   const title = cleanString(body.title) || null;
   const notes = cleanString(body.notes) || null;
   const studentId = cleanString(body.studentId) || null;
+  const program = cleanString(body.program) || "Youth Taekwondo";
+  const beltRank = cleanString(body.beltRank) || "White";
   const access = normalizeAccess(body.access, role);
   const authEmail = authEmailForUsername(username);
 
@@ -140,6 +144,9 @@ Deno.serve(async (req: Request) => {
   }
   if (role === "student" && !studentId) {
     return jsonResponse({ error: "Student accounts require a linked student id." }, 400);
+  }
+  if (role === "student" && status !== "active") {
+    return jsonResponse({ error: "New student accounts must start active." }, 400);
   }
 
   const { data: existingProfile, error: existingProfileError } = await adminClient
@@ -188,19 +195,7 @@ Deno.serve(async (req: Request) => {
     student_id: studentId,
     created_by: authData.user.id
   };
-
-  const { error: profileError } = await adminClient.from("profiles").insert(profileRow);
-  if (profileError) {
-    const { error: rollbackError } = await adminClient.auth.admin.deleteUser(createdUser.user.id);
-    if (rollbackError) {
-      return jsonResponse({
-        error: "Profile creation failed and the incomplete invitation could not be removed. Contact an administrator."
-      }, 500);
-    }
-    return jsonResponse({ error: profileError.message }, 400);
-  }
-
-  const { error: auditError } = await adminClient.from("account_creation_audit").insert({
+  const auditRow = {
     created_by: authData.user.id,
     created_user_id: createdUser.user.id,
     created_username: username,
@@ -209,16 +204,64 @@ Deno.serve(async (req: Request) => {
     created_role: role,
     request_ip: req.headers.get("x-forwarded-for"),
     user_agent: req.headers.get("user-agent")
+  };
+  const today = new Date().toISOString().slice(0, 10);
+  const nameParts = displayName.split(/\s+/).filter(Boolean);
+  const studentRecord = role === "student"
+    ? {
+        id: studentId,
+        firstName: nameParts[0] ?? displayName,
+        lastName: nameParts.slice(1).join(" "),
+        phone: "",
+        email: "",
+        enrollmentDate: today,
+        program,
+        status: status === "active" ? "Active" : "Inactive",
+        beltRank,
+        profileUpdatedAt: today,
+        joinedAt: today,
+        classesAttended: 0,
+        missedClassCount: 0,
+        ...(notes ? { notes } : {})
+      }
+    : null;
+
+  const { error: provisionError } = await adminClient.rpc("provision_managed_account", {
+    p_profile: profileRow,
+    p_audit: auditRow,
+    p_student_record: studentRecord
   });
 
-  if (auditError) {
-    const { error: rollbackError } = await adminClient.auth.admin.deleteUser(createdUser.user.id);
-    if (rollbackError) {
+  if (provisionError) {
+    const { data: committedProfile, error: confirmationError } = await adminClient
+      .from("profiles")
+      .select("id, username, role, student_id")
+      .eq("id", createdUser.user.id)
+      .maybeSingle();
+    if (confirmationError) {
       return jsonResponse({
-        error: "Account audit failed and the incomplete account could not be removed. Contact an administrator."
-      }, 500);
+        error: "Account provisioning could not be confirmed. The Auth user was preserved for administrator review."
+      }, 503);
     }
-    return jsonResponse({ error: "Could not record account creation. No account was created." }, 500);
+    if (committedProfile) {
+      if (
+        committedProfile.username !== username
+        || committedProfile.role !== role
+        || (role === "student" && committedProfile.student_id !== studentId)
+      ) {
+        return jsonResponse({
+          error: "Account provisioning returned conflicting committed data. The account was preserved for administrator review."
+        }, 500);
+      }
+    } else {
+      const { error: rollbackError } = await adminClient.auth.admin.deleteUser(createdUser.user.id);
+      if (rollbackError) {
+        return jsonResponse({
+          error: "Account provisioning failed and the incomplete Auth user could not be removed. Contact an administrator."
+        }, 500);
+      }
+      return jsonResponse({ error: "Could not provision the account profile and linked records. No account was created." }, 500);
+    }
   }
 
   return jsonResponse({
@@ -226,6 +269,7 @@ Deno.serve(async (req: Request) => {
     username,
     activationRequired: true,
     invitationStatus: "pending",
+    student: studentRecord,
     account: {
       id: createdUser.user.id,
       username,

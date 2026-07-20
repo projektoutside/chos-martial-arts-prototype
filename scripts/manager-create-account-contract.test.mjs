@@ -4,6 +4,7 @@ import test from "node:test";
 
 const sourceUrl = new URL("../supabase/functions/manager-create-account/index.ts", import.meta.url);
 const invitationMigrationUrl = new URL("../supabase/migrations/20260714044725_add_account_invitation_status.sql", import.meta.url);
+const provisioningMigrationUrl = new URL("../supabase/migrations/20260720010000_get_my_student_record.sql", import.meta.url);
 const stylesUrl = new URL("../src/styles.css", import.meta.url);
 
 test("account creation authorizes any active staff owner without a username gate", async () => {
@@ -53,8 +54,9 @@ test("custom-color account creation submit styling preserves enabled-green and d
   assert.ok(enabledRule > genericCustomColorRule);
   assert.ok(disabledRule > genericCustomColorRule);
   assert.match(styles.slice(enabledRule, disabledRule), /background: linear-gradient\(135deg, #a8efbb, #54c978\)/);
-  assert.match(styles.slice(disabledRule), /border-color: color-mix\(in srgb, var\(--user-visual-border\) 82%, var\(--user-visual-text\)\)/);
-  assert.match(styles.slice(disabledRule), /background: color-mix\(in srgb, var\(--user-visual-elevatedSurface\) 82%, var\(--user-visual-border\)\)/);
+  assert.match(styles.slice(disabledRule), /border-color: #667085/);
+  assert.match(styles.slice(disabledRule), /color: #344054/);
+  assert.match(styles.slice(disabledRule), /background: #eaecf0/);
   assert.match(styles, /html\[data-theme="light"\] \.create-account-submit:disabled \{[\s\S]*?border-color: #667085;[\s\S]*?background: #eaecf0;/);
   const baseDisabledRule = styles.match(/\.create-account-submit:disabled \{[^}]*\}/)?.[0] ?? "";
   assert.match(baseDisabledRule, /opacity: 1;/);
@@ -75,11 +77,26 @@ test("invitation migration preserves legacy accounts and records acceptance", as
   assert.match(migration, /invitation_accepted_at = coalesce/);
 });
 
-test("an audit insert failure removes the incomplete auth user before reporting failure", async () => {
+test("profile, audit, and student roster provisioning are coordinated before success", async () => {
   const source = await readFile(sourceUrl, "utf8");
-  const auditBlock = source.match(/const \{ error: auditError \}[\s\S]*?return jsonResponse\(\{[\s\S]*?account:/)?.[0] ?? "";
-  assert.match(auditBlock, /if \(auditError\)/);
-  assert.match(auditBlock, /adminClient\.auth\.admin\.deleteUser\(createdUser\.user\.id\)/);
-  assert.match(auditBlock, /if \(rollbackError\)/);
-  assert.match(auditBlock, /No account was created/);
+  const migration = await readFile(provisioningMigrationUrl, "utf8");
+  assert.match(source, /adminClient\.rpc\("provision_managed_account"/);
+  assert.match(source, /p_profile: profileRow/);
+  assert.match(source, /p_audit: auditRow/);
+  assert.match(source, /p_student_record: studentRecord/);
+  const compensationBlock = source.match(/if \(provisionError\)[\s\S]*?return jsonResponse\(\{\s*email: authEmail/)?.[0] ?? "";
+  assert.match(compensationBlock, /\.from\("profiles"\)[\s\S]*?\.eq\("id", createdUser\.user\.id\)[\s\S]*?\.maybeSingle\(\)/);
+  assert.ok(compensationBlock.indexOf('.maybeSingle()') < compensationBlock.indexOf('adminClient.auth.admin.deleteUser(createdUser.user.id)'));
+  assert.match(source, /role === "student" && status !== "active"/);
+  assert.match(source, /No account was created/);
+  assert.match(migration, /insert into public\.profiles/);
+  assert.match(migration, /insert into public\.account_creation_audit/);
+  assert.match(migration, /update public\.app_state_items/);
+  assert.match(migration, /for update/);
+  assert.match(migration, /create or replace function public\.mutate_student_roster/);
+  assert.match(migration, /grant execute on function public\.mutate_student_roster\(jsonb, text\[\]\) to authenticated/);
+  assert.match(migration, /new\.updated_by = coalesce\(auth\.uid\(\), new\.updated_by\)/);
+  assert.match(migration, /set value = jsonb_build_array\(p_student_record\) \|\| v_students,[\s\S]*?updated_by = nullif\(p_profile->>'created_by', ''\)::uuid/);
+  assert.match(migration, /grant execute on function public\.provision_managed_account\(jsonb, jsonb, jsonb\) to service_role/);
+  assert.match(migration, /revoke all on function public\.provision_managed_account\(jsonb, jsonb, jsonb\) from authenticated/);
 });

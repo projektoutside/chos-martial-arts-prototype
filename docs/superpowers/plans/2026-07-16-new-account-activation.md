@@ -643,17 +643,27 @@ npx supabase functions deploy activate-account --project-ref zfuwbbepsnmmlpgfkmh
 
 Send an unauthenticated POST with a non-secret sample body and confirm HTTP 401 with `Missing temporary session.` This proves the endpoint is reachable but not open.
 
-- [ ] **Step 3: Publish the verified frontend and updated provisioning function in one release window**
+- [ ] **Step 3: Apply the student-access migration before provisioning or frontend changes**
 
-Push the reviewed commits through the repository's normal `main` integration path, confirm `.github/workflows/deploy-pages.yml` succeeds, then immediately run:
+Apply `supabase/migrations/20260720010000_get_my_student_record.sql`, then verify the authenticated-only `get_my_student_record()` RPC and the service-role-only managed-account provisioning RPC before continuing. Do not publish a frontend that depends on either RPC until both functions exist.
+
+- [ ] **Step 4: Deploy and probe the updated provisioning function**
+
+Run:
 
 ```powershell
 npx supabase functions deploy manager-create-account --project-ref zfuwbbepsnmmlpgfkmhz --no-verify-jwt
 ```
 
+Confirm an unauthenticated request returns HTTP 401 with `Missing manager session.` before publishing the frontend.
+
+- [ ] **Step 5: Publish the verified frontend**
+
+Push the reviewed commits through the repository's normal `main` integration path and confirm `.github/workflows/deploy-pages.yml` succeeds only after the migration and both Edge Functions are live and probed.
+
 If either half fails, stop new test-account provisioning, preserve exact logs, and restore the last compatible function/frontend pair before continuing.
 
-- [ ] **Step 4: Exercise a disposable real staging account**
+- [ ] **Step 6: Exercise a disposable real staging account**
 
 Using the approved Manager123 secret-store credential, create one non-owner staging test account through the real manager UI. Verify:
 
@@ -666,6 +676,6 @@ Using the approved Manager123 secret-store credential, create one non-owner stag
 
 Delete the disposable Auth user/profile/audit row through the approved admin path after evidence is captured; do not delete or alter any real user.
 
-- [ ] **Step 5: Record final proof and risk**
+- [ ] **Step 7: Record final proof and risk**
 
 Record the final commit SHA, GitHub Pages workflow run ID, live `app-version.json` value, function deployment success, disposable account identifier, old-password rejection, new-password login success, tested viewport/theme matrix, and any exact remaining blocker. End only when there is no known in-scope risk or report `Blocked - Not Complete` with the concrete blocker.

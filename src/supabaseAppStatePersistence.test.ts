@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { deleteSupabaseAppStateItem, fetchSupabaseAppStateItem, isSupabaseAppStateRemoteBacked, persistSupabaseAppStateItem } from "./supabaseAppStatePersistence";
+import { deleteSupabaseAppStateItem, fetchSupabaseAppStateItem, initializeSupabaseStudentRoster, isSupabaseAppStateRemoteBacked, persistSupabaseAppStateItem, persistSupabaseStudentRosterChanges } from "./supabaseAppStatePersistence";
 import { supabaseBackendInactiveMessage } from "./supabaseAccounts";
+import type { StudentRecord } from "./types";
 
 const originalFetch = globalThis.fetch;
 const supabaseSessionStorageKey = "chos.supabase.auth.v1";
@@ -104,5 +105,36 @@ describe("supabase app state persistence adapter", () => {
     expect(deleteRequestUrl.pathname).toBe("/rest/v1/app_state_items");
     expect(deleteRequestUrl.searchParams.get("key")).toBe("eq.chos.operations.classes.v1");
     expect(deleteInit?.method).toBe("DELETE");
+  });
+
+  it("persists student changes as per-record server mutations instead of replacing the roster", async () => {
+    storeSupabaseSession();
+    const existing = { id: "student-existing", firstName: "Existing", lastName: "Student" } as StudentRecord;
+    const removed = { id: "student-removed", firstName: "Removed", lastName: "Student" } as StudentRecord;
+    const added = { id: "student-added", firstName: "Added", lastName: "Student" } as StudentRecord;
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => jsonResponse([existing, added]));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(persistSupabaseStudentRosterChanges([existing, removed], [existing, added])).resolves.toEqual({ status: "ok", data: undefined });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(new URL(String(url)).pathname).toBe("/rest/v1/rpc/mutate_student_roster");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      p_upserts: [added],
+      p_delete_ids: ["student-removed"]
+    });
+  });
+
+  it("initializes a missing student roster through the locked mutation RPC", async () => {
+    storeSupabaseSession();
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => jsonResponse([]));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(initializeSupabaseStudentRoster()).resolves.toEqual({ status: "ok", data: [] });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(new URL(String(url)).pathname).toBe("/rest/v1/rpc/mutate_student_roster");
+    expect(JSON.parse(String(init?.body))).toEqual({ p_upserts: [], p_delete_ids: [] });
   });
 });

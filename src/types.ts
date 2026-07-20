@@ -183,6 +183,7 @@ export interface AccountSession {
   createdAt: string;
   role?: AccountRole;
   studentId?: string;
+  access?: ManagerAccessKey[];
 }
 
 export type AccountRole = "guardian" | "student" | "staff";
