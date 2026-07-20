@@ -5061,6 +5061,8 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Jordan Lee" } });
     fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "jordan.staff" } });
     fireEvent.change(screen.getByLabelText("Staff password"), { target: { value: "StaffPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: " StaffPass123! " } });
+    expect(screen.getByRole("button", { name: "Create Staff Account" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "StaffPass123!" } });
     expect(screen.getByRole("button", { name: "Create Staff Account" })).toBeEnabled();
     expect(screen.queryByRole("checkbox", { name: "Create account access" })).not.toBeInTheDocument();

@@ -4,6 +4,7 @@ import test from "node:test";
 
 const sourceUrl = new URL("../supabase/functions/manager-create-account/index.ts", import.meta.url);
 const invitationMigrationUrl = new URL("../supabase/migrations/20260714044725_add_account_invitation_status.sql", import.meta.url);
+const stylesUrl = new URL("../src/styles.css", import.meta.url);
 
 test("account creation authorizes any active staff owner without a username gate", async () => {
   const source = await readFile(sourceUrl, "utf8");
@@ -41,6 +42,18 @@ test("contact data is optional while the internal Auth identity and nullable pro
   assert.match(source, /contact_email: contactEmail/);
   assert.match(source, /created_contact_email: contactEmail/);
   assert.match(source, /email: authEmail/);
+});
+
+test("custom-color account creation submit styling preserves enabled-green and disabled-neutral states", async () => {
+  const styles = await readFile(stylesUrl, "utf8");
+  const genericCustomColorRule = styles.indexOf('html[data-custom-colors="true"] .student-editor-actions button');
+  const enabledRule = styles.indexOf('html[data-custom-colors="true"] .create-account-submit:not(:disabled)');
+  const disabledRule = styles.indexOf('html[data-custom-colors="true"] .create-account-submit:disabled');
+  assert.ok(genericCustomColorRule >= 0);
+  assert.ok(enabledRule > genericCustomColorRule);
+  assert.ok(disabledRule > genericCustomColorRule);
+  assert.match(styles.slice(enabledRule, disabledRule), /background: linear-gradient\(135deg, #a8efbb, #54c978\)/);
+  assert.match(styles.slice(disabledRule), /background: rgba\(255, 255, 255, 0\.07\)/);
 });
 
 test("new profiles persist pending invitation state", async () => {

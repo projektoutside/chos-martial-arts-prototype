@@ -23084,6 +23084,20 @@ html[data-custom-colors="true"] .manager-compose-submit {
   background: linear-gradient(135deg, var(--user-visual-button), color-mix(in srgb, var(--user-visual-button) 62%, var(--user-visual-primary)));
 }
 
+html[data-custom-colors="true"] .create-account-submit:not(:disabled) {
+  border-color: rgba(125, 230, 167, 0.62);
+  color: #07150e;
+  background: linear-gradient(135deg, #a8efbb, #54c978);
+  box-shadow: 0 8px 20px rgba(39, 163, 86, 0.24);
+}
+
+html[data-custom-colors="true"] .create-account-submit:disabled {
+  border-color: rgba(218, 226, 255, 0.16);
+  color: var(--ops-muted);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: none;
+}
+
 html[data-custom-colors="true"] .testing-update-modal {
   border-color: color-mix(in srgb, var(--user-visual-primary) 72%, var(--user-visual-border));
 }

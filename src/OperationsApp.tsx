@@ -10152,10 +10152,10 @@ function CreateAccountsPage() {
   };
 
   const validatePasswordFields = (password: string, confirmPassword: string) => {
-    const cleanedPassword = password.trim();
-    if (!cleanedPassword || !confirmPassword.trim()) return "Enter and confirm a password.";
-    if (cleanedPassword !== confirmPassword.trim()) return "Passwords must match.";
-    if (validateAccountPasswordChange(cleanedPassword, cleanedPassword)) return createdAccountPasswordPolicyText;
+    if (!password.trim() || !confirmPassword.trim()) return "Enter and confirm a password.";
+    if (password !== password.trim() || confirmPassword !== confirmPassword.trim()) return "Temporary passwords cannot start or end with spaces.";
+    if (password !== confirmPassword) return "Passwords must match.";
+    if (validateAccountPasswordChange(password, confirmPassword)) return createdAccountPasswordPolicyText;
     return "";
   };
 
