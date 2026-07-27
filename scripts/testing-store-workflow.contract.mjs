@@ -23,6 +23,13 @@ export function verifyTestingStoreWorkflow(root = process.cwd()) {
   assert.match(workflow, /needs:\s*\n\s+- quality\s*\n\s+- build-android\s*\n\s+- build-ios/g);
   assert.match(workflow, /environment: google-play-testing/g);
   assert.match(workflow, /environment: apple-testflight-testing/g);
+  assert.match(workflow, /APPLE_PROVISIONING_PROFILE_BASE64/);
+  assert.match(workflow, /CODE_SIGN_STYLE=Manual/);
+  assert.match(workflow, /CODE_SIGN_IDENTITY="Apple Distribution"/);
+  assert.match(workflow, /PROVISIONING_PROFILE_SPECIFIER="\$APPLE_PROVISIONING_PROFILE_NAME"/);
+  assert.match(workflow, /<key>signingStyle<\/key>\s*\n\s*<string>manual<\/string>/);
+  assert.match(workflow, /<key>provisioningProfiles<\/key>/);
+  assert.doesNotMatch(workflow, /CODE_SIGN_STYLE=Automatic/);
   assert.match(
     workflow,
     /name: Build signed Android testing bundle[\s\S]*?if: needs\.quality\.outputs\.build_enabled == 'true'/

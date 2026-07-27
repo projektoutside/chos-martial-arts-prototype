@@ -45,10 +45,11 @@ Environment `apple-testflight-testing`:
 - Secret `APPLE_ASC_PRIVATE_KEY`
 - Secret `APPLE_DISTRIBUTION_CERTIFICATE_BASE64`
 - Secret `APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD`
+- Secret `APPLE_PROVISIONING_PROFILE_BASE64`
 - Variable `APPLE_TESTFLIGHT_DISTRIBUTE_ENABLED=false` for the first upload-only run
 - Variable `APPLE_TESTFLIGHT_EXTERNAL_GROUP=Cho Client Testers`
 
-Use an App Store Connect **team API key**, not an individual key, because the signed archive job uses Apple provisioning endpoints. The private key is used only from GitHub's protected environment and is written to the ephemeral macOS runner during the job. The Apple Distribution certificate must include its private key and be exported as a password-protected `.p12` before base64 encoding.
+Use an App Store Connect **team API key**, not an individual key. The private key is used only by the protected TestFlight upload job and is written to its ephemeral macOS runner. The Apple Distribution certificate must include its private key and be exported as a password-protected `.p12` before base64 encoding. The provisioning-profile secret must be an active `IOS_APP_STORE` profile for the testing bundle and that same distribution certificate; the build job validates its application identifier before installing it and uses manual distribution signing so Xcode cannot fall back to a device-based development profile.
 
 Never commit, print, artifact, or paste the raw Apple key, P12, P12 password, Android keystore, or keystore passwords into repository files.
 
@@ -66,15 +67,15 @@ Completed on 2026-07-27:
    - User access: Full Access
    - Apple app ID: `6795251405`
 3. Created a valid Apple Distribution certificate for the team and exported it with its private key.
-4. Created a team App Store Connect API key with App Manager access and installed all five Apple secrets in the protected `apple-testflight-testing` GitHub environment.
-5. Verified the key and app identity through a read-only App Store Connect API request with status `200`.
+4. Created active App Store profile `Cho Testing App Store 945XMG4F97` for the testing bundle and distribution certificate.
+5. Created a team App Store Connect API key with App Manager access and installed all six Apple secrets in the protected `apple-testflight-testing` GitHub environment.
+6. Verified the key and app identity through a read-only App Store Connect API request with status `200`.
 
 Remaining:
 
-1. Resolve the GitHub Actions billing/spending-limit block so a hosted runner can start.
-2. Create an internal TestFlight group.
-3. Create external group `Cho Client Testers`, complete TestFlight test information and Beta App Review contact information, and add approved client emails.
-4. Keep `APPLE_TESTFLIGHT_DISTRIBUTE_ENABLED=false` for the first upload. After the build finishes processing and the external group metadata is complete, set it to `true`. The first external build may require Apple's Beta App Review; this is not public App Store review.
+1. Create an internal TestFlight group.
+2. Create external group `Cho Client Testers`, complete TestFlight test information and Beta App Review contact information, and add approved client emails.
+3. Keep `APPLE_TESTFLIGHT_DISTRIBUTE_ENABLED=false` for the first upload. After the build finishes processing and the external group metadata is complete, set it to `true`. The first external build may require Apple's Beta App Review; this is not public App Store review.
 
 ## First paired proof
 
