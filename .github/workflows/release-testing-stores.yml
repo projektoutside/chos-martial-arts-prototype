@@ -19,6 +19,11 @@ on:
       - "vite.config.ts"
   workflow_dispatch:
     inputs:
+      build_signed_artifacts:
+        description: Build and verify both signed store artifacts without uploading
+        required: true
+        default: false
+        type: boolean
       upload:
         description: Upload this verified build to both private testing stores
         required: true
@@ -50,6 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       upload_enabled: ${{ steps.release.outputs.upload_enabled }}
+      build_enabled: ${{ steps.release.outputs.build_enabled }}
       build_number: ${{ steps.release.outputs.build_number }}
       ios_version_name: ${{ steps.release.outputs.ios_version_name }}
       android_version_name: ${{ steps.release.outputs.android_version_name }}
@@ -65,6 +71,7 @@ jobs:
         id: release
         shell: bash
         env:
+          MANUAL_BUILD_REQUESTED: ${{ inputs.build_signed_artifacts || 'false' }}
           MANUAL_UPLOAD_REQUESTED: ${{ inputs.upload || 'false' }}
           AUTOMATIC_UPLOAD_ENABLED: ${{ vars.TESTING_STORE_AUTO_UPLOAD_ENABLED }}
           REQUESTED_RELEASE_NOTES: ${{ inputs.release_notes }}
@@ -81,11 +88,20 @@ jobs:
             releaseNotes: process.env.REQUESTED_RELEASE_NOTES,
             commitSubject: process.env.COMMIT_SUBJECT,
             eventName: process.env.GITHUB_EVENT_NAME,
+            manualBuildRequested: process.env.MANUAL_BUILD_REQUESTED,
             manualUploadRequested: process.env.MANUAL_UPLOAD_REQUESTED,
             automaticUploadEnabled: process.env.AUTOMATIC_UPLOAD_ENABLED,
             gitRef: process.env.GITHUB_REF
           });
-          for (const [key, value] of Object.entries(release)) {
+          const outputs = {
+            build_enabled: release.buildEnabled,
+            upload_enabled: release.uploadEnabled,
+            build_number: release.buildNumber,
+            ios_version_name: release.iosVersionName,
+            android_version_name: release.androidVersionName,
+            release_notes: release.releaseNotes
+          };
+          for (const [key, value] of Object.entries(outputs)) {
             appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
           }
           NODE
@@ -93,13 +109,13 @@ jobs:
       - run: npm run build:web:testing
       - run: npm run verify:demo-artifact
       - name: Explain a verification-only run
-        if: steps.release.outputs.upload_enabled != 'true'
+        if: steps.release.outputs.build_enabled != 'true'
         run: echo "Private-store uploads are safely disabled; quality and isolation checks completed."
 
   build-android:
     name: Build signed Android testing bundle
     needs: quality
-    if: needs.quality.outputs.upload_enabled == 'true'
+    if: needs.quality.outputs.build_enabled == 'true'
     runs-on: ubuntu-latest
     environment: google-play-testing
     env:
@@ -154,7 +170,7 @@ jobs:
   build-ios:
     name: Build signed iOS testing archive
     needs: quality
-    if: needs.quality.outputs.upload_enabled == 'true'
+    if: needs.quality.outputs.build_enabled == 'true'
     runs-on: macos-26
     environment: apple-testflight-testing
     env:
@@ -308,6 +324,7 @@ jobs:
       - quality
       - build-android
       - build-ios
+    if: needs.quality.outputs.upload_enabled == 'true'
     runs-on: ubuntu-latest
     environment: google-play-testing
     steps:
@@ -349,6 +366,7 @@ jobs:
       - quality
       - build-android
       - build-ios
+    if: needs.quality.outputs.upload_enabled == 'true'
     runs-on: macos-26
     environment: apple-testflight-testing
     steps:

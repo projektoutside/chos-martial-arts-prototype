@@ -15,8 +15,9 @@ App-affecting pushes to `main` always run tests plus the fake-data isolation bui
 
 A manual workflow run behaves the same way:
 
-- `upload=false`: quality and isolation verification only.
-- `upload=true`: create both signed artifacts, wait for both builds to pass, then upload the same release identity to both private stores.
+- `build_signed_artifacts=false`, `upload=false`: quality and isolation verification only.
+- `build_signed_artifacts=true`, `upload=false`: create and verify both signed artifacts without running either store upload job.
+- `upload=true`: create both signed artifacts, wait for both builds to pass, then upload the same release identity to both private stores. Upload mode implies signed builds, so the build-only input may remain `false`.
 
 The workflow derives both store build numbers from `100000 + github.run_number`. Both stores receive the package version from `package.json`, the same commit, and the same normalized release notes. Build numbers are never reused.
 
@@ -78,15 +79,16 @@ Remaining:
 ## First paired proof
 
 1. Leave `TESTING_STORE_AUTO_UPLOAD_ENABLED=false`.
-2. Run **Release Cho's Testing to both private stores** manually with `upload=false`.
+2. Run **Release Cho's Testing to both private stores** manually with `build_signed_artifacts=false` and `upload=false`.
 3. Confirm quality and isolation checks pass.
-4. Run it again from the same approved `main` commit with `upload=true` and useful client-facing release notes.
-5. Confirm the GitHub run reports both upload jobs successful.
-6. In Play Console, confirm the new version is on `internal` for `Cho Internal Testers`.
-7. In App Store Connect, confirm the matching build appears under TestFlight for `Cho's Testing`.
-8. Test installation on one Android device and one iPhone.
-9. Enable external TestFlight distribution, run the next approved update, and verify an external tester receives Apple's invitation.
-10. Set `TESTING_STORE_AUTO_UPLOAD_ENABLED=true`.
+4. Run it again with `build_signed_artifacts=true` and `upload=false`; confirm both signed artifacts pass their identity and signature checks and neither upload job starts.
+5. Run it again from the same approved `main` commit with `upload=true` and useful client-facing release notes.
+6. Confirm the GitHub run reports both upload jobs successful.
+7. In Play Console, confirm the new version is on `internal` for `Cho Internal Testers`.
+8. In App Store Connect, confirm the matching build appears under TestFlight for `Cho's Testing`.
+9. Test installation on one Android device and one iPhone.
+10. Enable external TestFlight distribution, run the next approved update, and verify an external tester receives Apple's invitation.
+11. Set `TESTING_STORE_AUTO_UPLOAD_ENABLED=true`.
 
 Afterward, every app-affecting merge to `main` automatically follows the paired path.
 

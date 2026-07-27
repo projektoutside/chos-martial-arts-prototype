@@ -8,6 +8,14 @@ export function verifyTestingStoreWorkflow(root = process.cwd()) {
 
   assert.match(workflow, /branches:\s*\n\s+- main\b/, "Automatic releases must originate from main");
   assert.match(workflow, /TESTING_STORE_AUTO_UPLOAD_ENABLED/, "Push uploads need a global kill switch");
+  assert.match(workflow, /build_signed_artifacts/, "Manual runs need a signed-build-only mode");
+  assert.match(workflow, /build_enabled/, "Signed builds need an independent upload gate");
+  assert.match(workflow, /build_enabled: release\.buildEnabled/);
+  assert.match(workflow, /upload_enabled: release\.uploadEnabled/);
+  assert.match(workflow, /build_number: release\.buildNumber/);
+  assert.match(workflow, /ios_version_name: release\.iosVersionName/);
+  assert.match(workflow, /android_version_name: release\.androidVersionName/);
+  assert.match(workflow, /release_notes: release\.releaseNotes/);
   assert.match(workflow, /gitRef: process\.env\.GITHUB_REF/, "Uploads must verify their source branch");
   assert.match(workflow, /ANDROID_PACKAGE_NAME: com\.xatoridev\.chosmartialarts\.testing/);
   assert.match(workflow, /APPLE_BUNDLE_ID: com\.xatoridev\.chosmartialarts\.testing/);
@@ -15,6 +23,22 @@ export function verifyTestingStoreWorkflow(root = process.cwd()) {
   assert.match(workflow, /needs:\s*\n\s+- quality\s*\n\s+- build-android\s*\n\s+- build-ios/g);
   assert.match(workflow, /environment: google-play-testing/g);
   assert.match(workflow, /environment: apple-testflight-testing/g);
+  assert.match(
+    workflow,
+    /name: Build signed Android testing bundle[\s\S]*?if: needs\.quality\.outputs\.build_enabled == 'true'/
+  );
+  assert.match(
+    workflow,
+    /name: Build signed iOS testing archive[\s\S]*?if: needs\.quality\.outputs\.build_enabled == 'true'/
+  );
+  assert.match(
+    workflow,
+    /name: Upload to Google Play internal testing[\s\S]*?if: needs\.quality\.outputs\.upload_enabled == 'true'/
+  );
+  assert.match(
+    workflow,
+    /name: Upload to Apple TestFlight[\s\S]*?if: needs\.quality\.outputs\.upload_enabled == 'true'/
+  );
   assert.match(workflow, /testflight-upload/);
   assert.match(workflow, /status: completed/);
   assert.doesNotMatch(workflow, /track:\s*(production|beta|alpha)\b/i);

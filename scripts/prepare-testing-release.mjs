@@ -9,6 +9,7 @@ export function prepareTestingRelease({
   releaseNotes,
   commitSubject,
   eventName,
+  manualBuildRequested,
   manualUploadRequested,
   automaticUploadEnabled,
   gitRef
@@ -29,8 +30,11 @@ export function prepareTestingRelease({
   const uploadEnabled =
     (eventName === "workflow_dispatch" && manualUploadRequested === "true") ||
     (eventName === "push" && automaticUploadEnabled === "true");
-  if (uploadEnabled) {
-    assert.equal(gitRef, "refs/heads/main", "Private-store uploads must originate from main");
+  const buildEnabled =
+    uploadEnabled ||
+    (eventName === "workflow_dispatch" && manualBuildRequested === "true");
+  if (buildEnabled) {
+    assert.equal(gitRef, "refs/heads/main", "Signed private-store builds must originate from main");
   }
 
   return {
@@ -38,6 +42,7 @@ export function prepareTestingRelease({
     iosVersionName: packageVersion,
     androidVersionName: `${packageVersion}-testing`,
     releaseNotes: notes,
+    buildEnabled: String(buildEnabled),
     uploadEnabled: String(uploadEnabled)
   };
 }
@@ -50,6 +55,7 @@ if (isDirectRun) {
     releaseNotes,
     commitSubject,
     eventName,
+    manualBuildRequested,
     manualUploadRequested,
     automaticUploadEnabled,
     gitRef
@@ -60,6 +66,7 @@ if (isDirectRun) {
     releaseNotes,
     commitSubject,
     eventName,
+    manualBuildRequested,
     manualUploadRequested,
     automaticUploadEnabled,
     gitRef
