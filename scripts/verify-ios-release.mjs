@@ -24,7 +24,11 @@ function count(source, value) {
   return source.split(value).length - 1;
 }
 
-export function verifyIosRelease(root = process.cwd(), variant = "stable") {
+export function verifyIosRelease(
+  root = process.cwd(),
+  variant = "stable",
+  { verifyGeneratedConfig = true } = {}
+) {
   const identity = releaseIdentity(variant);
   const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
   assert.equal(
@@ -82,9 +86,11 @@ export function verifyIosRelease(root = process.cwd(), variant = "stable") {
   );
   assert.equal(testingIcon.colorType, 2, "Testing App Store icon must be RGB without an alpha channel");
 
-  const nativeConfig = JSON.parse(readFileSync(resolve(root, "ios/App/App/capacitor.config.json"), "utf8"));
-  assert.equal(nativeConfig.appId, identity.appleBundleId, `Generated iOS config must match ${variant}`);
-  assert.equal(nativeConfig.appName, identity.appName, `Generated iOS display name must match ${variant}`);
+  if (verifyGeneratedConfig) {
+    const nativeConfig = JSON.parse(readFileSync(resolve(root, "ios/App/App/capacitor.config.json"), "utf8"));
+    assert.equal(nativeConfig.appId, identity.appleBundleId, `Generated iOS config must match ${variant}`);
+    assert.equal(nativeConfig.appName, identity.appName, `Generated iOS display name must match ${variant}`);
+  }
 
   return {
     variant,

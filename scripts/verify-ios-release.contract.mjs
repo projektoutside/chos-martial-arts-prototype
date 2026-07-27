@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { verifyIosRelease } from "./verify-ios-release.mjs";
 
-test("verifies the checked-in stable iOS target and signing inputs", () => {
-  assert.deepEqual(verifyIosRelease(), {
+test("verifies the checked-in stable iOS target and signing inputs before Capacitor sync", () => {
+  assert.deepEqual(verifyIosRelease(process.cwd(), "stable", { verifyGeneratedConfig: false }), {
     variant: "stable",
     bundleId: "com.xatoridev.chosmartialarts",
     teamId: "9R42C8LZ43",
