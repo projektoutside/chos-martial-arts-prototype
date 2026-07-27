@@ -40,7 +40,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Prove this workflow cannot upload
-        run: node scripts/validate-ios-release-input.mjs "$APP_NAME" "$APPLE_BUNDLE_ID" "$APPLE_TEAM_ID" "$IOS_VERSION_NAME" "$IOS_BUILD_NUMBER" archive-only
+        run: node scripts/validate-ios-release-input.mjs stable "$APP_NAME" "$APPLE_BUNDLE_ID" "$APPLE_TEAM_ID" "$IOS_VERSION_NAME" "$IOS_BUILD_NUMBER" archive-only
       - run: npm run test
       - run: npm run build:ios
       - name: Verify required Xcode generation

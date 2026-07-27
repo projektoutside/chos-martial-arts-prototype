@@ -1,6 +1,6 @@
 # Apple TestFlight Readiness
 
-Status: iOS source target and archive-only verification are implemented. No build has been uploaded or submitted.
+Status: stable archive verification plus an isolated `Cho's Testing` TestFlight build/upload path are implemented. No build has been uploaded or submitted.
 
 ## Stable app identity
 
@@ -13,14 +13,15 @@ Status: iOS source target and archive-only verification are implemented. No buil
 - Signing style: Xcode automatic signing
 - Capacitor: `8.4.1` with Swift Package Manager
 
-The stable identity matches the existing Android package. The testing/demo app remains a later, separate target using `com.xatoridev.chosmartialarts.testing`; this first-upload change does not package demo data or change Android flavors.
+The stable identity matches the existing Android package. The testing/demo target uses `com.xatoridev.chosmartialarts.testing`, packages only the network-disabled fake-data environment, and uses a separate `TEST` icon.
 
 ## Current account snapshot (2026-07-27)
 
 - Apple Developer and App Store Connect access is active for La Xiong.
-- App Store Connect currently contains no app records.
-- Certificates, Identifiers & Profiles currently contains no App IDs or signing certificates.
-- The Apple-side bundle ID and app record must therefore be created before a signed archive can validate.
+- The stable explicit App ID `com.xatoridev.chosmartialarts` is registered.
+- The stable App Store Connect record `Cho's Martial Arts` exists in Prepare for Submission with no TestFlight builds.
+- The testing App ID and `Cho's Testing` App Store Connect record remain the next one-time account setup.
+- A team App Store Connect API key and an Apple Distribution certificate with its private key remain required for signed GitHub archives.
 
 ## What is now checked in
 
@@ -29,7 +30,10 @@ The stable identity matches the existing Android package. The testing/demo app r
 - Exact Apple team, stable bundle ID, iOS 15 deployment target, version, and build defaults.
 - Export-compliance key for an app using only exempt system encryption.
 - `npm run build:ios` to build stable web assets, sync Capacitor, and verify native release inputs.
+- `npm run build:ios:testing` to build fake-data-only assets, verify isolation, sync Capacitor, and prepare the testing native identity.
 - A manual GitHub workflow that compiles an unsigned Xcode archive on `macos-26` and has no upload or submission step.
+- A paired protected workflow that waits for both signed testing artifacts before uploading to Google Play internal testing and Apple TestFlight.
 - Secret exclusions for Apple keys, certificates, profiles, archives, and IPAs.
 
 Use [apple-testflight-runbook.md](apple-testflight-runbook.md) for the first signed archive and Xcode **Validate App** handoff.
+Use [testing-store-automation.md](testing-store-automation.md) for the automated testing-app onboarding and paired private release path.

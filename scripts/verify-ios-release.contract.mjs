@@ -4,6 +4,7 @@ import { verifyIosRelease } from "./verify-ios-release.mjs";
 
 test("verifies the checked-in stable iOS target and signing inputs", () => {
   assert.deepEqual(verifyIosRelease(), {
+    variant: "stable",
     bundleId: "com.xatoridev.chosmartialarts",
     teamId: "9R42C8LZ43",
     version: "0.1.13",

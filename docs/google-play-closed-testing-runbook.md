@@ -88,11 +88,14 @@ Keep `PLAY_UPLOAD_ENABLED=false` until both first manual releases, the `internal
 
 ## Releasing
 
+- Use **Release Cho's Testing to both private stores** for the normal paired client-testing path. It derives one build number and waits for both signed artifacts before starting either upload.
 - Run `Release Cho's Testing to Google Play` for experimental demonstrations.
 - Run `Release Cho's Martial Arts to Google Play` only from an approved stable commit.
 - Enter a new positive version code, the matching version name, and useful client-facing release notes.
 - The workflows reject package/track crossovers and never target Production.
 - Download the GitHub build artifact and record its workflow run and commit SHA.
+
+The paired workflow is gated by repository variable `TESTING_STORE_AUTO_UPLOAD_ENABLED`. Keep it `false` for verification-only pushes and the first dry run. Set it to `true` only after the first manual paired upload is confirmed in both consoles. See [testing-store-automation.md](testing-store-automation.md).
 
 ## Promoting an approved feature
 

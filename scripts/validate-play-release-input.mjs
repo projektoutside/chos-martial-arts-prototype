@@ -1,8 +1,9 @@
 import { fileURLToPath } from "node:url";
+import { releaseIdentity } from "./release-identities.mjs";
 
 const destinations = {
-  stable: { packageName: "com.xatoridev.chosmartialarts", track: "internal" },
-  testing: { packageName: "com.xatoridev.chosmartialarts.testing", track: "internal" }
+  stable: { packageName: releaseIdentity("stable").androidPackageName, track: "internal" },
+  testing: { packageName: releaseIdentity("testing").androidPackageName, track: "internal" }
 };
 
 export function validatePlayReleaseInput(input) {
