@@ -53,19 +53,27 @@ Never commit, print, artifact, or paste the raw Apple key, P12, P12 password, An
 
 ## One-time Apple setup
 
-1. Register explicit App ID `com.xatoridev.chosmartialarts.testing` under team `9R42C8LZ43`.
-2. Create the App Store Connect record:
+Completed on 2026-07-27:
+
+1. Registered explicit App ID `com.xatoridev.chosmartialarts.testing` under team `9R42C8LZ43`.
+2. Created the App Store Connect record:
    - Platform: iOS
    - Name: `Cho's Testing`
    - Primary language: English (U.S.)
    - Bundle ID: `com.xatoridev.chosmartialarts.testing`
    - SKU: `chos-testing-ios`
    - User access: Full Access
-3. Create or reuse a valid Apple Distribution certificate for the team and export it with its private key.
-4. Create a team App Store Connect API key with the least role that can manage builds and TestFlight; retain its issuer ID, key ID, and one-time `.p8` download.
-5. Create an internal TestFlight group.
-6. Create external group `Cho Client Testers`, complete TestFlight test information and Beta App Review contact information, and add client emails.
-7. Keep `APPLE_TESTFLIGHT_DISTRIBUTE_ENABLED=false` for the first upload. After the build finishes processing and the external group metadata is complete, set it to `true`. The first external build may require Apple's Beta App Review; this is not public App Store review.
+   - Apple app ID: `6795251405`
+3. Created a valid Apple Distribution certificate for the team and exported it with its private key.
+4. Created a team App Store Connect API key with App Manager access and installed all five Apple secrets in the protected `apple-testflight-testing` GitHub environment.
+5. Verified the key and app identity through a read-only App Store Connect API request with status `200`.
+
+Remaining:
+
+1. Resolve the GitHub Actions billing/spending-limit block so a hosted runner can start.
+2. Create an internal TestFlight group.
+3. Create external group `Cho Client Testers`, complete TestFlight test information and Beta App Review contact information, and add approved client emails.
+4. Keep `APPLE_TESTFLIGHT_DISTRIBUTE_ENABLED=false` for the first upload. After the build finishes processing and the external group metadata is complete, set it to `true`. The first external build may require Apple's Beta App Review; this is not public App Store review.
 
 ## First paired proof
 
