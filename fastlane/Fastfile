@@ -1,0 +1,35 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Upload only Cho's isolated testing app to TestFlight"
+  lane :upload_testing do
+    expected_bundle_id = "com.xatoridev.chosmartialarts.testing"
+    UI.user_error!("Unexpected Apple bundle ID") unless ENV.fetch("APPLE_BUNDLE_ID") == expected_bundle_id
+
+    distribute = ENV.fetch("APPLE_TESTFLIGHT_DISTRIBUTE_ENABLED", "false") == "true"
+    external_group = ENV.fetch("APPLE_TESTFLIGHT_EXTERNAL_GROUP", "").strip
+    UI.user_error!("An external TestFlight group is required when distribution is enabled") if distribute && external_group.empty?
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("APPLE_ASC_KEY_ID"),
+      issuer_id: ENV.fetch("APPLE_ASC_ISSUER_ID"),
+      key_content: ENV.fetch("APPLE_ASC_PRIVATE_KEY"),
+      is_key_content_base64: false,
+      in_house: false
+    )
+
+    options = {
+      api_key: api_key,
+      ipa: ENV.fetch("IOS_IPA_PATH"),
+      app_identifier: expected_bundle_id,
+      changelog: ENV.fetch("RELEASE_NOTES"),
+      skip_submission: !distribute,
+      distribute_external: distribute,
+      notify_external_testers: distribute,
+      skip_waiting_for_build_processing: !distribute
+    }
+    options[:groups] = [external_group] if distribute
+
+    upload_to_testflight(**options)
+  end
+end

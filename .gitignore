@@ -22,7 +22,13 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 *.jks
+*.ipa
+*.mobileprovision
+*.p12
+*.xcarchive
+AuthKey_*.p8
 android/key.properties
+/output/ios/
 .worktrees/
 supabase/.temp/
 .DS_Store

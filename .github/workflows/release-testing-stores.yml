@@ -1,0 +1,377 @@
+name: Release Cho's Testing to both private stores
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release-testing-stores.yml"
+      - "android/**"
+      - "ios/**"
+      - "public/**"
+      - "scripts/**"
+      - "src/**"
+      - "capacitor.config.json"
+      - "index.html"
+      - "package-lock.json"
+      - "package.json"
+      - "tsconfig*.json"
+      - "vite.config.ts"
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload this verified build to both private testing stores
+        required: true
+        default: false
+        type: boolean
+      release_notes:
+        description: Client-facing summary; defaults to the commit subject
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: paired-private-testing-stores
+  cancel-in-progress: false
+
+env:
+  APP_NAME: Cho's Testing
+  ANDROID_PACKAGE_NAME: com.xatoridev.chosmartialarts.testing
+  APPLE_BUNDLE_ID: com.xatoridev.chosmartialarts.testing
+  APPLE_TEAM_ID: 9R42C8LZ43
+  PLAY_TRACK: internal
+
+jobs:
+  quality:
+    name: Test and prepare one paired release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_enabled: ${{ steps.release.outputs.upload_enabled }}
+      build_number: ${{ steps.release.outputs.build_number }}
+      ios_version_name: ${{ steps.release.outputs.ios_version_name }}
+      android_version_name: ${{ steps.release.outputs.android_version_name }}
+      release_notes: ${{ steps.release.outputs.release_notes }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Compute a shared monotonic build identity
+        id: release
+        shell: bash
+        env:
+          MANUAL_UPLOAD_REQUESTED: ${{ inputs.upload || 'false' }}
+          AUTOMATIC_UPLOAD_ENABLED: ${{ vars.TESTING_STORE_AUTO_UPLOAD_ENABLED }}
+          REQUESTED_RELEASE_NOTES: ${{ inputs.release_notes }}
+          COMMIT_SUBJECT: ${{ github.event.head_commit.message || github.event.workflow_run.head_commit.message || github.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+          import { prepareTestingRelease } from "./scripts/prepare-testing-release.mjs";
+
+          const packageVersion = JSON.parse(readFileSync("package.json", "utf8")).version;
+          const release = prepareTestingRelease({
+            runNumber: process.env.GITHUB_RUN_NUMBER,
+            packageVersion,
+            releaseNotes: process.env.REQUESTED_RELEASE_NOTES,
+            commitSubject: process.env.COMMIT_SUBJECT,
+            eventName: process.env.GITHUB_EVENT_NAME,
+            manualUploadRequested: process.env.MANUAL_UPLOAD_REQUESTED,
+            automaticUploadEnabled: process.env.AUTOMATIC_UPLOAD_ENABLED,
+            gitRef: process.env.GITHUB_REF
+          });
+          for (const [key, value] of Object.entries(release)) {
+            appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
+          }
+          NODE
+      - run: npm run test
+      - run: npm run build:web:testing
+      - run: npm run verify:demo-artifact
+      - name: Explain a verification-only run
+        if: steps.release.outputs.upload_enabled != 'true'
+        run: echo "Private-store uploads are safely disabled; quality and isolation checks completed."
+
+  build-android:
+    name: Build signed Android testing bundle
+    needs: quality
+    if: needs.quality.outputs.upload_enabled == 'true'
+    runs-on: ubuntu-latest
+    environment: google-play-testing
+    env:
+      ANDROID_VERSION_CODE: ${{ needs.quality.outputs.build_number }}
+      ANDROID_VERSION_NAME: ${{ needs.quality.outputs.android_version_name }}
+      RELEASE_NOTES: ${{ needs.quality.outputs.release_notes }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - run: npm ci
+      - name: Validate the private Google Play destination
+        run: node scripts/validate-play-release-input.mjs testing "$ANDROID_PACKAGE_NAME" "$PLAY_TRACK" "$ANDROID_VERSION_CODE" "$ANDROID_VERSION_NAME" "$RELEASE_NOTES"
+      - name: Restore the Android upload key
+        shell: bash
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          test -n "$ANDROID_UPLOAD_KEYSTORE_BASE64"
+          test -n "$ANDROID_UPLOAD_STORE_PASSWORD"
+          test -n "$ANDROID_UPLOAD_KEY_ALIAS"
+          test -n "$ANDROID_UPLOAD_KEY_PASSWORD"
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 --decode > android/upload-key.jks
+          printf 'storeFile=upload-key.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$ANDROID_UPLOAD_STORE_PASSWORD" \
+            "$ANDROID_UPLOAD_KEY_ALIAS" \
+            "$ANDROID_UPLOAD_KEY_PASSWORD" > android/key.properties
+      - name: Verify signing and build the isolated testing bundle
+        env:
+          REQUIRE_ANDROID_SIGNING: "1"
+        run: |
+          npm run verify:android
+          npm run build:android:testing
+          npm run verify:demo-artifact
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: chos-testing-android-${{ needs.quality.outputs.build_number }}
+          path: android/app/build/outputs/bundle/demoRelease/app-demo-release.aab
+          if-no-files-found: error
+          retention-days: 14
+
+  build-ios:
+    name: Build signed iOS testing archive
+    needs: quality
+    if: needs.quality.outputs.upload_enabled == 'true'
+    runs-on: macos-26
+    environment: apple-testflight-testing
+    env:
+      IOS_VERSION_NAME: ${{ needs.quality.outputs.ios_version_name }}
+      IOS_BUILD_NUMBER: ${{ needs.quality.outputs.build_number }}
+      RELEASE_NOTES: ${{ needs.quality.outputs.release_notes }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Validate the TestFlight-only destination
+        run: node scripts/validate-ios-release-input.mjs testing "$APP_NAME" "$APPLE_BUNDLE_ID" "$APPLE_TEAM_ID" "$IOS_VERSION_NAME" "$IOS_BUILD_NUMBER" testflight-upload
+      - name: Restore the App Store Connect key and Apple Distribution certificate
+        id: apple-credentials
+        shell: bash
+        env:
+          APPLE_ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+          APPLE_ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+          APPLE_ASC_PRIVATE_KEY: ${{ secrets.APPLE_ASC_PRIVATE_KEY }}
+          APPLE_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+        run: |
+          test -n "$APPLE_ASC_KEY_ID"
+          test -n "$APPLE_ASC_ISSUER_ID"
+          test -n "$APPLE_ASC_PRIVATE_KEY"
+          test -n "$APPLE_DISTRIBUTION_CERTIFICATE_BASE64"
+          test -n "$APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD"
+
+          KEY_DIRECTORY="$RUNNER_TEMP/private_keys"
+          KEY_PATH="$KEY_DIRECTORY/AuthKey_${APPLE_ASC_KEY_ID}.p8"
+          CERTIFICATE_PATH="$RUNNER_TEMP/apple-distribution.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/cho-testing-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+
+          mkdir -p "$KEY_DIRECTORY"
+          printf '%s' "$APPLE_ASC_PRIVATE_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          printf '%s' "$APPLE_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          {
+            echo "key_path=$KEY_PATH"
+            echo "keychain_path=$KEYCHAIN_PATH"
+          } >> "$GITHUB_OUTPUT"
+      - run: npm run build:ios:testing
+      - name: Resolve packages and create the signed archive
+        shell: bash
+        env:
+          APPLE_ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+          APPLE_ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+          APPLE_ASC_KEY_PATH: ${{ steps.apple-credentials.outputs.key_path }}
+        run: |
+          xcodebuild -version | grep -E '^Xcode 26\.'
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -resolvePackageDependencies
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/ChosTesting.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$APPLE_ASC_KEY_PATH" \
+            -authenticationKeyID "$APPLE_ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$APPLE_ASC_ISSUER_ID" \
+            clean archive \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$APPLE_BUNDLE_ID" \
+            APP_DISPLAY_NAME="$APP_NAME" \
+            ASSETCATALOG_COMPILER_APPICON_NAME=AppIconTesting \
+            MARKETING_VERSION="$IOS_VERSION_NAME" \
+            CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER"
+      - name: Export and verify the signed IPA
+        shell: bash
+        env:
+          APPLE_ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+          APPLE_ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+          APPLE_ASC_KEY_PATH: ${{ steps.apple-credentials.outputs.key_path }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>destination</key>
+            <string>export</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/ChosTesting.xcarchive" \
+            -exportPath "$RUNNER_TEMP/ChosTestingExport" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$APPLE_ASC_KEY_PATH" \
+            -authenticationKeyID "$APPLE_ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$APPLE_ASC_ISSUER_ID"
+
+          IPA_PATH="$(find "$RUNNER_TEMP/ChosTestingExport" -maxdepth 1 -name '*.ipa' -print -quit)"
+          test -n "$IPA_PATH"
+          unzip -q "$IPA_PATH" -d "$RUNNER_TEMP/ipa-check"
+          APP_PATH="$(find "$RUNNER_TEMP/ipa-check/Payload" -maxdepth 1 -name '*.app' -print -quit)"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")" = "$APPLE_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_PATH/Info.plist")" = "$APP_NAME"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")" = "$IOS_VERSION_NAME"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")" = "$IOS_BUILD_NUMBER"
+          codesign --verify --deep --strict "$APP_PATH"
+          cp "$IPA_PATH" "$RUNNER_TEMP/ChosTesting.ipa"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: chos-testing-ios-${{ needs.quality.outputs.build_number }}
+          path: ${{ runner.temp }}/ChosTesting.ipa
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove temporary Apple credentials
+        if: always()
+        shell: bash
+        env:
+          KEYCHAIN_PATH: ${{ steps.apple-credentials.outputs.keychain_path }}
+        run: |
+          if [ -n "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
+          rm -rf "$RUNNER_TEMP/private_keys" "$RUNNER_TEMP/apple-distribution.p12"
+
+  upload-google-play:
+    name: Upload to Google Play internal testing
+    needs:
+      - quality
+      - build-android
+      - build-ios
+    runs-on: ubuntu-latest
+    environment: google-play-testing
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Authenticate to Google Play without a stored service-account key
+        id: google-auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          project_id: xatori-play-releases-2026
+          workload_identity_provider: projects/736416642065/locations/global/workloadIdentityPools/xatori-github-actions/providers/github-actions
+          service_account: xatori-play-release@xatori-play-releases-2026.iam.gserviceaccount.com
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: chos-testing-android-${{ needs.quality.outputs.build_number }}
+          path: upload/android
+      - name: Validate the destination and prepare notes
+        shell: bash
+        env:
+          ANDROID_VERSION_CODE: ${{ needs.quality.outputs.build_number }}
+          ANDROID_VERSION_NAME: ${{ needs.quality.outputs.android_version_name }}
+          RELEASE_NOTES: ${{ needs.quality.outputs.release_notes }}
+        run: |
+          node scripts/validate-play-release-input.mjs testing "$ANDROID_PACKAGE_NAME" "$PLAY_TRACK" "$ANDROID_VERSION_CODE" "$ANDROID_VERSION_NAME" "$RELEASE_NOTES"
+          mkdir -p play-whats-new
+          printf '%s\n' "$RELEASE_NOTES" > play-whats-new/whatsnew-en-US
+      - name: Upload to private Play internal testing
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
+        with:
+          serviceAccountJson: ${{ steps.google-auth.outputs.credentials_file_path }}
+          packageName: ${{ env.ANDROID_PACKAGE_NAME }}
+          releaseFiles: upload/android/app-demo-release.aab
+          track: ${{ env.PLAY_TRACK }}
+          status: completed
+          whatsNewDirectory: play-whats-new
+
+  upload-testflight:
+    name: Upload to Apple TestFlight
+    needs:
+      - quality
+      - build-android
+      - build-ios
+    runs-on: macos-26
+    environment: apple-testflight-testing
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: chos-testing-ios-${{ needs.quality.outputs.build_number }}
+          path: upload/ios
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+      - name: Validate and upload only to TestFlight
+        env:
+          APPLE_ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+          APPLE_ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+          APPLE_ASC_PRIVATE_KEY: ${{ secrets.APPLE_ASC_PRIVATE_KEY }}
+          APPLE_TESTFLIGHT_DISTRIBUTE_ENABLED: ${{ vars.APPLE_TESTFLIGHT_DISTRIBUTE_ENABLED }}
+          APPLE_TESTFLIGHT_EXTERNAL_GROUP: ${{ vars.APPLE_TESTFLIGHT_EXTERNAL_GROUP }}
+          IOS_IPA_PATH: ${{ github.workspace }}/upload/ios/ChosTesting.ipa
+          IOS_VERSION_NAME: ${{ needs.quality.outputs.ios_version_name }}
+          IOS_BUILD_NUMBER: ${{ needs.quality.outputs.build_number }}
+          RELEASE_NOTES: ${{ needs.quality.outputs.release_notes }}
+        run: |
+          node scripts/validate-ios-release-input.mjs testing "$APP_NAME" "$APPLE_BUNDLE_ID" "$APPLE_TEAM_ID" "$IOS_VERSION_NAME" "$IOS_BUILD_NUMBER" testflight-upload
+          bundle exec fastlane ios upload_testing

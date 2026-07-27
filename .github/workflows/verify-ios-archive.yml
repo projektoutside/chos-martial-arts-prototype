@@ -1,0 +1,86 @@
+name: Verify Cho's iOS archive (no upload)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: TestFlight marketing version
+        required: true
+        default: 0.1.13
+        type: string
+      build_number:
+        description: Positive Apple build number
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-archive-verification
+  cancel-in-progress: false
+
+jobs:
+  archive-only:
+    runs-on: macos-26
+    env:
+      APP_NAME: Cho's Martial Arts
+      APPLE_BUNDLE_ID: com.xatoridev.chosmartialarts
+      APPLE_TEAM_ID: 9R42C8LZ43
+      IOS_VERSION_NAME: ${{ inputs.version_name }}
+      IOS_BUILD_NUMBER: ${{ inputs.build_number }}
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Prove this workflow cannot upload
+        run: node scripts/validate-ios-release-input.mjs stable "$APP_NAME" "$APPLE_BUNDLE_ID" "$APPLE_TEAM_ID" "$IOS_VERSION_NAME" "$IOS_BUILD_NUMBER" archive-only
+      - run: npm run test
+      - run: npm run build:ios
+      - name: Verify required Xcode generation
+        shell: bash
+        run: |
+          xcodebuild -version
+          xcodebuild -version | grep -E '^Xcode 26\.'
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -resolvePackageDependencies
+      - name: Create an unsigned archive without contacting App Store Connect
+        shell: bash
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/ChosMartialArts.xcarchive" \
+            clean archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$APPLE_BUNDLE_ID" \
+            MARKETING_VERSION="$IOS_VERSION_NAME" \
+            CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER"
+      - name: Verify the archive identity
+        shell: bash
+        run: |
+          APP_INFO="$RUNNER_TEMP/ChosMartialArts.xcarchive/Products/Applications/App.app/Info.plist"
+          test -f "$APP_INFO"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_INFO")" = "$APPLE_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_INFO")" = "$IOS_VERSION_NAME"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_INFO")" = "$IOS_BUILD_NUMBER"
+      - name: Save archive evidence
+        shell: bash
+        run: ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/ChosMartialArts.xcarchive" "$RUNNER_TEMP/ChosMartialArts-unsigned-xcarchive.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chos-ios-unsigned-${{ inputs.version_name }}-${{ inputs.build_number }}-${{ github.sha }}
+          path: ${{ runner.temp }}/ChosMartialArts-unsigned-xcarchive.zip
+          if-no-files-found: error
