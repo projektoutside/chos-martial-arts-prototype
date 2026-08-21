@@ -39,10 +39,12 @@ function deferred<T>() {
 }
 
 function Harness() {
-  const { accounts, addOperationsStudent, managedAccounts, students } = useAppState();
+  const { accountRole, accounts, addOperationsStudent, managedAccounts, studentAccessVerification, students } = useAppState();
   return (
     <div>
       <p data-testid="students">{students.map((student) => student.id).join(",")}</p>
+      <p data-testid="account-role">{accountRole ?? "unknown"}</p>
+      <p data-testid="student-access-status">{studentAccessVerification.status}</p>
       <p data-testid="credential-counts">{accounts.length}:{managedAccounts.length}</p>
       <button
         type="button"
@@ -162,6 +164,7 @@ describe("Supabase-backed app state provider", () => {
         }
         return jsonResponse([]);
       }
+      if (requestUrl.pathname === "/rest/v1/rpc/mutate_student_roster") return jsonResponse([]);
       if (requestUrl.pathname === "/rest/v1/direct_messages" || requestUrl.pathname === "/rest/v1/message_logs") {
         return jsonResponse([]);
       }
@@ -185,16 +188,213 @@ describe("Supabase-backed app state provider", () => {
 
     await waitFor(() => {
       const studentUpserts = fetchMock.mock.calls
-        .map(([, init]) => init)
-        .filter((init): init is RequestInit => init?.method === "POST" && String(init.body).includes("\"key\":\"chos.operations.students.v1\""));
+        .filter(([url, init]) => new URL(String(url)).pathname === "/rest/v1/rpc/mutate_student_roster" && init?.method === "POST")
+        .map(([, init]) => init as RequestInit);
       expect(studentUpserts.length).toBeGreaterThan(0);
       const latestBody = JSON.parse(String(studentUpserts.at(-1)?.body));
-      expect(latestBody.value).toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: "student-remote" }),
-        expect.objectContaining({ firstName: "New", lastName: "Student" })
-      ]));
+      expect(latestBody.p_upserts).toEqual([expect.objectContaining({ firstName: "New", lastName: "Student" })]);
+      expect(latestBody.p_upserts).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: "student-remote" })]));
+      expect(latestBody.p_delete_ids).toEqual([]);
     });
     expect(window.localStorage.getItem("chos.operations.students.v1")).toBeNull();
+  });
+
+  it("initializes a missing hosted roster through the merge RPC without a whole-array fallback write", async () => {
+    const initializedStudent = {
+      id: "student-created-during-initialization",
+      firstName: "Concurrent",
+      lastName: "Student",
+      phone: "",
+      email: "",
+      program: "Youth Taekwondo",
+      status: "Active",
+      beltRank: "White",
+      classesAttended: 0,
+      missedClassCount: 0,
+      joinedAt: "2026-07-20"
+    };
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const requestUrl = new URL(String(url));
+      if (requestUrl.pathname === "/rest/v1/app_state_items") {
+        if (init?.method === "POST") return emptyResponse();
+        return jsonResponse([]);
+      }
+      if (requestUrl.pathname === "/rest/v1/rpc/mutate_student_roster") return jsonResponse([initializedStudent]);
+      if (requestUrl.pathname === "/rest/v1/direct_messages" || requestUrl.pathname === "/rest/v1/message_logs") return jsonResponse([]);
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    render(<AppStateProvider><Harness /></AppStateProvider>);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => new URL(String(url)).pathname === "/rest/v1/rpc/mutate_student_roster")).toBe(true));
+    await waitFor(() => expect(screen.getByTestId("students")).toHaveTextContent("student-created-during-initialization"));
+    const wholeRosterWrites = fetchMock.mock.calls.filter(([url, init]) => {
+      const requestUrl = new URL(String(url));
+      return requestUrl.pathname === "/rest/v1/app_state_items"
+        && init?.method === "POST"
+        && String(init.body).includes("\"key\":\"chos.operations.students.v1\"");
+    });
+    expect(wholeRosterWrites).toHaveLength(0);
+  });
+
+  it("rehydrates the hosted role and loads only the signed-in student's RPC-filtered record", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "student-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "student-user-id",
+      projectRef: "project",
+      authEmail: "hosted.student@accounts.chosmartialarts.app",
+      profileUsername: "hosted.student",
+      role: "student",
+      studentId: "student-own"
+    }));
+    const appSession = { email: "hosted.student", remembered: true, createdAt: "2026-07-19T00:00:00.000Z" };
+    window.localStorage.setItem("chos.session.v1", JSON.stringify(appSession));
+    window.sessionStorage.setItem("chos.session.v1", JSON.stringify(appSession));
+    const ownStudent = { id: "student-own", firstName: "Own", lastName: "Student", email: "", phone: "", status: "Active", beltRank: "Blue", classesAttended: 20, missedClassCount: 0, joinedAt: "2026-01-01" };
+    const otherStudent = { ...ownStudent, id: "student-other", firstName: "Other" };
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = new URL(String(url));
+      if (requestUrl.pathname === "/rest/v1/rpc/get_my_student_record") return jsonResponse(ownStudent);
+      if (requestUrl.pathname === "/rest/v1/app_state_items") {
+        const requestedKey = requestUrl.searchParams.get("key")?.replace(/^eq\./, "");
+        if (requestedKey === "chos.operations.students.v1") return jsonResponse([{ key: requestedKey, value: [ownStudent, otherStudent] }]);
+        return jsonResponse([]);
+      }
+      if (requestUrl.pathname === "/rest/v1/direct_messages" || requestUrl.pathname === "/rest/v1/message_logs") return jsonResponse([]);
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    render(
+      <AppStateProvider>
+        <Harness />
+      </AppStateProvider>
+    );
+
+    expect(await screen.findByTestId("account-role")).toHaveTextContent("student");
+    await waitFor(() => expect(screen.getByTestId("students")).toHaveTextContent("student-own"));
+    expect(screen.getByTestId("student-access-status")).toHaveTextContent("ready");
+    expect(screen.getByTestId("students")).not.toHaveTextContent("student-other");
+    expect(fetchMock.mock.calls.some(([url]) => {
+      const requestUrl = new URL(String(url));
+      return requestUrl.pathname === "/rest/v1/app_state_items" && requestUrl.searchParams.get("key") === "eq.chos.operations.students.v1";
+    })).toBe(false);
+    expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toEqual(expect.objectContaining({
+      role: "student",
+      studentId: "student-own"
+    }));
+  });
+
+  it("denies hosted student workspace access when no active linked roster record exists", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "student-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "student-user-id",
+      projectRef: "project",
+      authEmail: "hosted.student@accounts.chosmartialarts.app",
+      profileUsername: "hosted.student",
+      role: "student",
+      studentId: "student-missing"
+    }));
+    const appSession = { email: "hosted.student", remembered: true, createdAt: "2026-07-19T00:00:00.000Z", role: "student", studentId: "student-missing" };
+    window.localStorage.setItem("chos.session.v1", JSON.stringify(appSession));
+    window.sessionStorage.setItem("chos.session.v1", JSON.stringify(appSession));
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = new URL(String(url));
+      if (requestUrl.pathname === "/rest/v1/rpc/get_my_student_record") return jsonResponse(null);
+      if (requestUrl.pathname === "/rest/v1/direct_messages" || requestUrl.pathname === "/rest/v1/message_logs") return jsonResponse([]);
+      return jsonResponse([]);
+    }) as typeof fetch;
+
+    render(<AppStateProvider><Harness /></AppStateProvider>);
+
+    await waitFor(() => expect(screen.getByTestId("student-access-status")).toHaveTextContent("denied"));
+    expect(screen.getByTestId("students")).toHaveTextContent("");
+  });
+
+  it("keeps retryable student hydration failures separate from eligibility denial", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "student-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "student-user-id",
+      projectRef: "project",
+      authEmail: "hosted.student@accounts.chosmartialarts.app",
+      profileUsername: "hosted.student",
+      role: "student",
+      studentId: "student-own"
+    }));
+    const appSession = { email: "hosted.student", remembered: true, createdAt: "2026-07-19T00:00:00.000Z", role: "student", studentId: "student-own" };
+    window.localStorage.setItem("chos.session.v1", JSON.stringify(appSession));
+    window.sessionStorage.setItem("chos.session.v1", JSON.stringify(appSession));
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = new URL(String(url));
+      if (requestUrl.pathname === "/rest/v1/rpc/get_my_student_record") return jsonResponse({ error: "temporary" }, { status: 500 });
+      return jsonResponse([]);
+    }) as typeof fetch;
+
+    render(<AppStateProvider><Harness /></AppStateProvider>);
+
+    await waitFor(() => expect(screen.getByTestId("student-access-status")).toHaveTextContent("error"));
+    expect(window.localStorage.getItem("chos.session.v1")).not.toBeNull();
+  });
+
+  it("does not request the shared roster when a student token has no app session", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "student-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "student-user-id",
+      projectRef: "project",
+      authEmail: "hosted.student@accounts.chosmartialarts.app",
+      profileUsername: "hosted.student",
+      role: "student",
+      studentId: "student-own"
+    }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request) => jsonResponse([]));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    render(<AppStateProvider><Harness /></AppStateProvider>);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.some(([url]) => {
+      const requestUrl = new URL(String(url));
+      return requestUrl.pathname === "/rest/v1/app_state_items" && requestUrl.searchParams.get("key") === "eq.chos.operations.students.v1";
+    })).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => new URL(String(url)).pathname === "/rest/v1/rpc/get_my_student_record")).toBe(false);
+  });
+
+  it("does not overwrite a local app-state mutation when remote hydration returns late", async () => {
+    const studentHydration = deferred<Response>();
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const requestUrl = new URL(String(url));
+      if (requestUrl.pathname === "/rest/v1/app_state_items") {
+        if (init?.method === "POST") return emptyResponse();
+        const requestedKey = requestUrl.searchParams.get("key")?.replace(/^eq\./, "");
+        if (requestedKey === "chos.operations.students.v1") return studentHydration.promise;
+        return jsonResponse([]);
+      }
+      if (requestUrl.pathname === "/rest/v1/rpc/mutate_student_roster") return jsonResponse([]);
+      if (requestUrl.pathname === "/rest/v1/direct_messages" || requestUrl.pathname === "/rest/v1/message_logs") {
+        return jsonResponse([]);
+      }
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    render(
+      <AppStateProvider>
+        <Harness />
+      </AppStateProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Student" }));
+    await waitFor(() => expect(screen.getByTestId("students")).not.toHaveTextContent(""));
+
+    studentHydration.resolve(jsonResponse([{ key: "chos.operations.students.v1", value: [] }]));
+
+    await waitFor(() => expect(screen.getByTestId("students")).not.toHaveTextContent(""));
+    expect(screen.getByTestId("students")).toHaveTextContent("student-");
   });
 
   it("keeps report-queued message logs when Supabase message hydration returns late", async () => {

@@ -181,6 +181,9 @@ export interface AccountSession {
   email: string;
   remembered: boolean;
   createdAt: string;
+  role?: AccountRole;
+  studentId?: string;
+  access?: ManagerAccessKey[];
 }
 
 export type AccountRole = "guardian" | "student" | "staff";
@@ -203,6 +206,7 @@ export interface ManagedAccount {
   displayName: string;
   username: string;
   password: string;
+  requiresPasswordChange?: boolean;
   role: "staff" | "student";
   status: "active" | "inactive";
   email?: string;

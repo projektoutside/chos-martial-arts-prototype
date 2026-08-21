@@ -2,11 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { childUsernameFromName, normalizeChildUsername } from "./childAccountUtils";
 import { isSafeMerchandiseImageDataUrl, isSafeStudyMaterialFile, isSafeTrainingVideoFile } from "./contentSafety";
 import { getProduct, studio } from "./data";
+import { isDemoEnvironment } from "./appEnvironment";
+import { createDemoState, demoStorageKey } from "./demoData";
 import { parseOperationsBackupSnapshot, type OperationsBackupData } from "./operationsBackup";
 import { getClassReminderCandidates, getLeadCandidates, getMerchandiseTargetStock, getStudentCelebrationEvents, getStudentProfileIssues, hasGuardianSmsConsent, hasStaffSmsConsent, hasStudentSmsConsent, isAttendanceGapFollowUpDue, isBeltTestInviteDue, isLowStockMerchandiseItem, isMilestoneEncouragementDue, isMissedClassFollowUpDue, isNewStudentCheckInDue, isPausedStudentReviewDue, isProfileUpdateRequestDue, isQueuedMessageDeliverable, isStaleOneTimeScheduledClass, isTrialConversionDue } from "./operationsReports";
 import { buildStudentBeltProgress } from "./studentProgress";
-import { changeSupabaseAccountPassword, clearSupabaseAuthSession, isSupabaseAuthConfigured, readSupabaseAuthSession, supabaseAuthEmailForUsername } from "./supabaseAccounts";
-import { deleteSupabaseAppStateItem, fetchSupabaseAppStateItem, isSupabaseAppStateRemoteBacked, persistSupabaseAppStateItem } from "./supabaseAppStatePersistence";
+import { changeSupabaseAccountPassword, clearSupabaseAuthSession, fetchSupabaseOwnStudentRecord, isSupabaseAuthConfigured, readSupabaseAuthSession, supabaseAuthEmailForUsername } from "./supabaseAccounts";
+import { deleteSupabaseAppStateItem, fetchSupabaseAppStateItem, initializeSupabaseStudentRoster, isSupabaseAppStateRemoteBacked, persistSupabaseAppStateItem, persistSupabaseStudentRosterChanges } from "./supabaseAppStatePersistence";
 import { deleteSupabaseDirectMessages, deleteSupabaseMessageLogs, fetchSupabaseDirectMessages, fetchSupabaseMessageLogs, persistSupabaseDirectMessages, persistSupabaseMessageLogs } from "./supabaseMessagePersistence";
 import { normalizeTwilioInboundSmsWebhookForServer, normalizeTwilioStatusCallbackForServer, type TwilioInboundSmsWebhook } from "./twilioRelayContract";
 import type {
@@ -43,9 +45,10 @@ import type {
   TrainingVideo,
   TrainingVideoFolder
 } from "./types";
-import { applyCoupon, calculateTotals, createOrder, estimateSmsSegments, hasSmsOptOutLanguage, isPrototypeDeveloperEmail, isPrototypeManagerOwnerEmail, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
+import { applyCoupon, calculateTotals, createOrder, estimateSmsSegments, hasSmsOptOutLanguage, isPrototypeDeveloperEmail, isPrototypeManagerOwnerEmail, isReservedPrototypeUsername, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
+import { validateActivationPassword } from "../supabase/functions/_shared/account-activation";
 
-const keys = {
+const stableKeys = {
   cart: "chos.cart.v1",
   orders: "chos.orders.v1",
   bookings: "chos.bookings.v1",
@@ -78,6 +81,10 @@ const keys = {
   studyGuideMaterials: "chos.operations.studyGuideMaterials.v1"
 } as const;
 
+const keys = Object.fromEntries(
+  Object.entries(stableKeys).map(([name, key]) => [name, isDemoEnvironment() ? demoStorageKey(key) : key])
+) as typeof stableKeys;
+
 const studentPrototypeDataResetKey = "chos.prototype.studentDataReset.v1";
 const retiredStudentScopedStoragePrefixes = [
   "chos.beltCase.student.",
@@ -92,7 +99,7 @@ const retiredStudentScopedStorageFragments = [
   "parent123@chos.prototype"
 ];
 
-const seedStudents: StudentRecord[] = [];
+const seedStudents: StudentRecord[] = isDemoEnvironment() ? createDemoState().students : [];
 
 const seedScheduledClasses: ScheduledClass[] = [
   { id: "schedule-youth-beginners", title: "Youth Beginners", date: "2026-05-18", time: "5:00 PM", type: "class", notes: "Beginner martial arts fundamentals." }
@@ -128,6 +135,7 @@ interface Toast {
 interface AccountRecord {
   email: string;
   password?: string;
+  requiresPasswordChange?: boolean;
   role?: AccountRole;
   displayName?: string;
   contactEmail?: string;
@@ -208,6 +216,7 @@ type StudentInput = {
   status?: string;
   beltRank: string;
   notes?: string;
+  allowEmptyContact?: boolean;
 };
 
 type RegisteredAccountInput = {
@@ -239,7 +248,15 @@ type GuardianAccountInput = {
   notes?: string;
 };
 
-type CreatedAccountLoginResult = ManagedAccount | AccountRecord | ChildAccount;
+type CreatedAccountRecord = ManagedAccount | AccountRecord | ChildAccount;
+
+type CreatedAccountLoginResult =
+  | { status: "authenticated"; account: CreatedAccountRecord }
+  | { status: "activation-required"; account: ManagedAccount | AccountRecord };
+
+type CreatedAccountActivationResult =
+  | { status: "ok"; username: string; account: ManagedAccount | AccountRecord }
+  | { status: "error"; message: string };
 
 type PasswordChangeResult = { status: "ok" } | { status: "error"; message: string };
 
@@ -249,6 +266,11 @@ type ManagerAccountAccess = {
   canCreateAccounts: boolean;
   canGrantCreateAccess: boolean;
   allowedTools: ManagerAccessKey[];
+};
+
+type StudentAccessVerification = {
+  status: "not-required" | "loading" | "ready" | "denied" | "error";
+  message?: string;
 };
 
 type MerchandiseInput = {
@@ -385,6 +407,9 @@ interface AppState {
   managedAccounts: ManagedAccount[];
   currentManagedAccount?: ManagedAccount;
   managerAccountAccess: ManagerAccountAccess;
+  studentAccessVerification: StudentAccessVerification;
+  studentAccessVerificationRequired: boolean;
+  retryStudentAccessVerification: () => void;
   childAccounts: ChildAccount[];
   guardianChildren: ChildAccount[];
   currentChildAccount?: ChildAccount;
@@ -420,9 +445,10 @@ interface AppState {
   placeOrder: (customer: CustomerInfo, notes: string) => Order | undefined;
   saveBooking: (booking: BookingDetails) => void;
   saveContact: (contact: ContactSubmission) => void;
-  login: (email: string, remembered: boolean, role?: AccountRole) => void;
+  login: (email: string, remembered: boolean, role?: AccountRole, studentId?: string, access?: ManagerAccessKey[]) => void;
   loginRegisteredAccount: (credentials: { username: string; password: string }) => AccountRecord | undefined;
   loginCreatedAccount: (credentials: { username: string; password: string }) => CreatedAccountLoginResult | undefined;
+  activateCreatedAccount: (credentials: { username: string; temporaryPassword: string; password: string }) => CreatedAccountActivationResult;
   loginChildAccount: (childId: string) => void;
   loginChildCredentials: (credentials: { username: string; password: string }) => ChildAccount | undefined;
   childUsernameExists: (username: string, options?: { excludeChildId?: string }) => boolean;
@@ -436,6 +462,7 @@ interface AppState {
   addChildAccount: (child: { name: string; age: string; beltSlug: string; username: string; password: string }) => ChildAccount | undefined;
   updateChildAccount: (childId: string, child: { name: string; age: string; beltSlug: string; username: string; password: string }) => ChildAccount | undefined;
   addOperationsStudent: (student: StudentInput) => StudentRecord | undefined;
+  syncOperationsStudent: (student: StudentRecord) => StudentRecord | undefined;
   updateOperationsStudent: (studentId: string, student: StudentInput) => StudentRecord | undefined;
   deleteOperationsStudent: (studentId: string) => StudentRecord | undefined;
   addStudioClass: (studioClass: StudioClassInput) => StudioClass | undefined;
@@ -588,13 +615,15 @@ function cleanupRetiredStudentPrototypeStorage() {
 function useStoredState<T>(
   key: string,
   fallback: T,
-  options?: { localDisabled?: boolean; remoteBacked?: boolean; remoteFallback?: T; remoteScope?: string; remoteStore?: "app-state" | "none" }
+  options?: { localDisabled?: boolean; remoteBacked?: boolean; remoteFallback?: T; remoteScope?: string; remoteStore?: "app-state" | "student-roster" | "none" }
 ) {
   const remoteBacked = Boolean(options?.remoteBacked);
   const useRemoteAppState = remoteBacked && options?.remoteStore !== "none";
   const localDisabled = Boolean(options?.localDisabled);
   const remoteFallback = options?.remoteFallback ?? fallback;
   const [value, setValue] = useState<T>(() => (remoteBacked || localDisabled ? remoteFallback : readStorage<T>(key, fallback)));
+  const localMutationVersionRef = useRef(0);
+  const remoteWriteChainRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     if (remoteBacked) {
@@ -606,11 +635,19 @@ function useStoredState<T>(
           cancelled = true;
         };
       }
+      const hydrationMutationVersion = localMutationVersionRef.current;
       void fetchSupabaseAppStateItem<T>(key).then((result) => {
         if (cancelled) return;
         if (result.status !== "ok") return;
+        if (localMutationVersionRef.current !== hydrationMutationVersion) return;
         if (result.data === undefined) {
-          if (remoteFallback !== undefined) void persistSupabaseAppStateItem(key, remoteFallback);
+          if (options?.remoteStore === "student-roster") {
+            void initializeSupabaseStudentRoster().then((initialization) => {
+              if (cancelled || initialization.status !== "ok") return;
+              if (localMutationVersionRef.current !== hydrationMutationVersion) return;
+              setValue(initialization.data as unknown as T);
+            });
+          } else if (remoteFallback !== undefined) void persistSupabaseAppStateItem(key, remoteFallback);
           return;
         }
         setValue(result.data);
@@ -631,14 +668,19 @@ function useStoredState<T>(
     (next: T | ((previous: T) => T)) => {
       setValue((previous) => {
         const resolved = typeof next === "function" ? (next as (previous: T) => T)(previous) : next;
+        localMutationVersionRef.current += 1;
         if (remoteBacked) {
           removeStorage(key);
           if (useRemoteAppState) {
-            if (resolved === undefined) {
-              void deleteSupabaseAppStateItem(key);
-            } else {
-              void persistSupabaseAppStateItem(key, resolved);
-            }
+            remoteWriteChainRef.current = remoteWriteChainRef.current.then(async () => {
+              if (options?.remoteStore === "student-roster") {
+                await persistSupabaseStudentRosterChanges(
+                  previous as unknown as readonly StudentRecord[],
+                  resolved as unknown as readonly StudentRecord[]
+                );
+              } else if (resolved === undefined) await deleteSupabaseAppStateItem(key);
+              else await persistSupabaseAppStateItem(key, resolved);
+            });
           }
         } else if (localDisabled) {
           removeStorage(key);
@@ -648,7 +690,7 @@ function useStoredState<T>(
         return resolved;
       });
     },
-    [key, localDisabled, remoteBacked, useRemoteAppState]
+    [key, localDisabled, options?.remoteStore, remoteBacked, useRemoteAppState]
   );
   return [value, update] as const;
 }
@@ -746,22 +788,47 @@ function hasValidManagedStudentLink(account: Pick<ManagedAccount, "role" | "stud
   return Boolean(studentId && students.some((student) => student.id === studentId && isCurrentStudentEnrollment(student)));
 }
 
-function hasSupabaseAuthSessionForAppSession(normalizedEmail: string) {
+function scopedSupabaseAuthSessionForAppSession(normalizedEmail: string) {
   const session = readSupabaseAuthSession();
-  if (!session?.authEmail) return false;
-  const expectedUsername = normalizedEmail === prototypeManagerLogin.email.toLowerCase() ? prototypeManagerLogin.username : normalizedEmail;
-  if (session.authEmail === supabaseAuthEmailForUsername(expectedUsername)) return true;
+  if (!session) return undefined;
+  const expectedUsername = normalizedEmail === prototypeManagerLogin.email.toLowerCase()
+    ? prototypeManagerLogin.username
+    : normalizedEmail === "manager1@chos.prototype"
+      ? "manager1"
+      : normalizedEmail === prototypeDeveloperLogin.email.toLowerCase()
+        ? prototypeDeveloperLogin.username
+      : normalizedEmail;
+  const normalizedExpectedUsername = normalizeCreatedAccountUsername(expectedUsername);
+  if (session.profileUsername && normalizeCreatedAccountUsername(session.profileUsername) === normalizedExpectedUsername) return session;
+  if (!session.authEmail) {
+    clearSupabaseAuthSession();
+    return undefined;
+  }
+  if (session.authEmail === supabaseAuthEmailForUsername(expectedUsername)) return session;
+  if (
+    normalizedExpectedUsername === prototypeManagerLogin.username.toLowerCase()
+    && session.authEmail === "manager123@accounts.chosmartialarts.app"
+  ) return session;
   clearSupabaseAuthSession();
-  return false;
+  return undefined;
 }
 
 function validatePrototypeSession(session: AccountSession | undefined) {
   if (!session?.email) return undefined;
+  if (session.role !== undefined && session.role !== "staff" && session.role !== "student" && session.role !== "guardian") return undefined;
   const normalizedEmail = session.email.toLowerCase();
-  if (isSupabaseAuthConfigured() && !isPrototypeDeveloperEmail(normalizedEmail) && !hasSupabaseAuthSessionForAppSession(normalizedEmail)) {
-    return undefined;
+  const supabaseConfigured = isSupabaseAuthConfigured();
+  const scopedSupabaseSession = supabaseConfigured ? scopedSupabaseAuthSessionForAppSession(normalizedEmail) : undefined;
+  if (supabaseConfigured && !scopedSupabaseSession) return undefined;
+  if (scopedSupabaseSession) {
+    return {
+      ...session,
+      role: scopedSupabaseSession.role,
+      studentId: scopedSupabaseSession.role === "student" ? scopedSupabaseSession.studentId?.trim() || undefined : undefined,
+      access: scopedSupabaseSession.role === "staff" ? scopedSupabaseSession.access : undefined
+    };
   }
-  if (normalizedEmail === prototypeManagerLogin.email.toLowerCase()) return session;
+  if (isPrototypeManagerOwnerEmail(normalizedEmail)) return session;
   if (isPrototypeDeveloperEmail(normalizedEmail)) return session;
   const managedAccounts = readStoredArray<ManagedAccount>(keys.managedAccounts);
   const students = readStoredArray<StudentRecord>(keys.students);
@@ -786,7 +853,11 @@ function validatePrototypeSession(session: AccountSession | undefined) {
 function readPrototypeSession() {
   const session = readSessionStorage<AccountSession | undefined>(keys.session, undefined);
   const validatedSession = validatePrototypeSession(session);
-  if (validatedSession) return validatedSession;
+  if (validatedSession) {
+    writeStorage(keys.session, validatedSession);
+    writeSessionStorage(keys.session, validatedSession);
+    return validatedSession;
+  }
   removeSessionStorage(keys.session);
   removeStorage(keys.session);
   return undefined;
@@ -794,13 +865,15 @@ function readPrototypeSession() {
 
 function inferBuiltInPrototypeAccountRole(email: string): AccountRole | undefined {
   const normalizedEmail = email.toLowerCase();
+  if (normalizedEmail === "manager1" || normalizedEmail === "manager1@chos.prototype") return "staff";
   if (normalizedEmail === prototypeManagerLogin.email.toLowerCase()) return "staff";
   if (isPrototypeDeveloperEmail(normalizedEmail)) return "staff";
   return undefined;
 }
 
 function isBuiltInPrototypeIdentity(email: string) {
-  return Boolean(inferBuiltInPrototypeAccountRole(email.trim().toLowerCase()));
+  const normalizedIdentity = email.trim().toLowerCase();
+  return isReservedPrototypeUsername(normalizedIdentity) || Boolean(inferBuiltInPrototypeAccountRole(normalizedIdentity));
 }
 
 function inferPrototypeAccountRole(email: string): AccountRole | undefined {
@@ -891,8 +964,7 @@ function managedAccountCreationKey(account: Pick<ManagedAccount, "displayName" |
 }
 
 function isPrototypeLoginUsername(username: string) {
-  const normalizedUsername = username.trim().toLowerCase();
-  return [prototypeManagerLogin.username, prototypeDeveloperLogin.username].some((prototypeUsername) => prototypeUsername.toLowerCase() === normalizedUsername);
+  return isReservedPrototypeUsername(username);
 }
 
 function isChildUsernameUnavailable(username: string, childAccounts: readonly ChildAccount[], managedAccounts: readonly ManagedAccount[], excludeChildId?: string) {
@@ -1298,7 +1370,7 @@ function normalizeStudentInput(student: StudentInput, fallbackEnrollmentDate = t
   const email = student.studentEmail.trim();
   const beltRank = student.beltRank.trim() || "White";
   const enrollmentDate = student.enrollmentDate?.trim() || fallbackEnrollmentDate;
-  if (!firstName || !phone || !email) return undefined;
+  if (!firstName || (!student.allowEmptyContact && (!phone || !email))) return undefined;
 
   return {
     firstName,
@@ -1684,6 +1756,15 @@ function mergeHydratedMessageLogs(remoteLogs: readonly MessageLog[], currentLogs
   return merged;
 }
 
+function mergeHydratedDirectMessages(remoteMessages: readonly DirectMessage[], currentMessages: readonly DirectMessage[]) {
+  const seenIds = new Set<string>();
+  return [...currentMessages, ...remoteMessages].filter((message) => {
+    if (!message.id || seenIds.has(message.id)) return false;
+    seenIds.add(message.id);
+    return true;
+  });
+}
+
 function cleanNonnegativeInteger(value: number | undefined, fallback: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(0, Math.floor(value as number));
@@ -1827,8 +1908,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useSessionState();
   const supabaseAppStateRemoteBacked = isSupabaseAppStateRemoteBacked();
   const supabaseLocalCredentialsDisabled = isSupabaseAuthConfigured();
+  const storedSupabaseSession = supabaseLocalCredentialsDisabled ? readSupabaseAuthSession() : undefined;
   const supabaseRemoteScope = session?.email ?? "signed-out";
   const supabaseAppStateOptions = { remoteBacked: supabaseAppStateRemoteBacked, remoteScope: supabaseRemoteScope };
+  const supabaseStudentCredential = storedSupabaseSession?.role === "student";
+  const supabaseStudentSession = supabaseStudentCredential && session?.role === "student";
+  const supabaseStudentStateOptions = supabaseStudentCredential
+    ? { remoteBacked: true, remoteFallback: [] as StudentRecord[], remoteScope: supabaseRemoteScope, remoteStore: "none" as const }
+    : { ...supabaseAppStateOptions, remoteStore: "student-roster" as const };
   const supabaseLocalCredentialOptions = { localDisabled: supabaseLocalCredentialsDisabled };
 
   const [cart, setCart] = useStoredState<CartItem[]>(keys.cart, [], supabaseAppStateOptions);
@@ -1842,7 +1929,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [managedAccounts, setManagedAccounts] = useStoredState<ManagedAccount[]>(keys.managedAccounts, [], supabaseLocalCredentialOptions);
   const [childAccounts, setChildAccounts] = useStoredState<ChildAccount[]>(keys.childAccounts, seedChildAccounts, supabaseLocalCredentialOptions);
   const [coupon, setCoupon] = useStoredState<Coupon | undefined>(keys.coupon, undefined, supabaseAppStateOptions);
-  const [students, setStudents] = useStoredState<StudentRecord[]>(keys.students, seedStudents, supabaseAppStateOptions);
+  const [students, setStudents] = useStoredState<StudentRecord[]>(keys.students, seedStudents, supabaseStudentStateOptions);
   const [studioClasses, setStudioClasses] = useStoredState<StudioClass[]>(keys.studioClasses, seedStudioClasses, supabaseAppStateOptions);
   const [scheduledClasses, setScheduledClasses] = useStoredState<ScheduledClass[]>(keys.scheduledClasses, seedScheduledClasses, supabaseAppStateOptions);
   const [messageCampaigns, setMessageCampaigns] = useStoredState<MessageCampaign[]>(keys.messageCampaigns, [], supabaseAppStateOptions);
@@ -1859,6 +1946,49 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [studyGuideFolders, setStudyGuideFolders] = useStoredState<StudyGuideFolder[]>(keys.studyGuideFolders, [], supabaseAppStateOptions);
   const [studyGuideMaterials, setStudyGuideMaterials] = useStoredState<StudyGuideMaterial[]>(keys.studyGuideMaterials, [], supabaseAppStateOptions);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [studentAccessVerification, setStudentAccessVerification] = useState<StudentAccessVerification>(() => (
+    supabaseStudentSession ? { status: "loading" } : { status: "not-required" }
+  ));
+  const [studentAccessVerificationAttempt, setStudentAccessVerificationAttempt] = useState(0);
+
+  const retryStudentAccessVerification = useCallback(() => {
+    setStudentAccessVerificationAttempt((attempt) => attempt + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseStudentSession) {
+      setStudentAccessVerification({ status: "not-required" });
+      return;
+    }
+    let cancelled = false;
+    setStudentAccessVerification({ status: "loading" });
+    void fetchSupabaseOwnStudentRecord().then((result) => {
+      if (cancelled) return;
+      if (result.status === "stale") return;
+      if (result.status === "ok" && result.data) {
+        setStudents([result.data]);
+        setStudentAccessVerification({ status: "ready" });
+        return;
+      }
+      setStudents([]);
+      if (result.status === "session-expired") {
+        setStudentAccessVerification({ status: "denied", message: result.message });
+        setSession(undefined);
+        return;
+      }
+      if (result.status === "denied") {
+        setStudentAccessVerification({ status: "denied", message: result.message });
+        return;
+      }
+      setStudentAccessVerification({
+        status: "error",
+        message: result.status === "error" ? result.message : "Student access verification is unavailable."
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.email, session?.studentId, setSession, setStudents, storedSupabaseSession?.accessToken, studentAccessVerificationAttempt, supabaseStudentSession]);
   const toastTimersRef = useRef<Map<string, number>>(new Map());
   const cartRef = useRef(cart);
   const ordersRef = useRef(orders);
@@ -1880,6 +2010,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const directMessagesRef = useRef(directMessages);
   const supabaseDirectMessagesPersistedIdsRef = useRef<Set<string>>(new Set());
   const supabaseDirectMessagesHydratedRef = useRef(false);
+  const supabaseDirectMessagesLocallyMutatedBeforeHydrationRef = useRef(false);
   const leadReviewsRef = useRef(leadReviews);
   const managedAccountsRef = useRef(managedAccounts);
   const childAccountsRef = useRef(childAccounts);
@@ -1892,6 +2023,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const markMessageLogsLocallyMutated = useCallback(() => {
     if (supabaseMessagesRemoteBacked && !supabaseMessageLogsHydratedRef.current) {
       supabaseMessageLogsLocallyMutatedBeforeHydrationRef.current = true;
+    }
+  }, [supabaseMessagesRemoteBacked]);
+
+  const markDirectMessagesLocallyMutated = useCallback(() => {
+    if (supabaseMessagesRemoteBacked && !supabaseDirectMessagesHydratedRef.current) {
+      supabaseDirectMessagesLocallyMutatedBeforeHydrationRef.current = true;
     }
   }, [supabaseMessagesRemoteBacked]);
 
@@ -2167,6 +2304,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     supabaseMessageLogsHydratedRef.current = false;
     supabaseMessageLogsLocallyMutatedBeforeHydrationRef.current = false;
     supabaseDirectMessagesHydratedRef.current = false;
+    supabaseDirectMessagesLocallyMutatedBeforeHydrationRef.current = false;
     if (!supabaseMessagesRemoteBacked) {
       supabaseMessageLogsPersistedIdsRef.current = new Set();
       supabaseDirectMessagesPersistedIdsRef.current = new Set();
@@ -2177,10 +2315,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     void Promise.all([fetchSupabaseDirectMessages(), fetchSupabaseMessageLogs()]).then(([directMessagesResult, messageLogsResult]) => {
       if (cancelled) return;
       if (directMessagesResult.status === "ok") {
-        supabaseDirectMessagesPersistedIdsRef.current = new Set(directMessagesResult.data.map((message) => message.id));
+        const hydratedDirectMessages = supabaseDirectMessagesLocallyMutatedBeforeHydrationRef.current
+          ? mergeHydratedDirectMessages(directMessagesResult.data, directMessagesRef.current)
+          : directMessagesResult.data;
+        supabaseDirectMessagesPersistedIdsRef.current = new Set(hydratedDirectMessages.map((message) => message.id));
         supabaseDirectMessagesHydratedRef.current = true;
-        directMessagesRef.current = directMessagesResult.data;
-        setDirectMessages(directMessagesResult.data);
+        supabaseDirectMessagesLocallyMutatedBeforeHydrationRef.current = false;
+        directMessagesRef.current = hydratedDirectMessages;
+        setDirectMessages(hydratedDirectMessages);
         removeStorage(keys.directMessages);
       }
       if (messageLogsResult.status === "ok") {
@@ -2367,7 +2509,10 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     const normalizedEmail = session.email.toLowerCase();
     const registeredRole: AccountRole | undefined = currentRegisteredAccount ? normalizeRegisteredAccountRole(currentRegisteredAccount.role) : undefined;
     const childRole: AccountRole | undefined = currentChildAccount ? "student" : undefined;
-    return inferBuiltInPrototypeAccountRole(session.email) ?? currentManagedAccount?.role ?? registeredRole ?? childRole ?? accountRoles.find((record) => record.email.toLowerCase() === normalizedEmail)?.role ?? inferPrototypeAccountRole(session.email);
+    const persistedRole = accountRoles.find((record) => record.email.toLowerCase() === normalizedEmail)?.role;
+    const validSessionRole = session.role === "staff" || session.role === "student" || session.role === "guardian" ? session.role : undefined;
+    const validPersistedRole = persistedRole === "staff" || persistedRole === "student" || persistedRole === "guardian" ? persistedRole : undefined;
+    return inferBuiltInPrototypeAccountRole(session.email) ?? validSessionRole ?? currentManagedAccount?.role ?? registeredRole ?? childRole ?? validPersistedRole ?? inferPrototypeAccountRole(session.email);
   }, [accountRoles, currentChildAccount, currentManagedAccount, currentRegisteredAccount, session]);
   const managerAccountAccess = useMemo<ManagerAccountAccess>(() => {
     const isDeveloper = isPrototypeDeveloperEmail(session?.email);
@@ -2375,9 +2520,16 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     const normalizedEmail = session?.email.toLowerCase();
     const storedRole = normalizedEmail ? accountRoles.find((record) => record.email.toLowerCase() === normalizedEmail)?.role : undefined;
     const builtInRole = normalizedEmail ? inferBuiltInPrototypeAccountRole(normalizedEmail) : undefined;
+    const hostedStaffAccess = normalizedEmail
+      && storedSupabaseSession?.profileUsername?.toLowerCase() === normalizedEmail
+      && storedSupabaseSession.role === "staff"
+      ? [...new Set((storedSupabaseSession.access ?? []).filter((key) => key !== "create" && managerAccessKeySet.has(key)))]
+      : undefined;
     const allowedTools = isManagerOwner
       ? ownerManagerAccess
-      : currentManagedAccount
+      : hostedStaffAccess !== undefined
+        ? hostedStaffAccess
+        : currentManagedAccount
         ? currentManagedAccount.role === "staff"
           ? normalizeManagedAccountAccess(currentManagedAccount.role, currentManagedAccount.access)
           : []
@@ -2389,7 +2541,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
             ? []
             : !builtInRole && storedRole === "staff"
               ? staffManagerAccess
-              : [];
+              : accountRole === "staff" && session?.access !== undefined
+                ? [...new Set((session.access ?? []).filter((key) => key !== "create" && managerAccessKeySet.has(key)))]
+                : [];
 
     return {
       isManagerOwner,
@@ -2398,7 +2552,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       canGrantCreateAccess: isManagerOwner,
       allowedTools
     };
-  }, [accountRoles, currentChildAccount, currentManagedAccount, currentRegisteredAccount, session]);
+  }, [accountRole, accountRoles, currentChildAccount, currentManagedAccount, currentRegisteredAccount, session, storedSupabaseSession]);
   const guardianChildren = useMemo(
     () => (session ? childAccounts.filter((child) => child.parentEmail.toLowerCase() === session.email.toLowerCase()) : []),
     [childAccounts, session]
@@ -2538,8 +2692,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   );
 
   const login = useCallback(
-    (email: string, remembered: boolean, role?: AccountRole) => {
-      setSession({ email, remembered, createdAt: new Date().toISOString() });
+    (email: string, remembered: boolean, role?: AccountRole, studentId?: string, access?: ManagerAccessKey[]) => {
+      setSession({ email, remembered, createdAt: new Date().toISOString(), role, studentId: studentId?.trim() || undefined, access: role === "staff" ? access : undefined });
       if (role) saveRoleForEmail(email, role);
     },
     [saveRoleForEmail, setSession]
@@ -2554,7 +2708,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const account = accountsRef.current.find((item) => item.email.trim().toLowerCase() === normalizedEmail && item.password === password);
       if (!account) return undefined;
       saveRoleForEmail(account.email, normalizeRegisteredAccountRole(account.role));
-      setSession({ email: account.email, remembered: true, createdAt: new Date().toISOString() });
+      setSession({ email: account.email, remembered: true, createdAt: new Date().toISOString(), role: normalizeRegisteredAccountRole(account.role) });
       return account;
     },
     [saveRoleForEmail, setSession]
@@ -2630,9 +2784,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const loginChildAccount = useCallback(
     (childId: string) => {
       const child = childAccountsRef.current.find((item) => item.id === childId);
-      if (!child || !session || child.parentEmail.toLowerCase() !== session.email.toLowerCase()) return;
+      if (!child || isReservedPrototypeUsername(child.username) || !session || child.parentEmail.toLowerCase() !== session.email.toLowerCase()) return;
       saveRoleForEmail(child.username, "student");
-      setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString() });
+      setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString(), role: "student" });
     },
     [saveRoleForEmail, session, setSession]
   );
@@ -2641,18 +2795,18 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     (credentials: { username: string; password: string }) => {
       const normalizedUsername = normalizeChildUsername(credentials.username);
       const password = credentials.password.trim();
-      if (!normalizedUsername || !password) return undefined;
+      if (!normalizedUsername || isReservedPrototypeUsername(normalizedUsername) || !password) return undefined;
       const child = childAccountsRef.current.find((item) => item.username.toLowerCase() === normalizedUsername.toLowerCase() && item.password === password);
       if (!child) return undefined;
       saveRoleForEmail(child.username, "student");
-      setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString() });
+      setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString(), role: "student" });
       return child;
     },
     [saveRoleForEmail, setSession]
   );
 
   const loginCreatedAccount = useCallback(
-    (credentials: { username: string; password: string }) => {
+    (credentials: { username: string; password: string }): CreatedAccountLoginResult | undefined => {
       const normalizedUsername = normalizeCreatedAccountUsername(credentials.username);
       const normalizedRegisteredLogin = credentials.username.trim().toLowerCase();
       const normalizedChildUsername = normalizeChildUsername(credentials.username);
@@ -2668,9 +2822,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
             hasValidManagedStudentLink(account, studentsRef.current)
         );
         if (managedAccount) {
+          if (managedAccount.requiresPasswordChange === true) {
+            return { status: "activation-required", account: managedAccount };
+          }
           saveRoleForEmail(managedAccount.username, managedAccount.role);
-          setSession({ email: managedAccount.username, remembered: true, createdAt: new Date().toISOString() });
-          return managedAccount;
+          setSession({ email: managedAccount.username, remembered: true, createdAt: new Date().toISOString(), role: managedAccount.role, studentId: managedAccount.studentId });
+          return { status: "authenticated", account: managedAccount };
         }
       }
 
@@ -2679,24 +2836,88 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           (account) => account.email.trim().toLowerCase() === normalizedRegisteredLogin && account.password === password
         );
         if (registeredAccount) {
+          if (registeredAccount.requiresPasswordChange === true) {
+            return { status: "activation-required", account: registeredAccount };
+          }
           saveRoleForEmail(registeredAccount.email, normalizeRegisteredAccountRole(registeredAccount.role));
-          setSession({ email: registeredAccount.email, remembered: true, createdAt: new Date().toISOString() });
-          return registeredAccount;
+          setSession({ email: registeredAccount.email, remembered: true, createdAt: new Date().toISOString(), role: normalizeRegisteredAccountRole(registeredAccount.role) });
+          return { status: "authenticated", account: registeredAccount };
         }
       }
 
-      if (normalizedChildUsername) {
+      if (normalizedChildUsername && !isReservedPrototypeUsername(normalizedChildUsername)) {
         const child = childAccountsRef.current.find((item) => item.username.toLowerCase() === normalizedChildUsername.toLowerCase() && item.password === password);
         if (child) {
           saveRoleForEmail(child.username, "student");
-          setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString() });
-          return child;
+          setSession({ email: child.username, remembered: true, createdAt: new Date().toISOString(), role: "student" });
+          return { status: "authenticated", account: child };
         }
       }
 
       return undefined;
     },
     [saveRoleForEmail, setSession]
+  );
+
+  const activateCreatedAccount = useCallback(
+    (credentials: { username: string; temporaryPassword: string; password: string }): CreatedAccountActivationResult => {
+      const normalizedUsername = normalizeCreatedAccountUsername(credentials.username);
+      const normalizedRegisteredLogin = credentials.username.trim().toLowerCase();
+      const temporaryPassword = credentials.temporaryPassword.trim();
+      const password = credentials.password.trim();
+      const invalidMessage = "Check the assigned username and temporary password.";
+      if (!temporaryPassword || !password) return { status: "error", message: invalidMessage };
+      const validationMessage = validateActivationPassword(password, temporaryPassword);
+      if (validationMessage) return { status: "error", message: validationMessage };
+
+      if (normalizedUsername && !isBuiltInPrototypeIdentity(normalizedUsername)) {
+        const managedAccount = managedAccountsRef.current.find(
+          (account) =>
+            account.username.trim().toLowerCase() === normalizedUsername
+            && account.password === temporaryPassword
+            && account.requiresPasswordChange === true
+            && account.status !== "inactive"
+            && hasValidManagedStudentLink(account, studentsRef.current)
+        );
+        if (managedAccount) {
+          const updatedAccount = { ...managedAccount, password, requiresPasswordChange: false };
+          const updatedAccounts = managedAccountsRef.current.map((account) => (account.id === managedAccount.id ? updatedAccount : account));
+          try {
+            window.localStorage.setItem(stableKeys.managedAccounts, JSON.stringify(updatedAccounts));
+          } catch {
+            return { status: "error", message: "Account activation could not be saved on this device. Check storage access and try again." };
+          }
+          updateManagedAccountsState(updatedAccounts);
+          saveRoleForEmail(updatedAccount.username, updatedAccount.role);
+          setSession({ email: updatedAccount.username, remembered: true, createdAt: new Date().toISOString(), role: updatedAccount.role, studentId: updatedAccount.studentId });
+          return { status: "ok", username: updatedAccount.username, account: updatedAccount };
+        }
+      }
+
+      if (normalizedRegisteredLogin && !isBuiltInPrototypeIdentity(normalizedRegisteredLogin)) {
+        const registeredAccount = accountsRef.current.find(
+          (account) => account.email.trim().toLowerCase() === normalizedRegisteredLogin
+            && account.password === temporaryPassword
+            && account.requiresPasswordChange === true
+        );
+        if (registeredAccount) {
+          const updatedAccount = { ...registeredAccount, password, requiresPasswordChange: false };
+          const updatedAccounts = accountsRef.current.map((account) => (account.email.trim().toLowerCase() === normalizedRegisteredLogin ? updatedAccount : account));
+          try {
+            window.localStorage.setItem(stableKeys.accounts, JSON.stringify(updatedAccounts));
+          } catch {
+            return { status: "error", message: "Account activation could not be saved on this device. Check storage access and try again." };
+          }
+          updateAccountsState(updatedAccounts);
+          saveRoleForEmail(updatedAccount.email, normalizeRegisteredAccountRole(updatedAccount.role));
+          setSession({ email: updatedAccount.email, remembered: true, createdAt: new Date().toISOString(), role: normalizeRegisteredAccountRole(updatedAccount.role) });
+          return { status: "ok", username: updatedAccount.email, account: updatedAccount };
+        }
+      }
+
+      return { status: "error", message: invalidMessage };
+    },
+    [saveRoleForEmail, setSession, updateAccountsState, updateManagedAccountsState]
   );
 
   const childUsernameExists = useCallback(
@@ -2736,6 +2957,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         displayName,
         username,
         password,
+        requiresPasswordChange: true,
         role,
         status: account.status === "inactive" ? "inactive" : "active",
         ...(account.email?.trim() ? { email: account.email.trim().toLowerCase() } : {}),
@@ -2771,6 +2993,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const createdAccount: AccountRecord = {
         email: username,
         password,
+        requiresPasswordChange: true,
         role: "guardian",
         displayName,
         ...(account.email?.trim() ? { contactEmail: account.email.trim().toLowerCase() } : {}),
@@ -2851,18 +3074,26 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     (student: StudentInput) => {
       const normalizedStudent = normalizeStudentInput(student);
       if (!normalizedStudent) return undefined;
-      const matchingStudent = studentsRef.current.find((item) => studentEnrollmentKey(item) === studentEnrollmentKey(normalizedStudent));
-      if (matchingStudent) return matchingStudent;
+      const explicitStudentId = student.studentId?.trim();
+      if (explicitStudentId) {
+        const existingById = studentsRef.current.find((item) => item.id === explicitStudentId);
+        if (existingById) {
+          return studentEnrollmentKey(existingById) === studentEnrollmentKey(normalizedStudent) ? existingById : undefined;
+        }
+      } else {
+        const matchingStudent = studentsRef.current.find((item) => studentEnrollmentKey(item) === studentEnrollmentKey(normalizedStudent));
+        if (matchingStudent) return matchingStudent;
+      }
       const createdStudent: StudentRecord = {
         ...normalizedStudent,
-        id: student.studentId?.trim() || createPrototypeId("student"),
+        id: explicitStudentId || createPrototypeId("student"),
         classesAttended: 0,
         missedClassCount: 0
       };
       const nextStudents = [createdStudent, ...studentsRef.current];
       studentsRef.current = nextStudents;
       setStudents(nextStudents);
-      if (isCurrentStudentEnrollment(createdStudent)) {
+      if (isCurrentStudentEnrollment(createdStudent) && createdStudent.phone.trim()) {
         appendUniqueMessageLogs([
           makeMessageLog({
             kind: "welcome",
@@ -2875,6 +3106,19 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       return createdStudent;
     },
     [appendUniqueMessageLogs, setStudents]
+  );
+
+  const syncOperationsStudent = useCallback(
+    (student: StudentRecord) => {
+      const studentId = student.id.trim();
+      if (!studentId) return undefined;
+      const syncedStudent = { ...student, id: studentId };
+      const nextStudents = [syncedStudent, ...studentsRef.current.filter((item) => item.id !== studentId)];
+      studentsRef.current = nextStudents;
+      setStudents(nextStudents);
+      return syncedStudent;
+    },
+    [setStudents]
   );
 
   const updateOperationsStudent = useCallback(
@@ -2900,6 +3144,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         setManagedAccounts((current) =>
           current.map((account) => (account.role === "student" && account.studentId === studentId ? { ...account, ...managedStudentAccountDetails(updatedStudent), status: "inactive" } : account))
         );
+        markDirectMessagesLocallyMutated();
         setDirectMessages((current) => current.filter((message) => !isDirectMessageLinkedToStudent(message, studentId)));
       } else {
         const shouldReactivateLinkedStudentLogin = !wasCurrentEnrollment;
@@ -2911,11 +3156,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           )
         );
         setMessageLogs((current) => current.map((message) => retargetQueuedMessageForStudent(message, existing, updatedStudent)));
+        markDirectMessagesLocallyMutated();
         setDirectMessages((current) => current.map((message) => retargetDirectMessageForStudent(message, updatedStudent)));
       }
       return updatedStudent;
     },
-    [setCheckIns, setDirectMessages, setManagedAccounts, setMessageLogs, setStudents, updateScheduledClassesState]
+    [markDirectMessagesLocallyMutated, setCheckIns, setDirectMessages, setManagedAccounts, setMessageLogs, setStudents, updateScheduledClassesState]
   );
 
   const deleteOperationsStudent = useCallback(
@@ -2932,13 +3178,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       updateManagedAccountsState((current) => current.map((account) => (account.studentId === studentId ? { ...account, status: "inactive", studentId: undefined } : account)));
       const nextDirectMessages = directMessagesRef.current.filter((message) => !isDirectMessageLinkedToStudent(message, studentId));
       directMessagesRef.current = nextDirectMessages;
+      markDirectMessagesLocallyMutated();
       setDirectMessages(nextDirectMessages);
       const nextMessageLogs = messageLogsRef.current.filter((item) => !isMessageLogLinkedToStudent(item, existing));
       messageLogsRef.current = nextMessageLogs;
       setMessageLogs(nextMessageLogs);
       return existing;
     },
-    [setCheckIns, setDirectMessages, setMessageLogs, setStudents, updateManagedAccountsState, updateScheduledClassesState]
+    [markDirectMessagesLocallyMutated, setCheckIns, setDirectMessages, setMessageLogs, setStudents, updateManagedAccountsState, updateScheduledClassesState]
   );
 
   const cleanScheduledClass = useCallback((scheduledClass: ScheduledClassInput) => {
@@ -3366,6 +3613,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       textAutomationRunsRef.current = restoredTextAutomationRuns;
       setTextAutomationRuns(restoredTextAutomationRuns);
       directMessagesRef.current = restoredDirectMessages;
+      markDirectMessagesLocallyMutated();
       setDirectMessages(restoredDirectMessages);
       updateStudioEventsState(snapshot.data.studioEvents as StudioEvent[]);
       updateMerchandiseItemsState(snapshot.data.merchandiseItems as MerchandiseItem[]);
@@ -3396,6 +3644,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     [
       childAccounts,
       accounts,
+      markDirectMessagesLocallyMutated,
       managedAccounts,
       session,
       setAccountRoles,
@@ -4173,11 +4422,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       };
       const nextDirectMessages = [...directMessagesRef.current, createdMessage];
       directMessagesRef.current = nextDirectMessages;
+      markDirectMessagesLocallyMutated();
       setDirectMessages(nextDirectMessages);
       if (supabaseMessagesRemoteBacked) void persistSupabaseDirectMessages([createdMessage]);
       return { imported: 1, optedOut: 0, optedIn: 0, ignored: 0 };
     },
-    [recordSmsOptOut, setDirectMessages, supabaseMessagesRemoteBacked]
+    [markDirectMessagesLocallyMutated, recordSmsOptOut, setDirectMessages, supabaseMessagesRemoteBacked]
   );
 
   const sendDirectMessage = useCallback(
@@ -4202,11 +4452,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       if (existingMessage) return existingMessage;
       const nextDirectMessages = [...directMessagesRef.current, createdMessage];
       directMessagesRef.current = nextDirectMessages;
+      markDirectMessagesLocallyMutated();
       setDirectMessages(nextDirectMessages);
       if (supabaseMessagesRemoteBacked) void persistSupabaseDirectMessages([createdMessage]);
       return createdMessage;
     },
-    [setDirectMessages, supabaseMessagesRemoteBacked]
+    [markDirectMessagesLocallyMutated, setDirectMessages, supabaseMessagesRemoteBacked]
   );
 
   const value: AppState = {
@@ -4224,6 +4475,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     managedAccounts,
     currentManagedAccount,
     managerAccountAccess,
+    studentAccessVerification,
+    studentAccessVerificationRequired: Boolean(supabaseStudentSession),
+    retryStudentAccessVerification,
     childAccounts,
     guardianChildren,
     currentChildAccount,
@@ -4262,6 +4516,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     login,
     loginRegisteredAccount,
     loginCreatedAccount,
+    activateCreatedAccount,
     loginChildAccount,
     loginChildCredentials,
     childUsernameExists,
@@ -4275,6 +4530,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     addChildAccount,
     updateChildAccount,
     addOperationsStudent,
+    syncOperationsStudent,
     updateOperationsStudent,
     deleteOperationsStudent,
     addStudioClass,

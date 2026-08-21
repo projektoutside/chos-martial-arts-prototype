@@ -1753,6 +1753,91 @@ function StudentCreationDoubleCallHarness() {
   );
 }
 
+function HostedStaffAccessProbe() {
+  const { accountRole, managerAccountAccess } = useAppState();
+  return <p data-testid="hosted-staff-access-probe">{accountRole}:{managerAccountAccess.allowedTools.join(",")}</p>;
+}
+
+function InitialHostedStaffLoginProbe() {
+  const { accountRole, login, managerAccountAccess } = useAppState();
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+            accessToken: "initial-hosted-staff-token",
+            expiresAt: Date.now() + 60 * 60 * 1000,
+            userId: "initial-hosted-staff-user",
+            projectRef: "project",
+            authEmail: "initial.hosted@accounts.chosmartialarts.app",
+            profileUsername: "initial.hosted",
+            role: "staff",
+            access: ["dashboard"]
+          }));
+          login("initial.hosted", true, "staff", undefined, ["dashboard"]);
+        }}
+      >
+        Complete hosted sign in
+      </button>
+      <p data-testid="initial-hosted-staff-access-probe">{accountRole ?? "unknown"}:{managerAccountAccess.allowedTools.join(",")}</p>
+    </div>
+  );
+}
+
+function renderHostedStudentApp(path: string, studentId: string, students: Record<string, unknown>[]) {
+  window.localStorage.setItem("chos.operations.students.v1", JSON.stringify(students));
+  window.localStorage.setItem("chos.managedAccounts.v1", JSON.stringify([{
+    id: "hosted-student-account",
+    displayName: "Hosted Student",
+    username: "hosted.student",
+    password: "unused",
+    role: "student",
+    status: "active",
+    access: [],
+    studentId: "student-wrong",
+    createdAt: "2026-07-19T00:00:00.000Z"
+  }]));
+  seedActiveSession({
+    email: "hosted.student",
+    remembered: true,
+    createdAt: "2026-07-19T00:00:00.000Z",
+    studentId
+  } as AccountSession);
+  window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "hosted.student", role: "student" }]));
+
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <AppStateProvider>
+        <App />
+      </AppStateProvider>
+    </MemoryRouter>
+  );
+}
+
+function ExplicitStudentIdCreationHarness() {
+  const { addOperationsStudent, students } = useAppState();
+  const [result, setResult] = useState("none");
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          const dotted = addOperationsStudent({ studentId: "student-alex-dot", fullName: "Alex Lee", studentEmail: "", guardianPhone: "", beltRank: "White", allowEmptyContact: true });
+          const dashed = addOperationsStudent({ studentId: "student-alex-dash", fullName: "Alex Lee", studentEmail: "", guardianPhone: "", beltRank: "White", allowEmptyContact: true });
+          const conflicting = addOperationsStudent({ studentId: "student-alex-dot", fullName: "Different Student", studentEmail: "", guardianPhone: "", beltRank: "White", allowEmptyContact: true });
+          setResult(`${dotted?.id ?? "none"},${dashed?.id ?? "none"},${conflicting?.id ?? "none"}`);
+        }}
+      >
+        Create explicitly linked students
+      </button>
+      <p>Harness explicit student ids: {result}</p>
+      <p>Harness explicit student count: {students.length}</p>
+    </div>
+  );
+}
+
 function ManagedStudentAccountCreationHarness({ studentId }: { studentId: string }) {
   const state = useAppState() as unknown as {
     createManagedAccount?: (account: {
@@ -2470,6 +2555,49 @@ function ChildUsernameCollisionHarness() {
   );
 }
 
+function ActivationRequiredManagedAccountHarness() {
+  const { activateCreatedAccount, loginCreatedAccount, session } = useAppState();
+  const [result, setResult] = useState("none");
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          const loginResult = loginCreatedAccount({ username: "jordan.staff", password: "TemporaryPass123!" });
+          setResult(loginResult && "status" in loginResult ? loginResult.status : loginResult ? "legacy-authenticated" : "missing");
+        }}
+      >
+        Check activation-required login
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const activationResult = activateCreatedAccount({
+            username: "jordan.staff",
+            temporaryPassword: "TemporaryPass123!",
+            password: "PermanentPass123!"
+          });
+          setResult(activationResult.status);
+        }}
+      >
+        Complete local account activation
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const loginResult = loginCreatedAccount({ username: "jordan.staff", password: "PermanentPass123!" });
+          setResult(loginResult?.status ?? "missing");
+        }}
+      >
+        Sign in with permanent password
+      </button>
+      <p>Harness activation login result: {result}</p>
+      <p>Harness activation session email: {session?.email ?? "none"}</p>
+    </div>
+  );
+}
+
 function ChildLoginOwnershipHarness({ childId }: { childId: string }) {
   const { loginChildAccount, session } = useAppState();
 
@@ -2533,6 +2661,41 @@ function ImmediateChildCredentialLoginHarness() {
       >
         Create and sign in child credentials
       </button>
+      <p>Harness session email: {session?.email ?? "none"}</p>
+    </div>
+  );
+}
+
+type ReservedChildIdentityMode = "credentials" | "created" | "activation" | "handoff";
+
+function ReservedChildIdentityHarness({ mode }: { mode: ReservedChildIdentityMode }) {
+  const { activateCreatedAccount, loginChildAccount, loginChildCredentials, loginCreatedAccount, session } = useAppState();
+  const [result, setResult] = useState("none");
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          if (mode === "credentials") {
+            setResult(loginChildCredentials({ username: "Manager1", password: "Dragon123" }) ? "signed-in" : "blocked");
+            return;
+          }
+          if (mode === "created") {
+            setResult(loginCreatedAccount({ username: "Manager1", password: "Dragon123" }) ? "signed-in" : "blocked");
+            return;
+          }
+          if (mode === "activation") {
+            setResult(activateCreatedAccount({ username: "Manager1", temporaryPassword: "Dragon123", password: "NewDragon123!" }).status);
+            return;
+          }
+          loginChildAccount("reserved-manager-child");
+          setResult("attempted");
+        }}
+      >
+        Check reserved child identity
+      </button>
+      <p>Harness reserved result: {result}</p>
       <p>Harness session email: {session?.email ?? "none"}</p>
     </div>
   );
@@ -2668,6 +2831,33 @@ describe("login landing", () => {
     expect(screen.queryByRole("dialog", { name: "Login failed" })).not.toBeInTheDocument();
   });
 
+  it("traps keyboard focus inside the Login failed popup", () => {
+    renderLoggedOutApp("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Login failed" });
+    const tryAgain = within(dialog).getByRole("button", { name: "Try Again" });
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(tryAgain).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(tryAgain).toHaveFocus();
+  });
+
+  it("restores focus after the Login failed popup closes", () => {
+    renderLoggedOutApp("/");
+    const signIn = screen.getByRole("button", { name: "Sign In" });
+    signIn.focus();
+    fireEvent.click(signIn);
+
+    const dialog = screen.getByRole("dialog", { name: "Login failed" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Try Again" }));
+
+    expect(signIn).toHaveFocus();
+  });
+
   it("shows the current testing update after the prototype manager signs in", async () => {
     const { container } = renderLoggedOutApp("/");
 
@@ -2680,8 +2870,8 @@ describe("login landing", () => {
     const dialog = await screen.findByRole("dialog", { name: "What's New" });
     expect(dialog).toHaveClass("testing-update-modal");
     expect(within(dialog).getByRole("heading", { name: "What's New" })).toBeInTheDocument();
-    expect(within(dialog).getByText("Version 0.1.6")).toBeVisible();
-    expect(within(dialog).getByRole("heading", { name: "A new Cho's app icon" })).toBeInTheDocument();
+    expect(within(dialog).getByText("Version 0.1.6-testing")).toBeVisible();
+    expect(within(dialog).getByRole("heading", { name: "App updates are always easy to find" })).toBeInTheDocument();
     const gotItButton = within(dialog).getByRole("button", { name: "Got it" });
     expect(gotItButton).toBeVisible();
     expect(gotItButton).toHaveClass("testing-update-action");
@@ -2836,7 +3026,7 @@ describe("login landing", () => {
         "https://zfuwbbepsnmmlpgfkmhz.supabase.co/auth/v1/token?grant_type=password",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ email: "manager123@accounts.chosmartialarts.app", password: prototypeManagerLogin.password })
+          body: JSON.stringify({ email: "manager1@accounts.chosmartialarts.app", password: prototypeManagerLogin.password })
         })
       );
       expect(await screen.findByRole("dialog", { name: "Login failed" })).toBeInTheDocument();
@@ -2875,24 +3065,187 @@ describe("login landing", () => {
     expect(window.localStorage.getItem("chos.accountRoles.v1")).toBeNull();
   });
 
-  it("keeps the public login limited to credential sign-in", () => {
+  it("offers a dedicated new-account access flow without reopening public self-registration", () => {
     renderLoggedOutApp("/");
 
     expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create Account" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Access New Account" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Access New Account" }));
+    expect(screen.getByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Account name")).toHaveAttribute("autocomplete", "username");
+    expect(screen.getByLabelText("Account name")).toHaveFocus();
+    expect(screen.getByLabelText("Temporary password")).toHaveAttribute("autocomplete", "current-password");
+    expect(screen.queryByText(/public sign.?up/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign in as Guest" })).not.toBeInTheDocument();
   });
 
-  it("explains that a Manager, Staff member, or Developer creates new accounts", () => {
+  it("activates a hosted student account and preserves its authoritative student id", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/auth/v1/token")) {
+        return new Response(JSON.stringify({
+          access_token: "temporary-account-token",
+          expires_in: 3600,
+          user: {
+            id: "new-student-user-id",
+            email: "jordan.student@accounts.chosmartialarts.app",
+            app_metadata: { requires_password_change: true }
+          }
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.includes("/rest/v1/profiles")) {
+        return new Response(JSON.stringify([{
+          id: "new-student-user-id",
+          username: "jordan.student",
+          contact_email: "jordan@example.com",
+          display_name: "Jordan Lee",
+          role: "student",
+          status: "active",
+          phone: null,
+          title: null,
+          notes: null,
+          access: [],
+          student_id: "student-jordan-authoritative",
+          created_by: "manager-user-id",
+          created_at: "2026-07-16T00:00:00.000Z"
+        }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.includes("/functions/v1/activate-account")) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.includes("/rest/v1/rpc/get_my_student_record")) {
+        return new Response(JSON.stringify({
+          id: "student-jordan-authoritative",
+          firstName: "Jordan",
+          lastName: "Lee",
+          email: "",
+          phone: "",
+          status: "Active",
+          beltRank: "White",
+          classesAttended: 0,
+          missedClassCount: 0,
+          joinedAt: "2026-07-16"
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    try {
+      renderLoggedOutApp("/");
+      fireEvent.click(screen.getByRole("button", { name: "Access New Account" }));
+      fireEvent.change(screen.getByLabelText("Account name"), { target: { value: "jordan.student" } });
+      fireEvent.change(screen.getByLabelText("Temporary password"), { target: { value: "TemporaryPass123!" } });
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+      expect(await screen.findByText("Create your personal password")).toBeInTheDocument();
+      const passwordManagerUsername = screen.getByLabelText("Account name for password manager");
+      expect(passwordManagerUsername).toHaveAttribute("autocomplete", "username");
+      expect(passwordManagerUsername).toHaveAttribute("readonly");
+      expect(passwordManagerUsername).toHaveValue("jordan.student");
+      expect(passwordManagerUsername.closest("form")).toBe(screen.getByLabelText("New account password").closest("form"));
+      fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "PermanentPass123!" } });
+      fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "PermanentPass123!" } });
+      fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
+
+      expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
+      expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toEqual(expect.objectContaining({
+        email: "jordan.student",
+        role: "student",
+        studentId: "student-jordan-authoritative"
+      }));
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/activate-account",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ newPassword: "PermanentPass123!", temporaryPassword: "TemporaryPass123!" })
+        })
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("routes a hosted temporary-password sign-in into the required password change", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).includes("/auth/v1/token")) {
+        return new Response(JSON.stringify({ access_token: "temporary-account-token", expires_in: 3600, user: { id: "new-staff-user-id", email: "jordan.staff@accounts.chosmartialarts.app", app_metadata: { requires_password_change: true } } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify([{ id: "new-staff-user-id", username: "jordan.staff", contact_email: null, display_name: "Jordan Lee", role: "staff", status: "active", phone: null, title: null, notes: null, access: ["dashboard"], student_id: null, created_by: null, created_at: "2026-07-16T00:00:00.000Z" }]), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+
+    try {
+      renderLoggedOutApp("/");
+      fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "jordan.staff" } });
+      fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "TemporaryPass123!" } });
+      fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+      expect(await screen.findByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+      expect(screen.getByText("Create your personal password")).toBeInTheDocument();
+      expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("lets a testing-app user replace an administrator-issued temporary password before sign-in", async () => {
+    window.localStorage.setItem("chos.managedAccounts.v1", JSON.stringify([{
+      id: "pending-local-staff",
+      displayName: "Jordan Lee",
+      username: "jordan.staff",
+      password: "TemporaryPass123!",
+      requiresPasswordChange: true,
+      role: "staff",
+      status: "active",
+      access: ["dashboard"],
+      createdAt: "2026-07-15T00:00:00.000Z"
+    }]));
     renderLoggedOutApp("/");
 
-    fireEvent.click(screen.getByRole("button", { name: "Create Account" }));
+    fireEvent.click(screen.getByRole("button", { name: "Access New Account" }));
+    fireEvent.change(screen.getByLabelText("Account name"), { target: { value: "jordan.staff" } });
+    fireEvent.change(screen.getByLabelText("Temporary password"), { target: { value: "TemporaryPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("Create your personal password")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "NewLocalPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "NewLocalPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
 
-    const dialog = screen.getByRole("dialog", { name: "New account" });
-    expect(within(dialog).getByText("A Manager, Staff member, or Developer must create and activate your account before you can sign in.")).toBeInTheDocument();
-    expect(within(dialog).getByText("They will give you a default username and password for your first sign-in.")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("chos.managedAccounts.v1") ?? "[]")).toContainEqual(expect.objectContaining({
+      username: "jordan.staff",
+      password: "NewLocalPass123!"
+    }));
+  });
+
+  it("does not expose the retired public account creation dialog", () => {
+    renderLoggedOutApp("/");
+    expect(screen.queryByRole("dialog", { name: "New account" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/default username and password/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the password visibility control outside the password label activation area", () => {
+    renderLoggedOutApp("/");
+
+    const passwordInput = screen.getByLabelText("Password");
+    const visibilityButton = screen.getByRole("button", { name: "Show password" });
+
+    expect(visibilityButton.closest("label")).toBeNull();
+    expect(passwordInput).toHaveAttribute("type", "password");
+    fireEvent.click(visibilityButton);
+    expect(passwordInput).toHaveAttribute("type", "text");
+    expect(screen.getByRole("button", { name: "Hide password" })).toBeInTheDocument();
   });
 
   it("signs the gated developer credential into owner mode on Live Chat", async () => {
@@ -2941,6 +3294,19 @@ describe("login landing", () => {
           created_at: "2026-06-09T00:00:00.000Z"
         }]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
+      if (requestUrl.includes("/rest/v1/rpc/get_my_profile_onboarding")) {
+        return new Response(JSON.stringify([{
+          username: "dev123",
+          display_name: "Developer",
+          role: "staff",
+          status: "active",
+          is_owner: true,
+          welcome_seen_at: null
+        }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.includes("/rest/v1/rpc/acknowledge_my_welcome")) {
+        return new Response(JSON.stringify([{ welcome_seen_at: "2026-07-13T20:22:00.000Z" }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
       if (requestUrl.includes("/rest/v1/live_chat_messages")) {
         return new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -2956,6 +3322,9 @@ describe("login landing", () => {
       fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
       expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
+      expect(await screen.findByRole("dialog", { name: "Welcome to Cho's Martial Arts" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Enter Cho's App" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Welcome to Cho's Martial Arts" })).not.toBeInTheDocument());
       expect(fetchMock).toHaveBeenCalledWith(
         "https://zfuwbbepsnmmlpgfkmhz.supabase.co/auth/v1/token?grant_type=password",
         expect.objectContaining({
@@ -3173,6 +3542,21 @@ describe("login landing", () => {
     expect(window.sessionStorage.getItem("chos.session.v1")).toBeNull();
   });
 
+  it("clears a refreshed Dev123 session when staging auth is configured but the Supabase session is missing", () => {
+    vi.stubEnv("VITE_ENABLE_DEVELOPER_ACCOUNT", "true");
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: prototypeDeveloperLogin.email, remembered: true, createdAt: "2026-07-15T00:00:00.000Z" });
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: prototypeDeveloperLogin.email, role: "staff" }]));
+
+    renderLoggedOutApp("/manager");
+
+    expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
+    expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
+    expect(window.sessionStorage.getItem("chos.session.v1")).toBeNull();
+  });
+
   it("clears a refreshed Manager123 session when the stored Supabase session belongs to another account", () => {
     vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
     vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
@@ -3193,6 +3577,28 @@ describe("login landing", () => {
     expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
     expect(window.sessionStorage.getItem("chos.session.v1")).toBeNull();
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toBeNull();
+  });
+
+  it("keeps an invited real-email Supabase session after reload by its authoritative profile username", () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: "jordan.staff", remembered: true, createdAt: "2026-07-15T00:00:00.000Z" });
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "jordan.staff", role: "staff" }]));
+    window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+      accessToken: "invited-staff-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "invited-staff-user-id",
+      projectRef: "zfuwbbepsnmmlpgfkmhz",
+      authEmail: "jordan@example.com",
+      profileUsername: "jordan.staff"
+    }));
+
+    renderLoggedOutApp("/reports");
+
+    expect(screen.queryByTestId("auth-gate")).not.toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("chos.session.v1") ?? "{}")).toMatchObject({ email: "jordan.staff" });
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("invited-staff-access-token");
   });
 
   it("keeps the portrait available on the reduced-motion login screen", () => {
@@ -3949,6 +4355,72 @@ describe("post-login operations app", () => {
     });
   });
 
+  it.each(["credentials", "created", "activation"] as const)("blocks a stored Manager1 child from the %s path", async (mode) => {
+    window.localStorage.setItem("chos.childAccounts.v1", JSON.stringify([{
+      id: "reserved-manager-child",
+      parentEmail: "parent123@chos.prototype",
+      name: "Reserved Manager Child",
+      username: "Manager1",
+      password: "Dragon123",
+      age: "9",
+      beltSlug: "white",
+      createdAt: "2026-07-15T10:00:00.000Z"
+    }]));
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppStateProvider>
+          <ReservedChildIdentityHarness mode={mode} />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Check reserved child identity" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(`Harness reserved result: ${mode === "activation" ? "error" : "blocked"}`)).toBeInTheDocument();
+      expect(screen.getByText("Harness session email: none")).toBeInTheDocument();
+      expect(JSON.parse(window.localStorage.getItem("chos.childAccounts.v1") ?? "[]")).toEqual([
+        expect.objectContaining({ username: "Manager1", password: "Dragon123" })
+      ]);
+    });
+  });
+
+  it("blocks a stored Manager1 child from parent handoff", async () => {
+    const parentEmail = "parent123@chos.prototype";
+    seedActiveSession({ email: parentEmail, remembered: true, createdAt: new Date().toISOString() });
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: parentEmail, role: "guardian" }]));
+    window.localStorage.setItem("chos.accounts.v1", JSON.stringify([{
+      email: parentEmail,
+      password: "ParentPass123!",
+      role: "guardian",
+      createdAt: "2026-07-15T10:00:00.000Z"
+    }]));
+    window.localStorage.setItem("chos.childAccounts.v1", JSON.stringify([{
+      id: "reserved-manager-child",
+      parentEmail,
+      name: "Reserved Manager Child",
+      username: "Manager1",
+      password: "Dragon123",
+      age: "9",
+      beltSlug: "white",
+      createdAt: "2026-07-15T10:00:00.000Z"
+    }]));
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppStateProvider>
+          <ReservedChildIdentityHarness mode="handoff" />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Check reserved child identity" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Harness reserved result: attempted")).toBeInTheDocument();
+      expect(screen.getByText(`Harness session email: ${parentEmail}`)).toBeInTheDocument();
+    });
+  });
+
   it.skip("keeps child account creation idempotent when the same child fires twice before rerender", async () => {
     seedActiveSession({ email: "parent123@chos.prototype", remembered: true, createdAt: "2026-05-10T00:00:00.000Z" });
     window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([{ email: "parent123@chos.prototype", role: "guardian" }]));
@@ -4558,13 +5030,24 @@ describe("post-login operations app", () => {
     expect(messagesTab).toHaveAttribute("aria-selected", "true");
   });
 
-  it("does not expose local-only custom live chat room creation", () => {
+  it("places secure private room creation to the right of Cho's Room and Mentions", () => {
     renderLoggedInApp("/live-chat");
 
     const roomTabs = screen.getByRole("tablist", { name: "Live chat rooms" });
     expect(within(roomTabs).queryByRole("button", { name: "Create Room" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Create chat room" })).not.toBeInTheDocument();
     expect(within(roomTabs).getByRole("tab", { name: "Cho's Room" })).toHaveAttribute("aria-selected", "true");
+    expect(within(roomTabs).getByRole("tab", { name: /Mentions/i })).toBeInTheDocument();
+
+    const createRoomButton = screen.getByRole("button", { name: "Create Room" });
+    expect(createRoomButton).toHaveClass("live-chat-create-room-button--compact");
+    expect(createRoomButton.parentElement).toHaveClass("live-chat-controls");
+    expect(roomTabs.compareDocumentPosition(createRoomButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(createRoomButton);
+    expect(screen.getByRole("dialog", { name: "Create chat room" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Room name" })).toBeRequired();
+    expect(screen.getByRole("radiogroup", { name: "Tab color" })).toBeInTheDocument();
+    expect(screen.getAllByRole("radio")).toHaveLength(8);
+    expect(screen.getByRole("radio", { name: "Purple" })).toBeChecked();
   });
 
   it("does not submit a local preview message when Supabase sign-in is unavailable", () => {
@@ -4666,6 +5149,144 @@ describe("post-login operations app", () => {
     expect(within(screen.getByRole("tablist", { name: "Live chat rooms" })).getByRole("tab", { name: "Cho's Room" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("moves focus to the new-password field after temporary credentials are accepted", async () => {
+    window.localStorage.setItem("chos.managedAccounts.v1", JSON.stringify([{
+      id: "focus-local-staff",
+      displayName: "Focus Staff",
+      username: "focus.staff",
+      password: "TemporaryPass123!",
+      requiresPasswordChange: true,
+      role: "staff",
+      status: "active",
+      access: ["dashboard"],
+      createdAt: "2026-07-19T00:00:00.000Z"
+    }]));
+    renderLoggedOutApp("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "Access New Account" }));
+    fireEvent.change(screen.getByLabelText("Account name"), { target: { value: "focus.staff" } });
+    fireEvent.change(screen.getByLabelText("Temporary password"), { target: { value: "TemporaryPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(await screen.findByLabelText("New account password")).toHaveFocus();
+  });
+
+  it("uses the hosted session student id authoritatively and fails closed when it is unknown", () => {
+    const students = [
+      { id: "student-wrong", firstName: "Wrong", lastName: "Student", ...completeStudentSafetyFields, email: "", phone: "", status: "Active", beltRank: "White", classesAttended: 3, missedClassCount: 0, joinedAt: "2026-01-01" },
+      { id: "student-right", firstName: "Right", lastName: "Student", ...completeStudentSafetyFields, email: "", phone: "", status: "Active", beltRank: "Blue", classesAttended: 20, missedClassCount: 0, joinedAt: "2026-01-01" }
+    ];
+    const linkedView = renderHostedStudentApp("/manager?tool=test", "student-right", students);
+
+    expect(screen.getByLabelText("Student belt progress")).toHaveTextContent("Right Student");
+    expect(screen.getByLabelText("Student belt progress")).not.toHaveTextContent("Wrong Student");
+
+    linkedView.unmount();
+    clearActiveSession();
+    renderHostedStudentApp("/manager?tool=test", "student-missing", students);
+
+    expect(screen.getByLabelText("Student belt progress")).toHaveTextContent("No student record is linked to this account yet.");
+    expect(screen.getByLabelText("Student belt progress")).not.toHaveTextContent("Wrong Student");
+  });
+
+  it("uses the authoritative hosted student id for live chat identity", () => {
+    const students = [
+      { id: "student-wrong", firstName: "Wrong", lastName: "Student", ...completeStudentSafetyFields, email: "wrong@example.test", phone: "", status: "Active", beltRank: "White", classesAttended: 3, missedClassCount: 0, joinedAt: "2026-01-01" },
+      { id: "student-right", firstName: "Right", lastName: "Student", ...completeStudentSafetyFields, email: "right@example.test", phone: "", status: "Active", beltRank: "Blue", classesAttended: 20, missedClassCount: 0, joinedAt: "2026-01-01" }
+    ];
+    renderHostedStudentApp("/live-chat", "student-right", students);
+
+    const roster = screen.getByLabelText("Live chat members");
+    expect(within(roster).getByRole("article", { name: "Right Student, Student" })).toBeInTheDocument();
+    expect(within(roster).queryByRole("article", { name: "Cho's Student, Student" })).not.toBeInTheDocument();
+  });
+
+  it("blocks every hosted route when the persisted session has no known role", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: "unknown.hosted", remembered: true, createdAt: "2026-07-19T00:00:00.000Z" });
+    window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+      accessToken: "unknown-role-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "unknown-role-user",
+      projectRef: "project",
+      authEmail: "unknown.hosted@accounts.chosmartialarts.app",
+      profileUsername: "unknown.hosted"
+    }));
+    globalThis.fetch = vi.fn(async () => new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+
+    render(
+      <MemoryRouter initialEntries={["/manager"]}>
+        <AppStateProvider>
+          <App />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByLabelText("Account access unavailable")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager app launcher")).not.toBeInTheDocument();
+  });
+
+  it("rejects a malformed persisted hosted role instead of opening manager surfaces", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: "unknown.hosted", remembered: true, createdAt: "2026-07-19T00:00:00.000Z", role: "admin" } as unknown as AccountSession);
+    window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+      accessToken: "unknown-role-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "unknown-role-user",
+      projectRef: "project",
+      authEmail: "unknown.hosted@accounts.chosmartialarts.app",
+      profileUsername: "unknown.hosted",
+      role: "admin"
+    }));
+
+    render(<MemoryRouter initialEntries={["/manager"]}><AppStateProvider><App /></AppStateProvider></MemoryRouter>);
+
+    expect(await screen.findByTestId("auth-gate")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Manager app launcher")).not.toBeInTheDocument();
+  });
+
+  it("restores hosted staff access from the authoritative persisted role after refresh", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    seedActiveSession({ email: "hosted.staff", remembered: true, createdAt: "2026-07-19T00:00:00.000Z", role: "staff" });
+    window.localStorage.setItem("chos.supabase.auth.v1", JSON.stringify({
+      accessToken: "hosted-staff-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "hosted-staff-user",
+      projectRef: "project",
+      authEmail: "hosted.staff@accounts.chosmartialarts.app",
+      profileUsername: "hosted.staff",
+      role: "staff",
+      access: ["dashboard"]
+    }));
+    globalThis.fetch = vi.fn(async () => new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+
+    const probeView = render(<AppStateProvider><HostedStaffAccessProbe /></AppStateProvider>);
+    expect(screen.getByTestId("hosted-staff-access-probe")).toHaveTextContent("staff:dashboard");
+    probeView.unmount();
+
+    render(<MemoryRouter initialEntries={["/dashboard"]}><AppStateProvider><App /></AppStateProvider></MemoryRouter>);
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+  });
+
+  it("uses authoritative hosted staff permissions on the initial login render", async () => {
+    vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    globalThis.fetch = vi.fn(async () => new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+
+    render(<AppStateProvider><InitialHostedStaffLoginProbe /></AppStateProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Complete hosted sign in" }));
+
+    expect(await screen.findByTestId("initial-hosted-staff-access-probe")).toHaveTextContent("staff:dashboard");
+    expect(screen.getByTestId("initial-hosted-staff-access-probe")).not.toHaveTextContent("reports");
+  });
+
   it("opens the manager panel from the manager home icon button", () => {
     renderLoggedInApp("/profile");
 
@@ -4675,19 +5296,23 @@ describe("post-login operations app", () => {
     expect(screen.getByRole("heading", { name: "MANAGER PANEL" })).toBeInTheDocument();
   });
 
-  it("lets the manager create a staff account that can log in without Create access", async () => {
+  it("lets the manager create a staff account that activates without Create access", async () => {
     const managerView = renderLoggedInApp("/manager");
 
     fireEvent.click(screen.getByRole("link", { name: "Create" }));
 
     expect(screen.getByRole("heading", { name: "Create Accounts" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Staff" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Create Staff Account" })).toBeDisabled();
+    expect(screen.queryByLabelText("Staff email")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Staff phone")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Jordan Lee" } });
     fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "jordan.staff" } });
     fireEvent.change(screen.getByLabelText("Staff password"), { target: { value: "StaffPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: " StaffPass123! " } });
+    expect(screen.getByRole("button", { name: "Create Staff Account" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "StaffPass123!" } });
-    fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "jordan@chos.prototype" } });
-    fireEvent.change(screen.getByLabelText("Staff phone"), { target: { value: "(262) 555-0111" } });
+    expect(screen.getByRole("button", { name: "Create Staff Account" })).toBeEnabled();
     expect(screen.queryByRole("checkbox", { name: "Create account access" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
 
@@ -4698,6 +5323,7 @@ describe("post-login operations app", () => {
         username: "jordan.staff",
         password: "StaffPass123!",
         role: "staff",
+        requiresPasswordChange: true,
         access: expect.not.arrayContaining(["create"])
       })
     ]));
@@ -4710,6 +5336,10 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "StaffPass123!" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
+    expect(await screen.findByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "PermanentStaffPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "PermanentStaffPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "Profile" }));
     expect(await screen.findByRole("heading", { name: "Staff Profile" })).toBeInTheDocument();
@@ -4718,19 +5348,53 @@ describe("post-login operations app", () => {
     expect(screen.queryByRole("link", { name: "Create" })).not.toBeInTheDocument();
   });
 
-  it("rejects manager-created account passwords that do not meet the staging policy", async () => {
+  it("keeps manager-created account submission disabled until the temporary password meets the staging policy", () => {
     renderLoggedInApp("/manager?tool=create");
 
     fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Taylor Reed" } });
     fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "taylor.staff" } });
     fireEvent.change(screen.getByLabelText("Staff password"), { target: { value: "StaffPass123" } });
     fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "StaffPass123" } });
-    fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "taylor@chos.prototype" } });
-    fireEvent.change(screen.getByLabelText("Staff phone"), { target: { value: "(262) 555-0113" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
-
-    expect(await screen.findByText("Use at least 12 characters with uppercase, lowercase, a number, and a symbol.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create Staff Account" })).toBeDisabled();
     expect(window.localStorage.getItem("chos.managedAccounts.v1")).toBeNull();
+  });
+
+  it("keeps required account fields and disabled-submit guidance available to assistive technology", () => {
+    renderLoggedInApp("/manager?tool=create");
+
+    const expectations = [
+      { tab: "Staff", fields: ["Staff full name", "Staff username", "Staff password", "Confirm staff password"], button: "Create Staff Account", readinessId: "create-staff-readiness" },
+      { tab: "Student", fields: ["Student full name", "Student username", "Student password", "Confirm student password"], button: "Create Student Account", readinessId: "create-student-readiness" },
+      { tab: "Parent", fields: ["Parent full name", "Parent username", "Parent password", "Confirm parent password"], button: "Create Parent Account", readinessId: "create-parent-readiness" }
+    ];
+
+    for (const expectation of expectations) {
+      fireEvent.click(screen.getByRole("button", { name: expectation.tab }));
+      for (const label of expectation.fields) {
+        const field = screen.getByLabelText(label);
+        expect(field).toBeRequired();
+        expect(field).toHaveAttribute("aria-required", "true");
+        expect(field).toHaveAttribute("aria-describedby", expectation.readinessId);
+      }
+      expect(screen.getByRole("button", { name: expectation.button })).toHaveAttribute("aria-describedby", expectation.readinessId);
+      expect(document.getElementById(expectation.readinessId)).toHaveTextContent("Required: full name; username with at least 3 letters, numbers, dots, underscores, or hyphens; temporary password with at least 12 characters, uppercase, lowercase, a number, a symbol, and no leading or trailing spaces; exact matching confirmation. The Create Account button becomes enabled and green when these field checks pass. Username availability and hosted authorization are confirmed after submission.");
+    }
+  });
+
+  it("does not persist a student when its local username is reserved", () => {
+    window.localStorage.setItem("chos.operations.students.v1", JSON.stringify([]));
+    renderLoggedInApp("/manager?tool=create");
+
+    fireEvent.click(screen.getByRole("button", { name: "Student" }));
+    fireEvent.change(screen.getByLabelText("Student full name"), { target: { value: "Reserved Student" } });
+    fireEvent.change(screen.getByLabelText("Student username"), { target: { value: "manager1" } });
+    fireEvent.change(screen.getByLabelText("Student password"), { target: { value: "StudentPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm student password"), { target: { value: "StudentPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Student Account" }));
+
+    expect(screen.getByText("Enter a unique student username linked to an active student.")).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("chos.operations.students.v1") ?? "[]")).toEqual([]);
+    expect(screen.queryByRole("article", { name: "Reserved Student student account" })).not.toBeInTheDocument();
   });
 
   it("lets managers deactivate and reactivate custom logins", async () => {
@@ -4793,18 +5457,18 @@ describe("post-login operations app", () => {
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
   });
 
-  it("lets the manager create a student account that can log in", async () => {
+  it("lets the manager create a student account that activates and logs in", async () => {
     const managerView = renderLoggedInApp("/manager?tool=create");
 
     fireEvent.click(screen.getByRole("button", { name: "Student" }));
+    expect(screen.getByRole("button", { name: "Create Student Account" })).toBeDisabled();
+    expect(screen.queryByLabelText("Student email")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Parent/guardian phone")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Student full name"), { target: { value: "Avery Kim" } });
     fireEvent.change(screen.getByLabelText("Student username"), { target: { value: "avery.student" } });
     fireEvent.change(screen.getByLabelText("Student password"), { target: { value: "StudentPass123!" } });
     fireEvent.change(screen.getByLabelText("Confirm student password"), { target: { value: "StudentPass123!" } });
-    fireEvent.change(screen.getByLabelText("Student email"), { target: { value: "avery@chos.prototype" } });
-    fireEvent.change(screen.getByLabelText("Parent/guardian phone"), { target: { value: "(262) 555-0122" } });
-    fireEvent.change(screen.getByLabelText("Program"), { target: { value: "Youth Taekwondo" } });
-    fireEvent.change(screen.getByLabelText("Belt rank"), { target: { value: "Yellow" } });
+    expect(screen.getByRole("button", { name: "Create Student Account" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Create Student Account" }));
 
     expect(screen.getByRole("article", { name: "Avery Kim student account" })).toHaveTextContent("Student");
@@ -4813,12 +5477,14 @@ describe("post-login operations app", () => {
         displayName: "Avery Kim",
         username: "avery.student",
         password: "StudentPass123!",
-        role: "student"
+        role: "student",
+        requiresPasswordChange: true
       })
     ]));
     expect(JSON.parse(window.localStorage.getItem("chos.operations.students.v1") ?? "[]")).toEqual(expect.arrayContaining([
-      expect.objectContaining({ firstName: "Avery", lastName: "Kim", email: "avery@chos.prototype", beltRank: "Yellow" })
+      expect.objectContaining({ firstName: "Avery", lastName: "Kim", email: "", phone: "", beltRank: "White" })
     ]));
+    expect(JSON.parse(window.localStorage.getItem("chos.messageLogs.v1") ?? "[]")).toEqual([]);
 
     managerView.unmount();
     clearActiveSession();
@@ -4828,6 +5494,10 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "StudentPass123!" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
+    expect(await screen.findByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "PermanentStudentPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "PermanentStudentPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
   });
 
@@ -5060,15 +5730,88 @@ describe("post-login operations app", () => {
     });
   });
 
-  it("lets the manager create a parent account that lands on Cho's Room", async () => {
+  it("does not create a local app session while a managed account still requires activation", async () => {
+    window.localStorage.setItem("chos.managedAccounts.v1", JSON.stringify([{
+      id: "managed-jordan-activation-helper",
+      displayName: "Jordan Lee",
+      username: "jordan.staff",
+      password: "TemporaryPass123!",
+      requiresPasswordChange: true,
+      role: "staff",
+      status: "active",
+      access: ["dashboard"],
+      createdAt: "2026-07-16T10:00:00.000Z"
+    }]));
+    window.localStorage.setItem("chos.childAccounts.v1", JSON.stringify([]));
+    window.localStorage.setItem("chos.accountRoles.v1", JSON.stringify([]));
+
+    render(
+      <MemoryRouter initialEntries={["/manager"]}>
+        <AppStateProvider>
+          <ActivationRequiredManagedAccountHarness />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Check activation-required login" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Harness activation login result: activation-required")).toBeInTheDocument();
+      expect(screen.getByText("Harness activation session email: none")).toBeInTheDocument();
+      expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
+    });
+  });
+
+  it("atomically replaces a managed temporary password and starts the local app session", async () => {
+    window.localStorage.setItem("chos.managedAccounts.v1", JSON.stringify([{
+      id: "managed-jordan-activation-helper",
+      displayName: "Jordan Lee",
+      username: "jordan.staff",
+      password: "TemporaryPass123!",
+      requiresPasswordChange: true,
+      role: "staff",
+      status: "active",
+      access: ["dashboard"],
+      createdAt: "2026-07-16T10:00:00.000Z"
+    }]));
+
+    render(
+      <MemoryRouter initialEntries={["/manager"]}>
+        <AppStateProvider>
+          <ActivationRequiredManagedAccountHarness />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Complete local account activation" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Harness activation login result: ok")).toBeInTheDocument();
+      expect(screen.getByText("Harness activation session email: jordan.staff")).toBeInTheDocument();
+    });
+    expect(JSON.parse(window.localStorage.getItem("chos.managedAccounts.v1") ?? "[]")).toContainEqual(expect.objectContaining({
+      username: "jordan.staff",
+      password: "PermanentPass123!",
+      requiresPasswordChange: false
+    }));
+
+    clearActiveSession();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in with permanent password" }));
+    expect(await screen.findByText("Harness activation login result: authenticated")).toBeInTheDocument();
+  });
+
+  it("requires a manager-created parent to replace the temporary password before entering Cho's Room", async () => {
     const managerView = renderLoggedInApp("/manager?tool=create");
 
     fireEvent.click(screen.getByRole("button", { name: "Parent" }));
+    expect(screen.getByRole("button", { name: "Create Parent Account" })).toBeDisabled();
+    expect(screen.queryByLabelText("Parent email")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Parent phone")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Parent full name"), { target: { value: "Mina Miles" } });
     fireEvent.change(screen.getByLabelText("Parent username"), { target: { value: "mina.parent" } });
     fireEvent.change(screen.getByLabelText("Parent password"), { target: { value: "ParentPass123!" } });
     fireEvent.change(screen.getByLabelText("Confirm parent password"), { target: { value: "ParentPass123!" } });
-    fireEvent.change(screen.getByLabelText("Parent email"), { target: { value: "mina@chos.prototype" } });
+    expect(screen.getByRole("button", { name: "Create Parent Account" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Create Parent Account" }));
 
     expect(screen.getByRole("article", { name: "Mina Miles parent account" })).toHaveTextContent("Guardian");
@@ -5076,7 +5819,8 @@ describe("post-login operations app", () => {
       expect.objectContaining({
         email: "mina.parent",
         password: "ParentPass123!",
-        role: "guardian"
+        role: "guardian",
+        requiresPasswordChange: true
       })
     ]));
 
@@ -5088,10 +5832,14 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "ParentPass123!" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
+    expect(await screen.findByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "PermanentParentPass123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "PermanentParentPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
   });
 
-  it("lets the gated developer create local staff accounts", async () => {
+  it("lets the gated developer create local staff accounts that require activation", async () => {
     const developerView = renderLoggedInDeveloperApp("/manager?tool=create");
 
     expect(screen.getByLabelText("Developer app launcher")).toBeInTheDocument();
@@ -5099,7 +5847,6 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "dev.staff" } });
     fireEvent.change(screen.getByLabelText("Staff password"), { target: { value: "StaffPass123!" } });
     fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "StaffPass123!" } });
-    fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "devstaff@chos.prototype" } });
     fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
 
     expect(screen.getByRole("article", { name: "Dev Created Staff staff account" })).toBeInTheDocument();
@@ -5112,10 +5859,14 @@ describe("post-login operations app", () => {
     fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "StaffPass123!" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
+    expect(await screen.findByRole("dialog", { name: "Access new account" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("New account password"), { target: { value: "PermanentDevStaff123!" } });
+    fireEvent.change(screen.getByLabelText("Confirm account password"), { target: { value: "PermanentDevStaff123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Activate Account" }));
     expect(await screen.findByLabelText("Live chat room page")).toBeInTheDocument();
   });
 
-  it("requires a Supabase owner session before creating live accounts and does not write local accounts", async () => {
+  it("requires a Supabase owner session before opening live account tools and does not write local accounts", () => {
     vi.stubEnv("VITE_ENABLE_SUPABASE_IN_TESTS", "true");
     vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
     vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
@@ -5126,13 +5877,7 @@ describe("post-login operations app", () => {
     try {
       renderDeveloperApp("/manager?tool=create");
 
-      fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Remote Staff" } });
-      fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "remote.staff" } });
-      fireEvent.change(screen.getByLabelText("Staff password"), { target: { value: "RemotePass123!" } });
-      fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "RemotePass123!" } });
-      fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
-
-      expect(await screen.findByText("Sign into Supabase Manager123 before creating live accounts.")).toBeInTheDocument();
+      expect(screen.getByTestId("auth-gate")).toBeInTheDocument();
       expect(fetchMock).not.toHaveBeenCalled();
       expect(window.localStorage.getItem("chos.managedAccounts.v1")).toBeNull();
       expect(window.localStorage.getItem("chos.accounts.v1")).toBeNull();
@@ -5155,12 +5900,37 @@ describe("post-login operations app", () => {
     }));
     const originalFetch = globalThis.fetch;
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      const requestUrl = String(url);
-      if (requestUrl.includes("/rest/v1/direct_messages") || requestUrl.includes("/rest/v1/message_logs")) {
+      const requestUrl = new URL(String(url));
+      if (requestUrl.pathname === "/rest/v1/app_state_items") {
+        return new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.pathname === "/rest/v1/rpc/mutate_student_roster") {
+        return new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (requestUrl.pathname === "/rest/v1/direct_messages" || requestUrl.pathname === "/rest/v1/message_logs") {
         return new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       const body = JSON.parse(String(init?.body ?? "{}"));
+      const nameParts = String(body.displayName ?? "").split(/\s+/).filter(Boolean);
       return new Response(JSON.stringify({
+        email: `${body.username}@accounts.chosmartialarts.app`,
+        username: body.username,
+        activationRequired: true,
+        student: body.role === "student" ? {
+          id: body.studentId,
+          firstName: nameParts[0],
+          lastName: nameParts.slice(1).join(" "),
+          email: "",
+          phone: "",
+          enrollmentDate: "2026-07-20",
+          joinedAt: "2026-07-20",
+          profileUpdatedAt: "2026-07-20",
+          program: body.program ?? "Youth Taekwondo",
+          status: "Active",
+          beltRank: body.beltRank ?? "White",
+          classesAttended: 0,
+          missedClassCount: 0
+        } : null,
         account: {
           id: `${body.role}-remote-id`,
           username: body.username,
@@ -5175,45 +5945,58 @@ describe("post-login operations app", () => {
       renderLoggedInApp("/manager?tool=create");
       const createAccountCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/functions/v1/manager-create-account"));
 
-      expect(screen.getByText("Create live Supabase sign-in profiles for staff, students, and parents. A Manager123 Supabase session is required before a live account is created.")).toBeInTheDocument();
-      expect(screen.getByText("Choose the role, set the username and password, then create the account in Supabase for the family or staff member.")).toBeInTheDocument();
+      expect(screen.getByText("Create live Supabase sign-in profiles for staff, students, and parents. An authorized Developer or Manager Supabase session is required before a live account is created.")).toBeInTheDocument();
+      expect(screen.getByText("Set a temporary password, then give the user their account name and temporary password. They will replace it from Access New Account.")).toBeInTheDocument();
       expect(screen.queryByText(/Create local sign-in credentials/)).not.toBeInTheDocument();
 
       fireEvent.change(screen.getByLabelText("Staff full name"), { target: { value: "Remote Staff" } });
       fireEvent.change(screen.getByLabelText("Staff username"), { target: { value: "remote.staff" } });
-      fireEvent.change(screen.getByLabelText("Staff password"), { target: { value: "RemotePass123!" } });
-      fireEvent.change(screen.getByLabelText("Confirm staff password"), { target: { value: "RemotePass123!" } });
-      fireEvent.change(screen.getByLabelText("Staff email"), { target: { value: "remote.staff@example.test" } });
+      fireEvent.change(screen.getByLabelText("Staff temporary password"), { target: { value: "RemoteStaffPass123!" } });
+      fireEvent.change(screen.getByLabelText("Confirm staff temporary password"), { target: { value: "RemoteStaffPass123!" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Staff Account" }));
 
       await waitFor(() => expect(createAccountCalls()).toHaveLength(1));
 
       fireEvent.click(screen.getByRole("button", { name: "Student" }));
-      fireEvent.change(screen.getByLabelText("Student full name"), { target: { value: "Remote Student" } });
-      fireEvent.change(screen.getByLabelText("Student username"), { target: { value: "remote.student" } });
-      fireEvent.change(screen.getByLabelText("Student password"), { target: { value: "StudentPass123!" } });
-      fireEvent.change(screen.getByLabelText("Confirm student password"), { target: { value: "StudentPass123!" } });
-      fireEvent.change(screen.getByLabelText("Student email"), { target: { value: "remote.student@example.test" } });
-      fireEvent.change(screen.getByLabelText("Parent/guardian phone"), { target: { value: "(262) 555-0140" } });
-      fireEvent.click(screen.getByRole("button", { name: "Create Student Account" }));
-
-      await waitFor(() => expect(createAccountCalls()).toHaveLength(2));
+      for (const [index, username] of ["alex.lee", "alex-lee", "alex_lee"].entries()) {
+        fireEvent.change(screen.getByLabelText("Student full name"), { target: { value: `Remote Student ${index + 1}` } });
+        fireEvent.change(screen.getByLabelText("Student username"), { target: { value: username } });
+        fireEvent.change(screen.getByLabelText("Student temporary password"), { target: { value: "RemoteStudentPass123!" } });
+        fireEvent.change(screen.getByLabelText("Confirm student temporary password"), { target: { value: "RemoteStudentPass123!" } });
+        fireEvent.click(screen.getByRole("button", { name: "Create Student Account" }));
+        await waitFor(() => expect(createAccountCalls()).toHaveLength(index + 2));
+        await waitFor(() => expect(screen.getByLabelText("Student full name")).toHaveValue(""));
+      }
 
       fireEvent.click(screen.getByRole("button", { name: "Parent" }));
       fireEvent.change(screen.getByLabelText("Parent full name"), { target: { value: "Remote Parent" } });
       fireEvent.change(screen.getByLabelText("Parent username"), { target: { value: "remote.parent" } });
-      fireEvent.change(screen.getByLabelText("Parent password"), { target: { value: "ParentPass123!" } });
-      fireEvent.change(screen.getByLabelText("Confirm parent password"), { target: { value: "ParentPass123!" } });
-      fireEvent.change(screen.getByLabelText("Parent email"), { target: { value: "remote.parent@example.test" } });
+      fireEvent.change(screen.getByLabelText("Parent temporary password"), { target: { value: "RemoteParentPass123!" } });
+      fireEvent.change(screen.getByLabelText("Confirm parent temporary password"), { target: { value: "RemoteParentPass123!" } });
       fireEvent.click(screen.getByRole("button", { name: "Create Parent Account" }));
 
-      await waitFor(() => expect(createAccountCalls()).toHaveLength(3));
+      await waitFor(() => expect(createAccountCalls()).toHaveLength(5));
+      const studentMutationCalls = () => fetchMock.mock.calls.filter(([url]) => new URL(String(url)).pathname === "/rest/v1/rpc/mutate_student_roster");
+      const studentUpsertCalls = () => studentMutationCalls().filter(([, init]) => JSON.parse(String((init as RequestInit).body)).p_upserts.length > 0);
+      await waitFor(() => expect(studentUpsertCalls()).toHaveLength(3));
       const requestBodies = createAccountCalls().map(([, init]) => JSON.parse(String((init as RequestInit).body)));
       expect(requestBodies).toEqual([
-        expect.objectContaining({ username: "remote.staff", role: "staff", email: "remote.staff@example.test", access: expect.arrayContaining(["dashboard"]) }),
-        expect.objectContaining({ username: "remote.student", role: "student", email: "remote.student@example.test", studentId: "student-remote-student" }),
-        expect.objectContaining({ username: "remote.parent", role: "guardian", email: "remote.parent@example.test" })
+        expect.objectContaining({ username: "remote.staff", password: "RemoteStaffPass123!", role: "staff", access: expect.arrayContaining(["dashboard"]) }),
+        expect.objectContaining({ username: "alex.lee", password: "RemoteStudentPass123!", role: "student" }),
+        expect.objectContaining({ username: "alex-lee", password: "RemoteStudentPass123!", role: "student" }),
+        expect.objectContaining({ username: "alex_lee", password: "RemoteStudentPass123!", role: "student" }),
+        expect.objectContaining({ username: "remote.parent", password: "RemoteParentPass123!", role: "guardian" })
       ]);
+      const studentIds = requestBodies.filter((body) => body.role === "student").map((body) => body.studentId);
+      expect(new Set(studentIds).size).toBe(3);
+      expect(studentIds.every((studentId) => /^student-[a-z0-9]+$/.test(studentId))).toBe(true);
+      expect(studentUpsertCalls().map(([, init]) => JSON.parse(String((init as RequestInit).body)).p_upserts[0].id)).toEqual(studentIds);
+      expect(studentUpsertCalls().map(([, init]) => JSON.parse(String((init as RequestInit).body)).p_upserts[0].joinedAt)).toEqual([
+        "2026-07-20",
+        "2026-07-20",
+        "2026-07-20"
+      ]);
+      expect(requestBodies.every((body) => !("email" in body) && !("phone" in body))).toBe(true);
       expect(fetchMock).toHaveBeenCalledWith(
         "https://zfuwbbepsnmmlpgfkmhz.supabase.co/functions/v1/manager-create-account",
         expect.objectContaining({
@@ -6378,7 +7161,11 @@ describe("post-login operations app", () => {
     renderLoggedInApp("/manager?profile=settings");
 
     const profileSettings = screen.getByRole("dialog", { name: "Manager profile settings" });
-    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+    const appUpdatesButton = within(profileSettings).getByRole("button", { name: "View App Updates" });
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-id", "shared.profile-settings.app-updates.v1");
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-title", "App Updates");
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-priority", "700");
+    fireEvent.click(appUpdatesButton);
 
     expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
@@ -6390,7 +7177,9 @@ describe("post-login operations app", () => {
     renderLoggedInApp("/manager?profile=settings", "staff");
 
     const profileSettings = screen.getByRole("dialog", { name: "Manager profile settings" });
-    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+    const appUpdatesButton = within(profileSettings).getByRole("button", { name: "View App Updates" });
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-id", "shared.profile-settings.app-updates.v1");
+    fireEvent.click(appUpdatesButton);
 
     expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
@@ -6484,7 +7273,9 @@ describe("post-login operations app", () => {
     fireEvent.click(within(profileOverview).getByRole("button", { name: "Profile Settings" }));
     const profileSettings = screen.getByRole("dialog", { name: "Student profile settings" });
 
-    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+    const appUpdatesButton = within(profileSettings).getByRole("button", { name: "View App Updates" });
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-id", "shared.profile-settings.app-updates.v1");
+    fireEvent.click(appUpdatesButton);
     expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
 
@@ -6627,7 +7418,9 @@ describe("post-login operations app", () => {
     fireEvent.click(screen.getByRole("button", { name: "Profile Settings" }));
     const profileSettings = screen.getByRole("dialog", { name: "Parent profile settings" });
 
-    fireEvent.click(within(profileSettings).getByRole("button", { name: "View App Updates" }));
+    const appUpdatesButton = within(profileSettings).getByRole("button", { name: "View App Updates" });
+    expect(appUpdatesButton).toHaveAttribute("data-guided-onboarding-id", "shared.profile-settings.app-updates.v1");
+    fireEvent.click(appUpdatesButton);
     expect(screen.getByRole("dialog", { name: "App updates" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close app updates" }));
 
@@ -10673,6 +11466,23 @@ describe("post-login operations app", () => {
     expect(JSON.parse(window.localStorage.getItem("chos.operations.messages.v1") ?? "[]")).toEqual([
       expect.objectContaining({ kind: "welcome", recipientName: "Ari Nguyen", recipientPhone: "(262) 555-0101", status: "queued" })
     ]);
+  });
+
+  it("treats explicit student ids as primary and rejects conflicting reuse", async () => {
+    window.localStorage.setItem("chos.operations.students.v1", JSON.stringify([]));
+
+    render(
+      <MemoryRouter initialEntries={["/students"]}>
+        <AppStateProvider>
+          <ExplicitStudentIdCreationHarness />
+        </AppStateProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Create explicitly linked students" }));
+
+    expect(await screen.findByText("Harness explicit student ids: student-alex-dot,student-alex-dash,none")).toBeInTheDocument();
+    expect(screen.getByText("Harness explicit student count: 2")).toBeInTheDocument();
   });
 
   it("tells staff inactive students cannot receive quick outreach from the student modal", async () => {
@@ -15016,6 +15826,8 @@ describe("post-login operations app", () => {
   });
 
   it("queues a Compose blast, syncs consent, and sends through the Supabase Twilio relay after health is ready", async () => {
+    vi.stubEnv("VITE_SUPABASE_URL", "https://zfuwbbepsnmmlpgfkmhz.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "GET") {
         return {

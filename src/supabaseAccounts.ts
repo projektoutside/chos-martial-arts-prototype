@@ -1,5 +1,7 @@
-import type { AccountRole, ManagedAccount, ManagerAccessKey } from "./types";
+import type { AccountRole, ManagedAccount, ManagerAccessKey, StudentRecord } from "./types";
 import { isDeveloperAccountEnabled, prototypeDeveloperLogin, prototypeManagerLogin } from "./utils";
+import { resolveAppEnvironment } from "./appEnvironment";
+import { accountPasswordPolicyText, isStrongActivationPassword, requiresPasswordChange, validateActivationPassword } from "../supabase/functions/_shared/account-activation";
 
 type SupabasePasswordResponse = {
   access_token: string;
@@ -9,6 +11,8 @@ type SupabasePasswordResponse = {
   user?: {
     id: string;
     email?: string;
+    app_metadata?: Record<string, unknown>;
+    user_metadata?: Record<string, unknown>;
   };
 };
 
@@ -35,15 +39,20 @@ export type SupabaseStoredSession = {
   userId: string;
   projectRef?: string;
   authEmail?: string;
+  profileUsername?: string;
+  role?: AccountRole;
+  studentId?: string;
+  access?: ManagerAccessKey[];
 };
 
-type SupabaseLoginResult =
+export type SupabaseLoginResult =
   | { status: "not-configured" }
   | { status: "invalid" }
   | { status: "inactive" }
   | { status: "backend-inactive"; message: string }
   | { status: "error"; message: string }
-  | { status: "authenticated"; sessionEmail: string; role: AccountRole; profile: SupabaseProfileResponse };
+  | { status: "activation-required"; sessionEmail: string; role: AccountRole; profile: SupabaseProfileResponse; studentId?: string }
+  | { status: "authenticated"; sessionEmail: string; role: AccountRole; profile: SupabaseProfileResponse; studentId?: string };
 
 type SupabaseCreateAccountInput = {
   displayName: string;
@@ -51,16 +60,29 @@ type SupabaseCreateAccountInput = {
   password: string;
   role: AccountRole;
   status?: ManagedAccount["status"];
-  email: string;
+  email?: string;
   phone?: string;
   title?: string;
   notes?: string;
   access?: ManagerAccessKey[];
   studentId?: string;
+  program?: string;
+  beltRank?: string;
 };
 
 type SupabaseCreateAccountResult =
   | { status: "not-configured" }
+  | { status: "ok"; activationRequired: true; username: string; email: string; student?: StudentRecord }
+  | { status: "error"; message: string };
+
+export type SupabaseAccountActivationRequestResult =
+  | { status: "not-configured" }
+  | { status: "ok" }
+  | { status: "error"; message: string };
+
+export type SupabaseActivationResult =
+  | { status: "not-configured" }
+  | { status: "session-expired"; message: string }
   | { status: "ok" }
   | { status: "error"; message: string };
 
@@ -70,10 +92,32 @@ export type SupabasePasswordChangeResult =
   | { status: "ok" }
   | { status: "error"; message: string };
 
+export type SupabaseProfileOnboarding = {
+  username: string;
+  displayName: string;
+  role: AccountRole;
+  status: "active" | "inactive";
+  isOwner: boolean;
+  welcomeSeenAt: string | null;
+};
+
+type ProfileOnboardingResult =
+  | { ok: true; profile: SupabaseProfileOnboarding }
+  | { ok: false; reason: "session" | "profile" | "network"; message: string };
+
+type AcknowledgeWelcomeResult =
+  | { ok: true; welcomeSeenAt: string }
+  | { ok: false; reason: "session" | "profile" | "network"; message: string };
+
 const supabaseSessionStorageKey = "chos.supabase.auth.v1";
-const managerUsername = prototypeManagerLogin.username.toLowerCase();
+const legacyManagerUsername = prototypeManagerLogin.username.toLowerCase();
+const liveManagerUsername = "manager1";
 const supabaseAccountAuthDomain = "accounts.chosmartialarts.app";
-const managerSessionRequiredMessage = "Sign into the Supabase Manager123 owner account before syncing created accounts.";
+const accountRoles = new Set<AccountRole>(["staff", "student", "guardian"]);
+const managerAccessKeys = new Set<ManagerAccessKey>([
+  "dashboard", "messages", "students", "classes", "studyGuide", "events", "scheduling", "merchandise", "videos", "reports"
+]);
+const managerSessionRequiredMessage = "Sign into an authorized Supabase Developer or Manager account before syncing created accounts.";
 const mongTengSupabaseProjectRef = "jqvclzlvrhdcsfhhvekr";
 const forbiddenSupabaseProjectRefs = new Set([mongTengSupabaseProjectRef]);
 export const supabaseBackendInactiveMessage = "Cho staging Supabase is inactive or unreachable. Unpause the Supabase project, then try again.";
@@ -88,11 +132,11 @@ class SupabaseBackendInactiveError extends Error {
 }
 
 function supabaseUrl() {
-  return import.meta.env.VITE_SUPABASE_URL?.trim() ?? "";
+  return resolveAppEnvironment(import.meta.env).supabaseUrl;
 }
 
 function supabasePublicKey() {
-  return (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY ?? "").trim();
+  return resolveAppEnvironment(import.meta.env).supabasePublicKey;
 }
 
 async function readSupabaseResponseText(response: Response) {
@@ -177,7 +221,9 @@ export function normalizeSupabaseUsername(username: string) {
 
 export function supabaseAuthEmailForUsername(username: string) {
   const normalizedUsername = normalizeSupabaseUsername(username);
-  if (normalizedUsername === managerUsername) return `manager123@${supabaseAccountAuthDomain}`;
+  if (normalizedUsername === legacyManagerUsername || normalizedUsername === liveManagerUsername) {
+    return `${liveManagerUsername}@${supabaseAccountAuthDomain}`;
+  }
   return `${normalizedUsername}@${supabaseAccountAuthDomain}`;
 }
 
@@ -188,7 +234,7 @@ export function isSupportedSupabaseLoginUsername(username: string) {
   return true;
 }
 
-function saveSupabaseAuthSession(response: SupabasePasswordResponse) {
+function saveSupabaseAuthSession(response: SupabasePasswordResponse, profile?: SupabaseProfileResponse) {
   if (!response.access_token || !response.user?.id) return;
   const expiresAt = response.expires_at ? response.expires_at * 1000 : Date.now() + Math.max(1, response.expires_in ?? 3600) * 1000;
   const storedSession: SupabaseStoredSession = {
@@ -196,9 +242,81 @@ function saveSupabaseAuthSession(response: SupabasePasswordResponse) {
     expiresAt,
     userId: response.user.id,
     projectRef: supabaseSessionProjectScope(),
-    authEmail: response.user.email?.trim().toLowerCase()
+    authEmail: response.user.email?.trim().toLowerCase(),
+    profileUsername: profile ? normalizeSupabaseUsername(profile.username) : undefined,
+    role: profile?.role,
+    studentId: profile?.student_id?.trim() || undefined,
+    access: profile?.role === "staff" && Array.isArray(profile.access)
+      ? profile.access.filter((item): item is ManagerAccessKey => managerAccessKeys.has(item))
+      : undefined
   };
   window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify(storedSession));
+}
+
+function jwtSubject(accessToken: string) {
+  try {
+    const payload = accessToken.split(".")[1];
+    if (!payload) return undefined;
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { sub?: unknown };
+    return typeof decoded.sub === "string" ? decoded.sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export type SupabaseInviteCallbackResult =
+  | { status: "none" }
+  | { status: "error"; message: string }
+  | { status: "ready"; type: "invite" | "recovery" | "magiclink" };
+
+export function readSupabaseInviteCallback(): SupabaseInviteCallbackResult {
+  if (!isSupabaseAuthConfigured()) return { status: "none" };
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const type = params.get("type");
+  const error = params.get("error_description") ?? params.get("error");
+  if (error) {
+    window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
+    return { status: "error", message: error };
+  }
+  if (type !== "invite" && type !== "recovery" && type !== "magiclink") return { status: "none" };
+  const accessToken = params.get("access_token") ?? "";
+  const refreshToken = params.get("refresh_token") ?? undefined;
+  const expiresIn = Number(params.get("expires_in") ?? 3600);
+  if (!accessToken) {
+    window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
+    return { status: "error", message: "This password setup link is invalid or expired." };
+  }
+  const storedSession: SupabaseStoredSession = {
+    accessToken,
+    refreshToken,
+    expiresAt: Date.now() + Math.max(1, Number.isFinite(expiresIn) ? expiresIn : 3600) * 1000,
+    userId: jwtSubject(accessToken) ?? "invite-user",
+    projectRef: supabaseSessionProjectScope()
+  };
+  window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify(storedSession));
+  window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
+  return { status: "ready", type };
+}
+
+export async function completeSupabaseInvitePassword(password: string): Promise<SupabasePasswordChangeResult> {
+  if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
+  const session = readSupabaseAuthSession();
+  if (!session) return { status: "session-expired", message: "This password setup link has expired. Ask an administrator to resend the invitation." };
+  try {
+    const response = await fetch(`${supabaseUrl().replace(/\/+$/, "")}/auth/v1/user`, {
+      method: "PUT",
+      headers: { apikey: supabasePublicKey(), Authorization: `Bearer ${session.accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ password: password.trim() })
+    });
+    if (response.ok) {
+      clearSupabaseAuthSession();
+      return { status: "ok" };
+    }
+    const body = await response.json().catch(() => undefined) as { message?: string; error?: string } | undefined;
+    return { status: "error", message: body?.message ?? body?.error ?? "Your password could not be set. Request a new invitation and try again." };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Your password could not be set." };
+  }
 }
 
 export function clearSupabaseAuthSession() {
@@ -210,7 +328,13 @@ export function readSupabaseAuthSession() {
   if (!rawSession) return undefined;
   try {
     const parsed = JSON.parse(rawSession) as SupabaseStoredSession;
-    if (!parsed.accessToken || parsed.expiresAt <= Date.now() + 10000 || parsed.projectRef !== supabaseSessionProjectScope()) {
+    if (
+      !parsed.accessToken
+      || parsed.expiresAt <= Date.now() + 10000
+      || parsed.projectRef !== supabaseSessionProjectScope()
+      || (parsed.role !== undefined && !accountRoles.has(parsed.role))
+      || (parsed.access !== undefined && (!Array.isArray(parsed.access) || parsed.access.some((item) => !managerAccessKeys.has(item))))
+    ) {
       clearSupabaseAuthSession();
       return undefined;
     }
@@ -219,6 +343,134 @@ export function readSupabaseAuthSession() {
     clearSupabaseAuthSession();
     return undefined;
   }
+}
+
+export type SupabaseOwnStudentRecordResult =
+  | { status: "not-configured" }
+  | { status: "stale" }
+  | { status: "session-expired"; message: string }
+  | { status: "denied"; message: string }
+  | { status: "ok"; data: StudentRecord | undefined }
+  | { status: "error"; message: string };
+
+function parseProvisionedStudentRecord(value: unknown, expectedStudentId: string): StudentRecord | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const student = value as Partial<StudentRecord>;
+  const isDate = (date: unknown) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date);
+  if (
+    student.id !== expectedStudentId
+    || typeof student.firstName !== "string"
+    || !student.firstName.trim()
+    || typeof student.lastName !== "string"
+    || typeof student.phone !== "string"
+    || typeof student.email !== "string"
+    || typeof student.program !== "string"
+    || !student.program.trim()
+    || typeof student.status !== "string"
+    || student.status.trim().toLowerCase() !== "active"
+    || typeof student.beltRank !== "string"
+    || !student.beltRank.trim()
+    || typeof student.classesAttended !== "number"
+    || !Number.isFinite(student.classesAttended)
+    || typeof student.missedClassCount !== "number"
+    || !Number.isFinite(student.missedClassCount)
+    || !isDate(student.enrollmentDate)
+    || !isDate(student.profileUpdatedAt)
+    || !isDate(student.joinedAt)
+  ) return undefined;
+  return value as StudentRecord;
+}
+
+export async function fetchSupabaseOwnStudentRecord(): Promise<SupabaseOwnStudentRecordResult> {
+  if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
+  const session = readSupabaseAuthSession();
+  if (!session) return { status: "session-expired", message: "Your sign-in session has expired." };
+  const expectedStudentId = session.studentId?.trim();
+  if (session.role !== "student" || !expectedStudentId) {
+    return { status: "denied", message: "Your student profile link is unavailable." };
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl().replace(/\/+$/, "")}/rest/v1/rpc/get_my_student_record`, {
+      method: "POST",
+      headers: {
+        apikey: supabasePublicKey(),
+        Authorization: `Bearer ${session.accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: "{}"
+    });
+    if (!response.ok) {
+      if (await isSupabaseBackendInactiveResponse(response)) return { status: "error", message: supabaseBackendInactiveMessage };
+      if (response.status === 401 || response.status === 403) {
+        const currentSession = readSupabaseAuthSession();
+        if (currentSession && (currentSession.accessToken !== session.accessToken || currentSession.userId !== session.userId)) return { status: "stale" };
+        clearSupabaseAuthSession();
+      }
+      return response.status === 401 || response.status === 403
+        ? { status: "session-expired", message: "Your sign-in session has expired." }
+        : { status: "error", message: "Your student profile could not be loaded." };
+    }
+    const data = await response.json() as unknown;
+    if (data === null) return { status: "denied", message: "No active student record is linked to this account." };
+    if (typeof data !== "object" || Array.isArray(data) || typeof (data as { id?: unknown }).id !== "string") {
+      return { status: "denied", message: "Your student profile response was invalid." };
+    }
+    if ((data as { id: string }).id !== expectedStudentId) {
+      return { status: "denied", message: "Your student profile link did not match your account." };
+    }
+    if (String((data as { status?: unknown }).status ?? "Active").trim().toLowerCase() === "inactive") {
+      return { status: "denied", message: "The student record linked to this account is inactive." };
+    }
+    return { status: "ok", data: data as StudentRecord };
+  } catch (error) {
+    if (isSupabaseBackendInactiveError(error)) return { status: "error", message: supabaseBackendInactiveMessage };
+    return { status: "error", message: "Your student profile could not be loaded." };
+  }
+}
+
+async function callProfileRpc(path: string) {
+  const session = readSupabaseAuthSession();
+  if (!session) return { response: undefined, reason: "session" as const };
+  try {
+    const response = await fetch(`${supabaseUrl().replace(/\/+$/, "")}/rest/v1/rpc/${path}`, {
+      method: "POST",
+      headers: {
+        apikey: supabasePublicKey(),
+        Authorization: `Bearer ${session.accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: "{}"
+    });
+    return { response };
+  } catch {
+    return { response: undefined, reason: "network" as const };
+  }
+}
+
+export async function fetchSupabaseProfileOnboarding(): Promise<ProfileOnboardingResult> {
+  const result = await callProfileRpc("get_my_profile_onboarding");
+  if (!result.response) {
+    return { ok: false, reason: result.reason ?? "network", message: result.reason === "session" ? "Your session has expired." : "Could not load your account." };
+  }
+  if (!result.response.ok) return { ok: false, reason: "profile", message: "Could not load your account." };
+  const rows = await result.response.json() as Array<Record<string, unknown>>;
+  const row = rows[0];
+  if (!row || typeof row.username !== "string" || typeof row.display_name !== "string" || !["staff", "student", "guardian"].includes(String(row.role)) || !["active", "inactive"].includes(String(row.status)) || typeof row.is_owner !== "boolean" || !(row.welcome_seen_at === null || typeof row.welcome_seen_at === "string")) {
+    return { ok: false, reason: "profile", message: "Your account profile is incomplete." };
+  }
+  return { ok: true, profile: { username: row.username, displayName: row.display_name, role: row.role as AccountRole, status: row.status as "active" | "inactive", isOwner: row.is_owner, welcomeSeenAt: row.welcome_seen_at as string | null } };
+}
+
+export async function acknowledgeSupabaseWelcome(): Promise<AcknowledgeWelcomeResult> {
+  const result = await callProfileRpc("acknowledge_my_welcome");
+  if (!result.response) return { ok: false, reason: result.reason ?? "network", message: "Could not save your welcome progress." };
+  if (!result.response.ok) return { ok: false, reason: "profile", message: "Could not save your welcome progress." };
+  const rows = await result.response.json() as Array<{ welcome_seen_at?: unknown }>;
+  const timestamp = rows[0]?.welcome_seen_at;
+  return typeof timestamp === "string"
+    ? { ok: true, welcomeSeenAt: timestamp }
+    : { ok: false, reason: "profile", message: "Could not save your welcome progress." };
 }
 
 async function fetchSupabaseProfile(userId: string, accessToken: string) {
@@ -237,13 +489,26 @@ async function fetchSupabaseProfile(userId: string, accessToken: string) {
     if (await isSupabaseBackendInactiveResponse(response)) throw new SupabaseBackendInactiveError();
     return undefined;
   }
-  const profiles = (await response.json()) as SupabaseProfileResponse[];
-  return profiles[0];
+  const profiles = (await response.json()) as unknown;
+  if (!Array.isArray(profiles) || !profiles.length) return undefined;
+  const profile = profiles[0] as Partial<SupabaseProfileResponse>;
+  if (
+    typeof profile.id !== "string"
+    || typeof profile.username !== "string"
+    || typeof profile.display_name !== "string"
+    || !accountRoles.has(profile.role as AccountRole)
+    || (profile.status !== "active" && profile.status !== "inactive")
+    || !Array.isArray(profile.access)
+    || profile.access.some((item) => !managerAccessKeys.has(item))
+    || !(profile.student_id === null || typeof profile.student_id === "string")
+  ) return undefined;
+  return profile as SupabaseProfileResponse;
 }
 
 function sessionEmailForProfile(profile: SupabaseProfileResponse) {
   const normalizedUsername = normalizeSupabaseUsername(profile.username);
-  if (normalizedUsername === managerUsername) return prototypeManagerLogin.email;
+  if (normalizedUsername === liveManagerUsername) return "manager1@chos.prototype";
+  if (normalizedUsername === legacyManagerUsername) return prototypeManagerLogin.email;
   if (normalizedUsername === prototypeDeveloperLogin.username.toLowerCase()) return prototypeDeveloperLogin.email;
   return profile.username;
 }
@@ -281,18 +546,105 @@ export async function signInSupabaseAccount(credentials: { username: string; pas
     const profile = await fetchSupabaseProfile(session.user.id, session.access_token);
     if (!profile) return { status: "invalid" };
     if (profile.status !== "active") return { status: "inactive" };
-    if (normalizeSupabaseUsername(profile.username) !== username) return { status: "invalid" };
+    const profileUsername = normalizeSupabaseUsername(profile.username);
+    const managerAliasMatch = (username === legacyManagerUsername || username === liveManagerUsername) && profileUsername === liveManagerUsername;
+    if (!cleanedInput.includes("@") && profileUsername !== username && !managerAliasMatch) return { status: "invalid" };
+    const studentId = profile.student_id?.trim() || undefined;
+    if (profile.role === "student" && !studentId) {
+      clearSupabaseAuthSession();
+      return { status: "invalid" };
+    }
 
-    saveSupabaseAuthSession(session);
+    saveSupabaseAuthSession(session, profile);
+    if (requiresPasswordChange(session.user.app_metadata)) {
+      return {
+        status: "activation-required",
+        sessionEmail: sessionEmailForProfile(profile),
+        role: profile.role,
+        profile,
+        studentId
+      };
+    }
     return {
       status: "authenticated",
       sessionEmail: sessionEmailForProfile(profile),
       role: profile.role,
-      profile
+      profile,
+      studentId
     };
   } catch (error) {
     if (isSupabaseBackendInactiveError(error)) return { status: "backend-inactive", message: supabaseBackendInactiveMessage };
     return { status: "error", message: error instanceof Error ? error.message : "Supabase sign-in failed." };
+  }
+}
+
+export async function requestSupabaseAccountActivation(email: string): Promise<SupabaseAccountActivationRequestResult> {
+  if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    return { status: "error", message: "Enter the email address assigned to your profile." };
+  }
+
+  const redirectUrl = new URL(import.meta.env.BASE_URL || "/", window.location.origin).toString();
+  const activationUrl = new URL(`${supabaseUrl().replace(/\/+$/, "")}/auth/v1/otp`);
+  activationUrl.searchParams.set("redirect_to", redirectUrl);
+
+  try {
+    const response = await fetch(activationUrl.toString(), {
+      method: "POST",
+      headers: {
+        apikey: supabasePublicKey(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email: normalizedEmail, create_user: false })
+    });
+    if (response.ok || response.status === 400) return { status: "ok" };
+    if (response.status === 422) {
+      const payload = await response.clone().json().catch(() => null) as { error_code?: unknown } | null;
+      if (payload?.error_code === "otp_disabled") return { status: "ok" };
+    }
+    if (await isSupabaseBackendInactiveResponse(response)) return { status: "error", message: supabaseBackendInactiveMessage };
+    return { status: "error", message: "Activation email is temporarily unavailable. Please wait and try again." };
+  } catch (error) {
+    if (isSupabaseBackendInactiveError(error)) return { status: "error", message: supabaseBackendInactiveMessage };
+    return { status: "error", message: "Activation email is temporarily unavailable. Please wait and try again." };
+  }
+}
+
+export async function activateSupabaseAccount(newPassword: string, temporaryPassword: string): Promise<SupabaseActivationResult> {
+  if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
+  const validationMessage = validateActivationPassword(newPassword, temporaryPassword);
+  if (validationMessage) return { status: "error", message: validationMessage };
+  const session = readSupabaseAuthSession();
+  if (!session) {
+    return { status: "session-expired", message: "Your temporary sign-in has expired. Start account access again." };
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl().replace(/\/+$/, "")}/functions/v1/activate-account`, {
+      method: "POST",
+      headers: {
+        apikey: supabasePublicKey(),
+        Authorization: `Bearer ${session.accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        newPassword: newPassword.trim(),
+        temporaryPassword: temporaryPassword.trim()
+      })
+    });
+    if (response.ok) return { status: "ok" };
+    if (await isSupabaseBackendInactiveResponse(response)) {
+      return { status: "error", message: supabaseBackendInactiveMessage };
+    }
+    const body = await response.json().catch(() => undefined) as { error?: string } | undefined;
+    if (response.status === 401 || response.status === 403) clearSupabaseAuthSession();
+    return response.status === 401
+      ? { status: "session-expired", message: "Your temporary sign-in has expired. Start account access again." }
+      : { status: "error", message: body?.error ?? "Account activation failed. Please try again." };
+  } catch (error) {
+    if (isSupabaseBackendInactiveError(error)) return { status: "error", message: supabaseBackendInactiveMessage };
+    return { status: "error", message: "Account activation failed. Please try again." };
   }
 }
 
@@ -329,8 +681,7 @@ export async function changeSupabaseAccountPassword(password: string, currentPas
 export async function createSupabaseManagedAccount(account: SupabaseCreateAccountInput): Promise<SupabaseCreateAccountResult> {
   if (!isSupabaseAuthConfigured()) return { status: "not-configured" };
   const session = readSupabaseAuthSession();
-  if (!session || session.authEmail !== supabaseAuthEmailForUsername(managerUsername)) {
-    if (session) clearSupabaseAuthSession();
+  if (!session) {
     return { status: "error", message: managerSessionRequiredMessage };
   }
 
@@ -338,21 +689,26 @@ export async function createSupabaseManagedAccount(account: SupabaseCreateAccoun
   const password = account.password.trim();
   const displayName = account.displayName.trim();
   const role = account.role === "staff" || account.role === "student" || account.role === "guardian" ? account.role : "staff";
-  if (!username || !password || !displayName) return { status: "error", message: "Enter a display name, username, and password before syncing." };
+  const email = account.email?.trim().toLowerCase();
+  const authEmail = `${username}@accounts.chosmartialarts.app`;
+  if (!username || !displayName || !password) return { status: "error", message: "Enter a display name, username, and temporary password before creating the account." };
+  if (!isStrongActivationPassword(password)) return { status: "error", message: accountPasswordPolicyText };
 
   const createUrl = `${supabaseUrl().replace(/\/+$/, "")}/functions/v1/manager-create-account`;
   const payload = {
     displayName,
     username,
-    password,
     role,
     status: account.status ?? "active",
-    email: account.email.trim(),
+    password,
+    ...(email ? { email } : {}),
     ...(account.phone?.trim() ? { phone: account.phone.trim() } : {}),
     ...(account.title?.trim() ? { title: account.title.trim() } : {}),
     ...(account.notes?.trim() ? { notes: account.notes.trim() } : {}),
     ...(account.access?.length ? { access: account.access } : {}),
-    ...(account.studentId?.trim() ? { studentId: account.studentId.trim() } : {})
+    ...(account.studentId?.trim() ? { studentId: account.studentId.trim() } : {}),
+    ...(account.program?.trim() ? { program: account.program.trim() } : {}),
+    ...(account.beltRank?.trim() ? { beltRank: account.beltRank.trim() } : {})
   };
 
   try {
@@ -366,7 +722,28 @@ export async function createSupabaseManagedAccount(account: SupabaseCreateAccoun
       body: JSON.stringify(payload)
     });
 
-    if (response.ok) return { status: "ok" };
+    if (response.ok) {
+      const body = await response.json().catch(() => ({})) as { activationRequired?: unknown; username?: unknown; email?: unknown; student?: unknown };
+      const responseUsername = typeof body.username === "string" ? normalizeSupabaseUsername(body.username) : "";
+      const responseEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+      const expectedStudentId = account.role === "student" ? account.studentId?.trim() ?? "" : "";
+      const student = expectedStudentId ? parseProvisionedStudentRecord(body.student, expectedStudentId) : undefined;
+      if (
+        body.activationRequired !== true
+        || responseUsername !== username
+        || responseEmail !== authEmail
+        || (account.role === "student" && !student)
+      ) {
+        return { status: "error", message: "Account creation completed, but the server response could not be verified. Contact an administrator before retrying." };
+      }
+      return {
+        status: "ok",
+        activationRequired: true,
+        username: responseUsername,
+        email: responseEmail,
+        ...(student ? { student } : {})
+      };
+    }
     if (await isSupabaseBackendInactiveResponse(response)) return { status: "error", message: supabaseBackendInactiveMessage };
     const body = await response.json().catch(() => undefined) as { error?: string } | undefined;
     if (response.status === 401 && /manager session/i.test(body?.error ?? "")) {

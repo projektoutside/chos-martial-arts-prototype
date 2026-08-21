@@ -1,16 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  activateSupabaseAccount,
   clearSupabaseAuthSession,
+  acknowledgeSupabaseWelcome,
   changeSupabaseAccountPassword,
   createSupabaseManagedAccount,
   getSupabaseBrowserConfig,
+  fetchSupabaseProfileOnboarding,
+  fetchSupabaseOwnStudentRecord,
   isSupabaseAuthConfigured,
   isChoSupabaseProjectUrlAllowed,
   isSupabaseBackendInactiveError,
   isSupabaseBackendInactiveResponse,
   isSupportedSupabaseLoginUsername,
   normalizeSupabaseUsername,
+  requestSupabaseAccountActivation,
+  readSupabaseInviteCallback,
   readSupabaseAuthSession,
+  completeSupabaseInvitePassword,
   signInSupabaseAccount,
   supabaseBackendInactiveMessage,
   supabaseProjectRefFromUrl,
@@ -43,9 +50,255 @@ describe("supabase account adapter", () => {
     window.localStorage.clear();
   });
 
-  it("normalizes local usernames and maps Manager123 to the owner Auth email", () => {
+  it("recognizes secure invite callbacks and stores their session", () => {
+    window.history.replaceState({}, "", "/#access_token=invite-token&refresh_token=refresh-token&expires_in=3600&type=invite");
+    expect(readSupabaseInviteCallback()).toEqual({ status: "ready", type: "invite" });
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ accessToken: "invite-token", refreshToken: "refresh-token" }));
+    expect(window.location.hash).toBe("");
+  });
+
+  it("keeps a missing hosted account private when public signup is disabled", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      code: 422,
+      error_code: "otp_disabled",
+      msg: "Signups not allowed for otp"
+    }, { status: 422 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(requestSupabaseAccountActivation(" Missing.User@Example.com ")).resolves.toEqual({ status: "ok" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/v1/otp?redirect_to="),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ email: "missing.user@example.com", create_user: false })
+      })
+    );
+  });
+
+  it("reports an unexpected hosted activation failure", async () => {
+    globalThis.fetch = vi.fn(async () => jsonResponse({
+      code: 422,
+      error_code: "unexpected_activation_failure",
+      msg: "Activation failed"
+    }, { status: 422 })) as typeof fetch;
+
+    await expect(requestSupabaseAccountActivation("staff@example.com")).resolves.toEqual({
+      status: "error",
+      message: "Activation email is temporarily unavailable. Please wait and try again."
+    });
+  });
+
+  it("recognizes existing-account magic links as password setup callbacks", () => {
+    window.history.replaceState({}, "", "/#access_token=magic-token&expires_in=3600&type=magiclink");
+    expect(readSupabaseInviteCallback()).toEqual({ status: "ready", type: "magiclink" });
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ accessToken: "magic-token" }));
+    expect(window.location.hash).toBe("");
+  });
+
+  it("sets an invited user's password using the callback session", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({ accessToken: "invite-token", expiresAt: Date.now() + 60_000, userId: "invite-user", projectRef: "project" }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: "invite-user" }));
+    globalThis.fetch = fetchMock;
+    await expect(completeSupabaseInvitePassword("StrongPass123!")).resolves.toEqual({ status: "ok" });
+    expect(fetchMock).toHaveBeenCalledWith("https://project.supabase.co/auth/v1/user", expect.objectContaining({ method: "PUT", body: JSON.stringify({ password: "StrongPass123!" }) }));
+    expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
+  });
+
+  it("signs in by real email when the profile keeps a friendly username", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ access_token: "token", expires_in: 3600, user: { id: "user-1", email: "jordan@example.com" } }))
+      .mockResolvedValueOnce(jsonResponse([{ id: "user-1", username: "jordan.staff", contact_email: "jordan@example.com", display_name: "Jordan", role: "staff", status: "active", phone: null, title: null, notes: null, access: [], student_id: null, created_by: null, created_at: "2026-01-01" }]));
+    globalThis.fetch = fetchMock;
+    await expect(signInSupabaseAccount({ username: "jordan@example.com", password: "StrongPass123!" })).resolves.toEqual(expect.objectContaining({ status: "authenticated", sessionEmail: "jordan.staff" }));
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ authEmail: "jordan@example.com", profileUsername: "jordan.staff" }));
+  });
+
+  it("carries the authoritative student id through student sign-in and stored auth state", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ access_token: "student-token", expires_in: 3600, user: { id: "student-user-1", email: "alex.student@accounts.chosmartialarts.app" } }))
+      .mockResolvedValueOnce(jsonResponse([{ id: "student-user-1", username: "alex.student", contact_email: null, display_name: "Alex Student", role: "student", status: "active", phone: null, title: null, notes: null, access: [], student_id: "student-authoritative-42", created_by: null, created_at: "2026-07-19" }]));
+    globalThis.fetch = fetchMock;
+
+    await expect(signInSupabaseAccount({ username: "alex.student", password: "StrongPass123!" })).resolves.toEqual(expect.objectContaining({
+      status: "authenticated",
+      studentId: "student-authoritative-42"
+    }));
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ role: "student", studentId: "student-authoritative-42" }));
+  });
+
+  it("loads only the signed-in student's server-filtered roster record", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "student-access-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "student-user",
+      projectRef: "project",
+      role: "student",
+      studentId: "student-own"
+    }));
+    const ownStudent = { id: "student-own", firstName: "Own", lastName: "Student" };
+    const fetchMock = vi.fn(async () => jsonResponse(ownStudent));
+    globalThis.fetch = fetchMock as typeof fetch;
+    const adapter = await import("./supabaseAccounts") as typeof import("./supabaseAccounts") & {
+      fetchSupabaseOwnStudentRecord?: () => Promise<{ status: string; data?: unknown }>;
+    };
+
+    expect(adapter.fetchSupabaseOwnStudentRecord).toBeTypeOf("function");
+    if (!adapter.fetchSupabaseOwnStudentRecord) return;
+    await expect(adapter.fetchSupabaseOwnStudentRecord()).resolves.toEqual({ status: "ok", data: ownStudent });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/rest/v1/rpc/get_my_student_record",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer student-access-token" }),
+        body: "{}"
+      })
+    );
+  });
+
+  it("fails closed when the own-student RPC returns a different roster id", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "student-access-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "student-user",
+      projectRef: "project",
+      role: "student",
+      studentId: "student-own"
+    }));
+    globalThis.fetch = vi.fn(async () => jsonResponse({ id: "student-other", firstName: "Other", lastName: "Student" })) as typeof fetch;
+    const adapter = await import("./supabaseAccounts") as typeof import("./supabaseAccounts") & {
+      fetchSupabaseOwnStudentRecord?: () => Promise<{ status: string; data?: unknown }>;
+    };
+
+    expect(adapter.fetchSupabaseOwnStudentRecord).toBeTypeOf("function");
+    if (!adapter.fetchSupabaseOwnStudentRecord) return;
+    await expect(adapter.fetchSupabaseOwnStudentRecord()).resolves.toEqual(expect.objectContaining({ status: "denied" }));
+  });
+
+  it("denies an inactive roster record even if a backend response is malformed", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "student-access-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "student-user",
+      projectRef: "project",
+      role: "student",
+      studentId: "student-own"
+    }));
+    globalThis.fetch = vi.fn(async () => jsonResponse({ id: "student-own", status: "Inactive" })) as typeof fetch;
+
+    await expect(fetchSupabaseOwnStudentRecord()).resolves.toEqual(expect.objectContaining({ status: "denied" }));
+  });
+
+  it("does not let a stale denied student request clear a newer auth session", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "old-student-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "old-student-user",
+      projectRef: "project",
+      role: "student",
+      studentId: "student-old"
+    }));
+    let resolveResponse!: (response: Response) => void;
+    globalThis.fetch = vi.fn(() => new Promise<Response>((resolve) => { resolveResponse = resolve; })) as typeof fetch;
+
+    const pendingRequest = fetchSupabaseOwnStudentRecord();
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "new-staff-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "new-staff-user",
+      projectRef: "project",
+      role: "staff",
+      access: ["dashboard"]
+    }));
+    resolveResponse(jsonResponse({ error: "JWT expired" }, { status: 401 }));
+
+    await expect(pendingRequest).resolves.toEqual({ status: "stale" });
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({ accessToken: "new-staff-token", userId: "new-staff-user" }));
+  });
+
+  it("reports an expired session when no newer session replaced the denied request", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "expired-student-token",
+      expiresAt: Date.now() + 60_000,
+      userId: "expired-student-user",
+      projectRef: "project",
+      role: "student",
+      studentId: "student-expired"
+    }));
+    let resolveResponse!: (response: Response) => void;
+    globalThis.fetch = vi.fn(() => new Promise<Response>((resolve) => { resolveResponse = resolve; })) as typeof fetch;
+
+    const pendingRequest = fetchSupabaseOwnStudentRecord();
+    clearSupabaseAuthSession();
+    resolveResponse(jsonResponse({ error: "JWT expired" }, { status: 401 }));
+
+    await expect(pendingRequest).resolves.toEqual({ status: "session-expired", message: "Your sign-in session has expired." });
+  });
+
+  it("fails closed when a hosted student profile has no student id", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ access_token: "student-token", expires_in: 3600, user: { id: "student-user-1", email: "alex.student@accounts.chosmartialarts.app" } }))
+      .mockResolvedValueOnce(jsonResponse([{ id: "student-user-1", username: "alex.student", contact_email: null, display_name: "Alex Student", role: "student", status: "active", phone: null, title: null, notes: null, access: [], student_id: null, created_by: null, created_at: "2026-07-19" }]));
+    globalThis.fetch = fetchMock;
+
+    await expect(signInSupabaseAccount({ username: "alex.student", password: "StrongPass123!" })).resolves.toEqual({ status: "invalid" });
+    expect(readSupabaseAuthSession()).toBeUndefined();
+  });
+
+  it("loads the signed-in user's authoritative first-login profile", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "manager-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "manager-user-id",
+      projectRef: "project",
+      authEmail: "manager1@accounts.chosmartialarts.app"
+    }));
+    const fetchMock = vi.fn(async () => jsonResponse([{
+      username: "manager1",
+      display_name: "Manager",
+      role: "staff",
+      status: "active",
+      is_owner: true,
+      welcome_seen_at: null
+    }]));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(fetchSupabaseProfileOnboarding()).resolves.toEqual({
+      ok: true,
+      profile: {
+        username: "manager1",
+        displayName: "Manager",
+        role: "staff",
+        status: "active",
+        isOwner: true,
+        welcomeSeenAt: null
+      }
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/rest/v1/rpc/get_my_profile_onboarding",
+      expect.objectContaining({ method: "POST", headers: expect.objectContaining({ Authorization: "Bearer manager-access-token" }) })
+    );
+  });
+
+  it("acknowledges welcome for only the bearer identity without sending secrets", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "staff-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "staff-user-id",
+      projectRef: "project"
+    }));
+    const fetchMock = vi.fn(async () => jsonResponse([{ welcome_seen_at: "2026-07-13T20:20:00.000Z" }]));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(acknowledgeSupabaseWelcome()).resolves.toEqual({ ok: true, welcomeSeenAt: "2026-07-13T20:20:00.000Z" });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(String(init?.body ?? "")).not.toMatch(/password|user.?id/i);
+    expect(init).toEqual(expect.objectContaining({ method: "POST", body: "{}" }));
+  });
+
+  it("normalizes local usernames and maps both manager names to the live Manager1 Auth email", () => {
     expect(normalizeSupabaseUsername(" Jordan Staff! ")).toBe("jordan.staff");
-    expect(supabaseAuthEmailForUsername("Manager123")).toBe("manager123@accounts.chosmartialarts.app");
+    expect(supabaseAuthEmailForUsername("Manager1")).toBe("manager1@accounts.chosmartialarts.app");
+    expect(supabaseAuthEmailForUsername("Manager123")).toBe("manager1@accounts.chosmartialarts.app");
     expect(supabaseAuthEmailForUsername("Jordan Staff")).toBe("jordan.staff@accounts.chosmartialarts.app");
     expect(isSupportedSupabaseLoginUsername("Manager123")).toBe(true);
     expect(isSupportedSupabaseLoginUsername(" manager123 ")).toBe(true);
@@ -122,13 +375,59 @@ describe("supabase account adapter", () => {
       "https://project.supabase.co/auth/v1/token?grant_type=password",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ email: "manager123@accounts.chosmartialarts.app", password: "ManagerPass123!" })
+        body: JSON.stringify({ email: "manager1@accounts.chosmartialarts.app", password: "ManagerPass123!" })
       })
     );
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("manager-access-token");
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("\"projectRef\":\"project\"");
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("manager123@accounts.chosmartialarts.app");
     expect(window.localStorage.getItem("chos.supabase.auth.v1")).not.toContain("manager-refresh-token");
+  });
+
+  it("signs Manager1 into the live Manager1 profile and scopes the saved session", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/auth/v1/token")) {
+        return jsonResponse({
+          access_token: "manager1-access-token",
+          expires_in: 3600,
+          user: { id: "manager1-user-id", email: "manager1@accounts.chosmartialarts.app" }
+        });
+      }
+      if (requestUrl.includes("/rest/v1/profiles")) {
+        return jsonResponse([{
+          id: "manager1-user-id",
+          username: "manager1",
+          contact_email: "manager1@chos.prototype",
+          display_name: "Cho's Manager",
+          role: "staff",
+          status: "active",
+          phone: null,
+          title: "Manager",
+          notes: null,
+          access: ["dashboard"],
+          student_id: null,
+          created_by: "manager1-user-id",
+          created_at: "2026-07-13T00:00:00.000Z"
+        }]);
+      }
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(signInSupabaseAccount({ username: "Manager1", password: "ManagerPass123!" })).resolves.toMatchObject({
+      status: "authenticated",
+      sessionEmail: "manager1@chos.prototype",
+      role: "staff"
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/auth/v1/token?grant_type=password",
+      expect.objectContaining({ body: JSON.stringify({ email: "manager1@accounts.chosmartialarts.app", password: "ManagerPass123!" }) })
+    );
+    expect(readSupabaseAuthSession()).toEqual(expect.objectContaining({
+      authEmail: "manager1@accounts.chosmartialarts.app",
+      profileUsername: "manager1"
+    }));
   });
 
   it("signs in created staff usernames through Supabase Auth and stores the JWT", async () => {
@@ -258,6 +557,21 @@ describe("supabase account adapter", () => {
     expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
   });
 
+  it("clears a stored session whose persisted role is not supported", () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "malformed-role-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "malformed-role-user",
+      projectRef: "project",
+      authEmail: "malformed.role@accounts.chosmartialarts.app",
+      profileUsername: "malformed.role",
+      role: "admin"
+    }));
+
+    expect(readSupabaseAuthSession()).toBeUndefined();
+    expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
+  });
+
   it("classifies paused or unreachable Supabase auth as backend-inactive instead of invalid credentials", async () => {
     expect(await isSupabaseBackendInactiveResponse(jsonResponse({ message: "Project is paused" }, { status: 404 }))).toBe(true);
     expect(isSupabaseBackendInactiveError({ message: "Project is inactive", status: 503 })).toBe(true);
@@ -361,6 +675,9 @@ describe("supabase account adapter", () => {
       }
       if (requestUrl.includes("/functions/v1/manager-create-account")) {
         return jsonResponse({
+          activationRequired: true,
+          username: "jordan.staff",
+          email: "jordan.staff@accounts.chosmartialarts.app",
           account: {
             id: "staff-user-id",
             username: "jordan.staff",
@@ -379,11 +696,10 @@ describe("supabase account adapter", () => {
       username: "jordan.staff",
       password: "StaffPass123!",
       role: "staff",
-      email: "jordan@example.com",
       access: ["dashboard"]
     });
 
-    expect(result).toEqual({ status: "ok" });
+    expect(result).toEqual({ status: "ok", activationRequired: true, username: "jordan.staff", email: "jordan.staff@accounts.chosmartialarts.app" });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://project.supabase.co/functions/v1/manager-create-account",
       expect.objectContaining({
@@ -391,15 +707,14 @@ describe("supabase account adapter", () => {
         headers: expect.objectContaining({
           Authorization: "Bearer manager-access-token"
         }),
-        body: JSON.stringify({
-          displayName: "Jordan Lee",
-          username: "jordan.staff",
-          password: "StaffPass123!",
-          role: "staff",
-          status: "active",
-          email: "jordan@example.com",
-          access: ["dashboard"]
-        })
+          body: JSON.stringify({
+            displayName: "Jordan Lee",
+            username: "jordan.staff",
+            role: "staff",
+            status: "active",
+            password: "StaffPass123!",
+            access: ["dashboard"]
+          })
       })
     );
 
@@ -408,12 +723,171 @@ describe("supabase account adapter", () => {
       displayName: "No Session",
       username: "no.session",
       password: "StaffPass123!",
-      role: "staff",
-      email: "no-session@example.com"
+      role: "staff"
     })).toEqual({
       status: "error",
-      message: "Sign into the Supabase Manager123 owner account before syncing created accounts."
+      message: "Sign into an authorized Supabase Developer or Manager account before syncing created accounts."
     });
+  });
+
+  it("does not report student creation success unless the returned roster record is complete and exact", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "manager-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "manager-user-id",
+      projectRef: "project",
+      authEmail: "manager1@accounts.chosmartialarts.app",
+      profileUsername: "manager1",
+      role: "staff"
+    }));
+    globalThis.fetch = vi.fn(async () => jsonResponse({
+      activationRequired: true,
+      username: "alex.student",
+      email: "alex.student@accounts.chosmartialarts.app",
+      student: { id: "wrong-student-id" }
+    })) as typeof fetch;
+
+    await expect(createSupabaseManagedAccount({
+      displayName: "Alex Student",
+      username: "alex.student",
+      password: "StudentPass123!",
+      role: "student",
+      studentId: "student-alex"
+    })).resolves.toEqual({
+      status: "error",
+      message: "Account creation completed, but the server response could not be verified. Contact an administrator before retrying."
+    });
+  });
+
+  it("requires activation before a newly provisioned account can enter the app", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/auth/v1/token")) {
+        return jsonResponse({
+          access_token: "staff-access-token",
+          refresh_token: "staff-refresh-token",
+          expires_in: 3600,
+          token_type: "bearer",
+          user: {
+            id: "staff-user-id",
+            email: "jordan.staff@accounts.chosmartialarts.app",
+            app_metadata: { role: "staff", requires_password_change: true },
+            user_metadata: {
+              username: "jordan.staff",
+              display_name: "Jordan Lee",
+              contact_email: "jordan@example.com"
+            }
+          }
+        });
+      }
+      if (requestUrl.includes("/rest/v1/profiles")) {
+        return jsonResponse([{
+          id: "staff-user-id",
+          username: "jordan.staff",
+          contact_email: "jordan@example.com",
+          display_name: "Jordan Lee",
+          role: "staff",
+          status: "active",
+          phone: null,
+          title: "Instructor",
+          notes: null,
+          access: ["dashboard"],
+          student_id: null,
+          created_by: "manager-user-id",
+          created_at: "2026-07-16T00:00:00.000Z"
+        }]);
+      }
+      return jsonResponse({ error: "Unexpected URL" }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(signInSupabaseAccount({ username: "jordan.staff", password: "TemporaryPass123!" })).resolves.toMatchObject({
+      status: "activation-required",
+      sessionEmail: "jordan.staff",
+      role: "staff"
+    });
+    expect(window.localStorage.getItem("chos.supabase.auth.v1")).toContain("staff-access-token");
+    expect(window.localStorage.getItem("chos.session.v1")).toBeNull();
+  });
+
+  it("activates only the temporary authenticated Supabase account", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "staff-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "staff-user-id",
+      projectRef: "project",
+      authEmail: "jordan.staff@accounts.chosmartialarts.app",
+      profileUsername: "jordan.staff"
+    }));
+    const fetchMock = vi.fn(async () => jsonResponse({ status: "ok" }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(activateSupabaseAccount("PermanentPass456!", "TemporaryPass123!")).resolves.toEqual({ status: "ok" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/functions/v1/activate-account",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer staff-access-token" }),
+        body: JSON.stringify({
+          newPassword: "PermanentPass456!",
+          temporaryPassword: "TemporaryPass123!"
+        })
+      })
+    );
+  });
+
+  it("rejects unsafe activation attempts before changing hosted state", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(activateSupabaseAccount("short", "TemporaryPass123!")).resolves.toEqual({
+      status: "error",
+      message: "Use at least 12 characters with uppercase, lowercase, a number, and a symbol."
+    });
+    await expect(activateSupabaseAccount("TemporaryPass123!", "TemporaryPass123!")).resolves.toEqual({
+      status: "error",
+      message: "Choose a new password that is different from your temporary password."
+    });
+    await expect(activateSupabaseAccount("PermanentPass456!", "TemporaryPass123!")).resolves.toEqual({
+      status: "session-expired",
+      message: "Your temporary sign-in has expired. Start account access again."
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("lets the live Manager1 owner session reach server-side account authorization", async () => {
+    window.localStorage.setItem(supabaseSessionStorageKey, JSON.stringify({
+      accessToken: "manager1-access-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: "manager1-user-id",
+      projectRef: "project",
+      authEmail: "manager1@accounts.chosmartialarts.app",
+      profileUsername: "manager1"
+    }));
+    const fetchMock = vi.fn(async () => jsonResponse({
+      email: "new.staff@accounts.chosmartialarts.app",
+      username: "new.staff",
+      activationRequired: true
+    }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(createSupabaseManagedAccount({
+      displayName: "New Staff",
+      username: "new.staff",
+      password: "StaffPass123!",
+      role: "staff"
+    })).resolves.toEqual({
+      status: "ok",
+      activationRequired: true,
+      username: "new.staff",
+      email: "new.staff@accounts.chosmartialarts.app"
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/functions/v1/manager-create-account",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer manager1-access-token" })
+      })
+    );
   });
 
   it("clears a rejected manager session when the Edge Function returns 401", async () => {
@@ -435,7 +909,7 @@ describe("supabase account adapter", () => {
       email: "jordan@example.com"
     })).resolves.toEqual({
       status: "error",
-      message: "Sign into the Supabase Manager123 owner account before syncing created accounts."
+      message: "Sign into an authorized Supabase Developer or Manager account before syncing created accounts."
     });
     expect(window.localStorage.getItem(supabaseSessionStorageKey)).toBeNull();
   });

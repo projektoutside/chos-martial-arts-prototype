@@ -23,6 +23,7 @@ Date: 2026-07-10
 - [ ] Cold start, refresh, back/forward, deep links, unknown routes, and repeated navigation.
 - [ ] Guest/new/returning login flows, empty/invalid credentials, repeated submit, logout, and relogin.
 - [ ] Remembered and non-remembered sessions survive or clear correctly after refresh/restart.
+- [ ] Hosted role and linked `student_id` rehydrate from the scoped Supabase session after refresh; missing roles fail closed before any workspace route renders.
 - [ ] Expired/invalid Supabase sessions fail closed and show understandable feedback.
 - [ ] Loading, empty, offline, timeout, and backend-error states remain usable.
 
@@ -32,6 +33,7 @@ Date: 2026-07-10
 - [ ] Developer diagnostic account restrictions.
 - [ ] Staff access-key restrictions across direct URLs and UI navigation.
 - [ ] Student access restricted to the linked active student.
+- [ ] `get_my_student_record` returns exactly the authenticated active student's linked record or `null`; anonymous, inactive, non-student, and mismatched callers cannot read the roster.
 - [ ] Guardian access restricted to linked child data.
 - [ ] Unauthorized users cannot read, create, update, or delete other users' records through UI or direct API calls.
 

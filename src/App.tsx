@@ -9,7 +9,11 @@ import {
 } from "./softKeyboardViewport";
 import { useSoftKeyboardEditor } from "./softKeyboardEditor";
 import { useAppState } from "./state";
-import { isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, signInSupabaseAccount } from "./supabaseAccounts";
+import { acknowledgeSupabaseWelcome, activateSupabaseAccount, clearSupabaseAuthSession, completeSupabaseInvitePassword, fetchSupabaseProfileOnboarding, isSupabaseAuthConfigured, isSupportedSupabaseLoginUsername, readSupabaseAuthSession, readSupabaseInviteCallback, signInSupabaseAccount, type SupabaseProfileOnboarding } from "./supabaseAccounts";
+import { validateAccountPasswordChange } from "./accountPassword";
+import type { AccountRole, ManagerAccessKey } from "./types";
+import { FirstLoginWelcomeDialog } from "./FirstLoginWelcomeDialog";
+import { DemoEnvironmentBadge } from "./DemoEnvironmentBadge";
 import { initializeAppTheme } from "./theme";
 import { hasSeenTestingUpdate, markTestingUpdateSeen, testingUpdateNotice } from "./testingUpdateNotice";
 import {
@@ -124,6 +128,9 @@ function App() {
   const { session } = useAppState();
   const [launchComplete, setLaunchComplete] = useState(false);
   const [testingUpdateOpen, setTestingUpdateOpen] = useState(false);
+  const [welcomeProfile, setWelcomeProfile] = useState<SupabaseProfileOnboarding | null>(null);
+  const [welcomePending, setWelcomePending] = useState(false);
+  const [welcomeError, setWelcomeError] = useState("");
   const loginGateState = getLoginGateState(session);
   const previousLoginGateStateRef = useRef(loginGateState);
   const loginJustCompleted = previousLoginGateStateRef.current === "login" && loginGateState !== "login";
@@ -145,6 +152,28 @@ function App() {
   useEffect(() => {
     setTestingUpdateOpen(Boolean(session?.email && !hasSeenTestingUpdate(session.email)));
   }, [session?.email]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!session?.email || !isSupabaseAuthConfigured() || !readSupabaseAuthSession()) {
+      setWelcomeProfile(null);
+      return () => { cancelled = true; };
+    }
+    void fetchSupabaseProfileOnboarding().then((result) => {
+      if (cancelled) return;
+      setWelcomeProfile(result.ok && result.profile.status === "active" && !result.profile.welcomeSeenAt ? result.profile : null);
+    });
+    return () => { cancelled = true; };
+  }, [session?.email]);
+
+  const acknowledgeWelcome = useCallback(async () => {
+    setWelcomePending(true);
+    setWelcomeError("");
+    const result = await acknowledgeSupabaseWelcome();
+    setWelcomePending(false);
+    if (result.ok) setWelcomeProfile(null);
+    else setWelcomeError(result.message);
+  }, []);
 
   const dismissTestingUpdate = useCallback(() => {
     if (session?.email) markTestingUpdateSeen(session.email);
@@ -178,7 +207,7 @@ function App() {
             </Suspense>
           )}
         </div>
-        {testingUpdateOpen && (
+        {testingUpdateOpen && !welcomeProfile && (
           <ModalShell label="What's New" onClose={dismissTestingUpdate} panelClass="modal-card testing-update-modal">
             <p className="testing-update-kicker">{testingUpdateNotice.date}</p>
             <p className="testing-update-version">Version {testingUpdateNotice.version}</p>
@@ -189,6 +218,9 @@ function App() {
             </ul>
             <button className="testing-update-action" type="button" onClick={dismissTestingUpdate}>Got it</button>
           </ModalShell>
+        )}
+        {welcomeProfile && (
+          <FirstLoginWelcomeDialog profile={welcomeProfile} pending={welcomePending} error={welcomeError} onAcknowledge={() => void acknowledgeWelcome()} />
         )}
       </PortraitAppShell>
       <ToastViewport />
@@ -201,6 +233,7 @@ function PortraitAppShell({ children }: { children: ReactNode }) {
   useSoftKeyboardViewport();
   return (
     <div className="portrait-app-shell" data-testid="portrait-app-shell" data-orientation-lock="portrait-primary" aria-label="Cho's Martial Arts portrait app frame">
+      <DemoEnvironmentBadge />
       <div className="portrait-app-frame">
         {children}
       </div>
@@ -334,11 +367,13 @@ function LoginLandingPage({
   handoffActive?: boolean;
   interactive?: boolean;
 }) {
-  const { login, loginCreatedAccount, showToast } = useAppState();
+  const { activateCreatedAccount, login, loginCreatedAccount, logout, showToast } = useAppState();
   const navigate = useNavigate();
   const loginLandingRef = useRef<HTMLElement | null>(null);
   const portraitStageRef = useRef<HTMLDivElement | null>(null);
   const usernameFieldRef = useRef<HTMLLabelElement | null>(null);
+  const activationUsernameRef = useRef<HTMLInputElement | null>(null);
+  const activationNewPasswordRef = useRef<HTMLInputElement | null>(null);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -346,9 +381,29 @@ function LoginLandingPage({
   const [loginFailedOpen, setLoginFailedOpen] = useState(false);
   const [loginFailedMessage, setLoginFailedMessage] = useState(defaultLoginFailedMessage);
   const [loginPending, setLoginPending] = useState(false);
-  const [newAccountOpen, setNewAccountOpen] = useState(false);
+  const [passwordSetup, setPasswordSetup] = useState(() => readSupabaseInviteCallback());
+  const [setupPassword, setSetupPassword] = useState("");
+  const [setupConfirmation, setSetupConfirmation] = useState("");
+  const [setupMessage, setSetupMessage] = useState("");
+  const [activationOpen, setActivationOpen] = useState(false);
+  const [activationStep, setActivationStep] = useState<"credentials" | "password">("credentials");
+  const [activationHostedSession, setActivationHostedSession] = useState<{ sessionEmail: string; role: AccountRole; studentId?: string; access?: ManagerAccessKey[] } | null>(null);
+  const [activationPending, setActivationPending] = useState(false);
+  const [activationMessage, setActivationMessage] = useState("");
+  const [activationForm, setActivationForm] = useState({
+    username: "",
+    temporaryPassword: "",
+    password: "",
+    confirmation: ""
+  });
   const supabaseConfigured = isSupabaseAuthConfigured();
   const loginLandingStyle = { "--login-bg-image": `url("${publicAsset("NewFinalBackground.png")}")` } as CSSProperties;
+
+  useEffect(() => {
+    if (!activationOpen) return;
+    if (activationStep === "credentials") activationUsernameRef.current?.focus();
+    else activationNewPasswordRef.current?.focus();
+  }, [activationOpen, activationStep]);
 
   useEffect(() => {
     const landing = loginLandingRef.current;
@@ -448,8 +503,16 @@ function LoginLandingPage({
       try {
         const supabaseLogin = await signInSupabaseAccount(loginForm);
         if (supabaseLogin.status === "authenticated") {
-          login(supabaseLogin.sessionEmail, true, supabaseLogin.role);
+          login(supabaseLogin.sessionEmail, true, supabaseLogin.role, supabaseLogin.studentId, supabaseLogin.profile.access ?? undefined);
           navigate("/");
+          return;
+        }
+        if (supabaseLogin.status === "activation-required") {
+          setActivationForm({ username: loginForm.username, temporaryPassword: loginForm.password, password: "", confirmation: "" });
+          setActivationHostedSession({ sessionEmail: supabaseLogin.sessionEmail, role: supabaseLogin.role, studentId: supabaseLogin.studentId, access: supabaseLogin.profile.access ?? undefined });
+          setActivationStep("password");
+          setActivationMessage("");
+          setActivationOpen(true);
           return;
         }
         if (supabaseLogin.status === "inactive") {
@@ -475,7 +538,15 @@ function LoginLandingPage({
 
     if (!supabaseConfigured) {
       const createdAccount = loginCreatedAccount(loginForm);
-      if (createdAccount) {
+      if (createdAccount?.status === "activation-required") {
+        setActivationForm({ username: loginForm.username, temporaryPassword: loginForm.password, password: "", confirmation: "" });
+        setActivationHostedSession(null);
+        setActivationStep("password");
+        setActivationMessage("");
+        setActivationOpen(true);
+        return;
+      }
+      if (createdAccount?.status === "authenticated") {
         navigate("/");
         return;
       }
@@ -487,6 +558,126 @@ function LoginLandingPage({
       return;
     }
     failLogin("Check the username and password.");
+  };
+
+  const submitPasswordSetup = async (event: FormEvent) => {
+    event.preventDefault();
+    const validationMessage = validateAccountPasswordChange(setupPassword, setupConfirmation);
+    if (validationMessage) {
+      setSetupMessage(validationMessage);
+      return;
+    }
+    setLoginPending(true);
+    const result = await completeSupabaseInvitePassword(setupPassword);
+    setLoginPending(false);
+    if (result.status !== "ok") {
+      setSetupMessage(result.status === "not-configured" ? "Account setup is unavailable." : result.message);
+      return;
+    }
+    setSetupMessage("Password saved. Sign in with your email and new password.");
+    setPasswordSetup({ status: "none" });
+  };
+
+  const openAccountActivation = () => {
+    setActivationForm({ username: loginForm.username, temporaryPassword: "", password: "", confirmation: "" });
+    setActivationStep("credentials");
+    setActivationHostedSession(null);
+    setActivationMessage("");
+    setActivationOpen(true);
+  };
+
+  const closeAccountActivation = () => {
+    if (activationPending) return;
+    clearSupabaseAuthSession();
+    setActivationOpen(false);
+    setActivationStep("credentials");
+    setActivationHostedSession(null);
+    setActivationForm({ username: "", temporaryPassword: "", password: "", confirmation: "" });
+    setActivationMessage("");
+  };
+
+  const submitAccountActivation = async (event: FormEvent) => {
+    event.preventDefault();
+    setActivationMessage("");
+
+    if (activationStep === "credentials") {
+      if (!activationForm.username.trim() || !activationForm.temporaryPassword.trim()) {
+        setActivationMessage("Enter the account name and temporary password you were given.");
+        return;
+      }
+      setActivationPending(true);
+      if (supabaseConfigured) {
+        const result = await signInSupabaseAccount({ username: activationForm.username, password: activationForm.temporaryPassword });
+        setActivationPending(false);
+        if (result.status === "activation-required") {
+          setActivationHostedSession({ sessionEmail: result.sessionEmail, role: result.role, studentId: result.studentId, access: result.profile.access ?? undefined });
+          setActivationStep("password");
+          return;
+        }
+        clearSupabaseAuthSession();
+        if (result.status === "authenticated") {
+          setActivationMessage("This account is already active. Use Sign In.");
+          return;
+        }
+        if (result.status === "inactive") {
+          setActivationMessage("This account is inactive. Ask a Manager or Developer for help.");
+          return;
+        }
+        setActivationMessage(result.status === "backend-inactive" || result.status === "error" ? result.message : "Check the account name and temporary password.");
+        return;
+      }
+
+      const result = loginCreatedAccount({ username: activationForm.username, password: activationForm.temporaryPassword });
+      setActivationPending(false);
+      if (result?.status === "activation-required") {
+        setActivationStep("password");
+        return;
+      }
+      if (result?.status === "authenticated") {
+        logout();
+        setActivationMessage("This account is already active. Use Sign In.");
+        return;
+      }
+      setActivationMessage("Check the account name and temporary password.");
+      return;
+    }
+
+    const validationMessage = validateAccountPasswordChange(activationForm.password, activationForm.confirmation);
+    if (validationMessage) {
+      setActivationMessage(validationMessage);
+      return;
+    }
+    setActivationPending(true);
+    if (supabaseConfigured) {
+      const result = await activateSupabaseAccount(activationForm.password, activationForm.temporaryPassword);
+      setActivationPending(false);
+      if (result.status !== "ok") {
+        setActivationMessage(result.status === "not-configured" ? "Account activation is unavailable." : result.message);
+        if (result.status === "session-expired") setActivationStep("credentials");
+        return;
+      }
+      if (!activationHostedSession) {
+        clearSupabaseAuthSession();
+        setActivationStep("credentials");
+        setActivationMessage("Your temporary sign-in expired. Start account access again.");
+        return;
+      }
+      login(activationHostedSession.sessionEmail, true, activationHostedSession.role, activationHostedSession.studentId, activationHostedSession.access);
+    } else {
+      const result = activateCreatedAccount({
+        username: activationForm.username,
+        temporaryPassword: activationForm.temporaryPassword,
+        password: activationForm.password
+      });
+      setActivationPending(false);
+      if (result.status === "error") {
+        setActivationMessage(result.message);
+        return;
+      }
+    }
+    setActivationForm({ username: "", temporaryPassword: "", password: "", confirmation: "" });
+    setActivationOpen(false);
+    navigate("/");
   };
 
   return (
@@ -518,19 +709,22 @@ function LoginLandingPage({
         <form className="login-panel" onSubmit={submitLogin}>
           <label ref={usernameFieldRef} className="login-field">
             <User size={34} aria-hidden="true" />
-            <span className="sr-only">Username</span>
+            <span className="sr-only">Email or username</span>
             <input
               autoComplete="username"
+              inputMode="email"
+              aria-label="Email or username"
               placeholder="Username"
               value={loginForm.username}
               onChange={(event) => setLoginForm({ ...loginForm, username: event.target.value })}
             />
           </label>
           {errors.username && <p className="login-error">{errors.username}</p>}
-          <label className="login-field">
+          <div className="login-field">
             <Lock size={32} aria-hidden="true" />
-            <span className="sr-only">Password</span>
+            <span id="login-password-label" className="sr-only">Password</span>
             <input
+              aria-labelledby="login-password-label"
               autoComplete="current-password"
               placeholder="Password"
               type={passwordVisible ? "text" : "password"}
@@ -540,14 +734,18 @@ function LoginLandingPage({
             <button className="login-field-action" type="button" aria-label={passwordVisible ? "Hide password" : "Show password"} onClick={() => setPasswordVisible(!passwordVisible)}>
               {passwordVisible ? <EyeOff size={32} /> : <Eye size={32} />}
             </button>
-          </label>
+          </div>
           {errors.password && <p className="login-error">{errors.password}</p>}
           <button className="login-submit" type="submit" disabled={loginPending}>
             {loginPending ? "Signing In..." : "Sign In"}
           </button>
-          <button className="login-create" type="button" onClick={() => setNewAccountOpen(true)}>
-            Create Account
-          </button>
+          <div className="login-secondary-actions">
+            <button className="login-create login-access-new-account" type="button" onClick={openAccountActivation}>
+              Access New Account
+            </button>
+          </div>
+          <p className="login-invite-only-note">Use Sign In for an active account, or Access New Account with the temporary password you were given.</p>
+          {setupMessage && <p className="login-invite-only-note" role="status">{setupMessage}</p>}
         </form>
         <div className="login-divider" aria-hidden="true">
           <span></span>
@@ -569,15 +767,48 @@ function LoginLandingPage({
           </div>
         </ModalShell>
       )}
-      {newAccountOpen && (
-        <ModalShell label="New account" onClose={() => setNewAccountOpen(false)} panelClass="modal-card login-new-account-modal">
-          <div className="login-new-account-content">
-            <h2>New Account</h2>
-            <p>A Manager, Staff member, or Developer must create and activate your account before you can sign in.</p>
-            <p>They will give you a default username and password for your first sign-in.</p>
-            <p>After your first sign-in, your Manager or Staff member can help you update your account details.</p>
-            <button className="btn btn-red" type="button" onClick={() => setNewAccountOpen(false)}>Return to Sign In</button>
-          </div>
+      {activationOpen && (
+        <ModalShell label="Access new account" onClose={closeAccountActivation} panelClass="modal-card login-failed-modal account-activation-modal">
+          <form className="login-failed-content account-activation-form" onSubmit={submitAccountActivation}>
+            <h2>{activationStep === "credentials" ? "Access your new account" : "Create your personal password"}</h2>
+            <p>{activationStep === "credentials" ? "Enter the account name and temporary password a Developer or Manager gave you." : "Your temporary credentials are correct. Replace the temporary password before entering the app."}</p>
+            {activationStep === "credentials" ? (
+              <>
+                <label><span>Account name</span><input ref={activationUsernameRef} aria-label="Account name" autoComplete="username" value={activationForm.username} onChange={(event) => setActivationForm({ ...activationForm, username: event.target.value })} /></label>
+                <label><span>Temporary password</span><input aria-label="Temporary password" type="password" autoComplete="current-password" value={activationForm.temporaryPassword} onChange={(event) => setActivationForm({ ...activationForm, temporaryPassword: event.target.value })} /></label>
+              </>
+            ) : (
+              <>
+                <label className="sr-only"><span>Account name for password manager</span><input aria-label="Account name for password manager" autoComplete="username" value={activationForm.username} readOnly tabIndex={-1} /></label>
+                <label><span>New password</span><input ref={activationNewPasswordRef} aria-label="New account password" type="password" autoComplete="new-password" value={activationForm.password} onChange={(event) => setActivationForm({ ...activationForm, password: event.target.value })} /></label>
+                <label><span>Confirm password</span><input aria-label="Confirm account password" type="password" autoComplete="new-password" value={activationForm.confirmation} onChange={(event) => setActivationForm({ ...activationForm, confirmation: event.target.value })} /></label>
+              </>
+            )}
+            {activationMessage && <p className="login-error" role="status">{activationMessage}</p>}
+            <div className="account-activation-actions">
+              <button className="btn btn-ghost" type="button" onClick={closeAccountActivation} disabled={activationPending}>Cancel</button>
+              <button className="btn btn-red" type="submit" disabled={activationPending}>
+                {activationPending ? "Checking..." : activationStep === "credentials" ? "Continue" : "Activate Account"}
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      )}
+      {passwordSetup.status === "ready" && (
+        <ModalShell label="Set your password" onClose={() => undefined} panelClass="modal-card login-failed-modal">
+          <form className="login-failed-content account-activation-form" onSubmit={submitPasswordSetup}>
+            <h2>Set your password</h2>
+            <p>Create a strong password to finish accepting your Cho&apos;s invitation.</p>
+            <label>New password<input aria-label="New password" type="password" autoComplete="new-password" value={setupPassword} onChange={(event) => setSetupPassword(event.target.value)} /></label>
+            <label>Confirm new password<input aria-label="Confirm new password" type="password" autoComplete="new-password" value={setupConfirmation} onChange={(event) => setSetupConfirmation(event.target.value)} /></label>
+            {setupMessage && <p className="login-error" role="alert">{setupMessage}</p>}
+            <button className="btn btn-red login-failed-action" type="submit" disabled={loginPending}>{loginPending ? "Saving..." : "Save Password"}</button>
+          </form>
+        </ModalShell>
+      )}
+      {passwordSetup.status === "error" && (
+        <ModalShell label="Invitation link problem" onClose={() => setPasswordSetup({ status: "none" })} panelClass="modal-card login-failed-modal">
+          <div className="login-failed-content"><h2>Invitation link problem</h2><p>{passwordSetup.message}</p><button className="btn btn-red login-failed-action" type="button" onClick={() => setPasswordSetup({ status: "none" })}>Return to Sign In</button></div>
         </ModalShell>
       )}
     </section>
@@ -586,14 +817,46 @@ function LoginLandingPage({
 
 function ModalShell({ label, onClose, panelClass, children }: { label: string; onClose: () => void; panelClass: string; children: ReactNode }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      const panel = panelRef.current;
+      if (!panel) return;
+      const openDialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]'));
+      if (openDialogs.at(-1) !== panel) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+      ).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel || !panel.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     panelRef.current?.focus();
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, []);
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className={panelClass} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} ref={panelRef}>

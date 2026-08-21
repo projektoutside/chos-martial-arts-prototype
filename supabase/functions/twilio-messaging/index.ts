@@ -485,7 +485,7 @@ async function loadRelayAttempts(serviceClient: SupabaseClientLike, messages: re
 
 async function reserveRelayAttempts(serviceClient: SupabaseClientLike, messages: readonly RelayMessage[], manager: AuthenticatedManager) {
   const now = new Date().toISOString();
-  const { error } = await serviceClient
+  const { data, error } = await serviceClient
     .from("twilio_relay_attempts")
     .upsert(messages.map((message) => ({
       relay_idempotency_key: message.idempotencyKey,
@@ -496,8 +496,10 @@ async function reserveRelayAttempts(serviceClient: SupabaseClientLike, messages:
       status: "reserved",
       reserved_at: now,
       created_by: manager.userId
-    })), { onConflict: "relay_idempotency_key", ignoreDuplicates: true });
+    })), { onConflict: "relay_idempotency_key", ignoreDuplicates: true })
+    .select("relay_idempotency_key");
   if (error) throw new Error(error.message);
+  return new Set((data ?? []).map((attempt: { relay_idempotency_key: string }) => attempt.relay_idempotency_key));
 }
 
 function messageLogStatusForResult(result: RelayResult) {
@@ -655,7 +657,22 @@ async function handleSend(req: Request) {
     });
     if (blocked.length) return jsonResponse({ error: "Relay dispatch blocked duplicate or in-flight sends.", errors: blocked }, 409);
 
-    await reserveRelayAttempts(serviceClient, messagesToSend, auth.manager);
+    const reservedKeys = await reserveRelayAttempts(serviceClient, messagesToSend, auth.manager);
+    const lostReservations = messagesToSend.filter((message) => !reservedKeys.has(message.idempotencyKey));
+    if (lostReservations.length) {
+      const ownedKeys = [...reservedKeys];
+      if (ownedKeys.length) {
+        const { error: releaseError } = await serviceClient
+          .from("twilio_relay_attempts")
+          .delete()
+          .in("relay_idempotency_key", ownedKeys);
+        if (releaseError) throw new Error(`Unable to release partial relay reservations: ${releaseError.message}`);
+      }
+      return jsonResponse({
+        error: "Relay dispatch blocked duplicate or in-flight sends.",
+        errors: lostReservations.map((message) => `${message.id}: idempotency key was reserved by another request.`)
+      }, 409);
+    }
     const results: RelayResult[] = [...replayResults];
     for (const message of messagesToSend) {
       await serviceClient.from("twilio_relay_attempts").update({ status: "sending" }).eq("relay_idempotency_key", message.idempotencyKey);
@@ -682,7 +699,7 @@ async function handleInbound(req: Request) {
 
   if (keyword && isE164Phone(from)) {
     const now = new Date().toISOString();
-    await serviceClient
+    const { data, error } = await serviceClient
       .from("sms_consent_records")
       .update({
         consent_status: keyword,
@@ -691,7 +708,10 @@ async function handleInbound(req: Request) {
         evidence_source: "twilio-inbound-keyword",
         twilio_message_sid: messageSid || null
       })
-      .eq("phone", from);
+      .eq("phone", from)
+      .select("contact_id");
+    if (error) return textResponse("Consent update failed", 500);
+    if (!Array.isArray(data) || data.length === 0) return textResponse("Consent record not found", 500);
   } else if (from && body && messageSid) {
     const { data: contacts } = await serviceClient
       .from("sms_consent_records")
@@ -738,11 +758,13 @@ async function handleStatus(req: Request, pathMessageId?: string) {
     delivery_provider_message_id: result.deliveryProviderMessageId ?? null
   };
   if (pathMessageId) {
-    await serviceClient.from("message_logs").update(update).eq("id", pathMessageId);
+    const { error } = await serviceClient.from("message_logs").update(update).eq("id", pathMessageId);
+    if (error) return textResponse("Status update failed", 500);
   } else if (result.deliveryProviderMessageId) {
-    await serviceClient.from("message_logs").update(update).eq("delivery_provider_message_id", result.deliveryProviderMessageId);
+    const { error } = await serviceClient.from("message_logs").update(update).eq("delivery_provider_message_id", result.deliveryProviderMessageId);
+    if (error) return textResponse("Status update failed", 500);
   }
-  await serviceClient
+  const { error: attemptError } = await serviceClient
     .from("twilio_relay_attempts")
     .update({
       status: failedDeliveryStatuses.has(result.deliveryStatus) ? "failed" : "sent",
@@ -754,6 +776,7 @@ async function handleStatus(req: Request, pathMessageId?: string) {
       result
     })
     .or(`message_id.eq.${result.id},delivery_provider_message_id.eq.${result.deliveryProviderMessageId ?? ""}`);
+  if (attemptError) return textResponse("Status update failed", 500);
   return textResponse("", 204);
 }
 

@@ -67,6 +67,22 @@ import {
   type LiveChatMessage
 } from "./supabaseLiveChat";
 import {
+  createPrivateChatRoom,
+  deletePrivateChatRoom,
+  fetchPrivateChatInvitees,
+  fetchPrivateChatMessages,
+  fetchPrivateChatRooms,
+  leavePrivateChatRoom,
+  sendPrivateChatMessage,
+  subscribeToPrivateChatChanges,
+  updatePrivateChatRoom,
+  type PrivateChatInvitee,
+  type PrivateChatMessage,
+  type PrivateChatRoom,
+  type PrivateChatRoomColor
+} from "./supabasePrivateLiveChat";
+import { CreatePrivateRoomDialog, ManagePrivateRoomDialog } from "./PrivateLiveChatDialogs";
+import {
   getBeltJourneyStats,
   resolveBeltRank
 } from "./beltCase";
@@ -116,7 +132,7 @@ import { buildTwilioSupabaseMessagingUrls, isSupabaseTwilioMessagingEndpoint, is
 import { validateTwilioRelayHealthResponseForBrowser, validateTwilioRelayPayloadForServer, type TwilioRelayHealthReadinessChecks } from "./twilioRelayContract";
 import { TestingUpdateHistoryDialog } from "./TestingUpdateHistoryDialog";
 import type { AccountRole, BeltRank, ChildAccount, ClassWeekday, DirectMessage, ManagedAccount, ManagerAccessKey, MerchandiseItem, MessageCampaign, MessageLog, MessageNotificationSettings, ScheduledClass, ScheduledTextCampaign, StudioClass, StudyGuideFolder, StudyGuideMaterial, StudentRecord, StudioEvent, TextAutomationRun, TrainingVideo, TrainingVideoFolder } from "./types";
-import { downloadTextFile, formatMoney, hasSmsOptOutLanguage, isDeveloperAccountEnabled, profileAvatarPathForSession, smsOptOutPreflightText, smsSegmentPreflightText, validateEmail } from "./utils";
+import { downloadTextFile, formatMoney, hasSmsOptOutLanguage, isDeveloperAccountEnabled, isReservedPrototypeUsername, profileAvatarPathForSession, smsOptOutPreflightText, smsSegmentPreflightText, validateEmail } from "./utils";
 
 const beltOptions = beltRanks.map((beltRank) => beltRank.name);
 const weekdayOptions: { value: ClassWeekday; label: string; short: string }[] = [
@@ -250,11 +266,12 @@ function isCurrentOperationsStudent(student: StudentRecord) {
   return (student.status?.trim() || "Active").toLowerCase() !== "inactive";
 }
 
-function selectSessionStudent(students: StudentRecord[], sessionEmail?: string, managedStudentId?: string) {
+function selectSessionStudent(students: StudentRecord[], sessionEmail?: string, managedStudentId?: string, failClosed = false) {
+  if (managedStudentId) return students.find((student) => student.id === managedStudentId);
   const normalizedEmail = sessionEmail?.toLowerCase();
+  const emailStudent = normalizedEmail ? students.find((student) => student.email.toLowerCase() === normalizedEmail) : undefined;
+  if (emailStudent || failClosed) return emailStudent;
   return (
-    (managedStudentId ? students.find((student) => student.id === managedStudentId) : undefined) ??
-    (normalizedEmail ? students.find((student) => student.email.toLowerCase() === normalizedEmail) : undefined) ??
     students.find((student) => (student.status ?? "Active").toLowerCase() === "active") ??
     students[0]
   );
@@ -3077,14 +3094,17 @@ function getSelectedStudentLauncherItem(search: string) {
 }
 
 function useStudentPanelSummary() {
-  const { currentChildAccount, session, students } = useAppState();
+  const { accountRole, currentChildAccount, currentManagedAccount, session, students } = useAppState();
   const selectedStudent = useMemo(() => {
+    const authoritativeStudentId = session?.studentId ?? currentManagedAccount?.studentId;
+    if (authoritativeStudentId) return students.find((student) => student.id === authoritativeStudentId);
     const sessionEmail = session?.email.toLowerCase();
     const sessionStudent = sessionEmail ? students.find((student) => student.email.toLowerCase() === sessionEmail) : undefined;
     if (sessionStudent) return sessionStudent;
     if (currentChildAccount) return undefined;
+    if (accountRole === "student") return undefined;
     return students.find((student) => (student.status ?? "Active").toLowerCase() === "active") ?? students[0];
-  }, [currentChildAccount, session?.email, students]);
+  }, [accountRole, currentChildAccount, currentManagedAccount?.studentId, session?.email, session?.studentId, students]);
   const studentProfile = readStudentProfile(session?.email, selectedStudent, currentChildAccount);
   const studentName = studentProfile.name || (selectedStudent ? fullName(selectedStudent) : currentChildAccount?.name.trim() || "Cho's Student");
   const studentFirstName = studentName.trim().split(/\s+/)[0] || "Student";
@@ -3405,7 +3425,7 @@ function completedReadinessItemCount(progress: StudentBeltProgress) {
 
 function StudentTestPage() {
   const { currentManagedAccount, session, students } = useAppState();
-  const selectedStudent = selectSessionStudent(students, session?.email, currentManagedAccount?.studentId);
+  const selectedStudent = selectSessionStudent(students, session?.email, session?.studentId ?? currentManagedAccount?.studentId, true);
   const progress = selectedStudent ? buildStudentBeltProgress(selectedStudent) : undefined;
   const studentName = selectedStudent ? fullName(selectedStudent) : "Cho's Student";
   const rankLabel = progress ? `${progress.rankName} Belt` : "No rank";
@@ -4901,7 +4921,9 @@ function liveChatRoleLabel(accountRole: AccountRole | undefined, isDeveloper: bo
   return isDeveloper ? "Developer" : isManagerOwner ? "Manager" : "Staff";
 }
 
-function liveChatSessionStudent(students: StudentRecord[], sessionEmail?: string) {
+function liveChatSessionStudent(students: StudentRecord[], sessionEmail?: string, sessionStudentId?: string) {
+  const linkedStudentId = sessionStudentId?.trim();
+  if (linkedStudentId) return students.find((student) => student.id === linkedStudentId);
   const normalizedEmail = sessionEmail?.trim().toLowerCase();
   if (!normalizedEmail) return undefined;
   return students.find((student) => student.email.trim().toLowerCase() === normalizedEmail);
@@ -4982,6 +5004,20 @@ function appendUniqueLiveChatMessage(messages: LiveChatMessage[], message: LiveC
   return [...messages, message].sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
 }
 
+function privateChatMessageToLiveChatMessage(message: PrivateChatMessage): LiveChatMessage {
+  return {
+    id: message.id,
+    roomKey: message.roomId,
+    senderUserId: message.senderId,
+    senderName: message.senderName,
+    senderRole: message.senderRole,
+    senderAvatarPath: message.senderAvatarPath,
+    messageKind: "user",
+    body: message.body,
+    createdAt: message.createdAt
+  };
+}
+
 const liveChatFeedBottomThresholdPx = 36;
 
 function getLiveChatFeedBottomScrollTop(feed: HTMLElement) {
@@ -5027,7 +5063,7 @@ function LiveChatRoomFrame({
   const { accountRole, currentChildAccount, managerAccountAccess, messageNotificationSettings, session, students, updateMessageNotificationSettings } = useAppState();
   const isManagerOwner = managerAccountAccess.isManagerOwner;
   const isDeveloper = managerAccountAccess.isDeveloper;
-  const sessionStudent = useMemo(() => liveChatSessionStudent(students, session?.email), [session?.email, students]);
+  const sessionStudent = useMemo(() => liveChatSessionStudent(students, session?.email, session?.studentId), [session?.email, session?.studentId, students]);
   const profileAvatarPath = accountRole === "student" && sessionStudent?.profileImagePath
     ? sessionStudent.profileImagePath
     : profileAvatarPathForSession(session?.email);
@@ -5039,7 +5075,23 @@ function LiveChatRoomFrame({
     student: sessionStudent
   }));
   const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
-  const chatRooms = liveChatDefaultRooms;
+  const [privateRooms, setPrivateRooms] = useState<PrivateChatRoom[]>([]);
+  const [privateMessages, setPrivateMessages] = useState<Record<string, PrivateChatMessage[]>>({});
+  const [privateInvitees, setPrivateInvitees] = useState<PrivateChatInvitee[]>([]);
+  const [isCreateRoomOpen, setIsCreateRoomOpen] = useState(false);
+  const [isManageRoomOpen, setIsManageRoomOpen] = useState(false);
+  const [isLoadingInvitees, setIsLoadingInvitees] = useState(false);
+  const [privateRoomError, setPrivateRoomError] = useState("");
+  const createRoomButtonRef = useRef<HTMLButtonElement | null>(null);
+  const chatRooms = useMemo<LiveChatRoom[]>(() => [
+    ...liveChatDefaultRooms,
+    ...privateRooms.map((room) => ({
+      id: room.id,
+      name: room.name,
+      color: room.tabColor,
+      invitedMemberIds: room.members.map((member) => member.profileId)
+    }))
+  ], [privateRooms]);
   const [activeRoomId, setActiveRoomId] = useState(liveChatDefaultRoomId);
   const [messageText, setMessageText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -5071,15 +5123,23 @@ function LiveChatRoomFrame({
   }, [isDeveloper, profileAvatarPath]);
   const previewMessages = sessionPreviewMessages;
   const defaultRoomMessages = chatMessages.length ? chatMessages : previewMessages;
-  const mentionMessages = defaultRoomMessages.filter((message) => liveChatMessageMentionsManager(message, managerProfile));
+  const privateRoomLiveMessages = Object.values(privateMessages).flat().map(privateChatMessageToLiveChatMessage);
+  const mentionMessages = [...defaultRoomMessages, ...privateRoomLiveMessages]
+    .filter((message) => liveChatMessageMentionsManager(message, managerProfile))
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
   const isMentionsView = activeRoomId === liveChatMentionsRoomId;
   const activeRoom = chatRooms.find((room) => room.id === activeRoomId) ?? chatRooms[0];
-  const activeRoomMessages = activeRoom?.isDefault ? defaultRoomMessages : [];
+  const activePrivateRoom = privateRooms.find((room) => room.id === activeRoomId);
+  const activeRoomMessages = activeRoom?.isDefault ? defaultRoomMessages : (privateMessages[activeRoomId] ?? []).map(privateChatMessageToLiveChatMessage);
   const filteredMessages = isMentionsView ? mentionMessages : activeRoomMessages;
   const activeRoomEmptyMessage = isMentionsView
     ? "No manager mentions yet."
-    : "No live messages yet.";
-  const onlineCount = Math.max(rosterMembers.length, 1);
+    : activePrivateRoom ? `${activePrivateRoom.name} has no messages yet.` : "No live messages yet.";
+  const currentProfileId = readSupabaseAuthSession()?.userId ?? "";
+  const displayedRosterMembers = activePrivateRoom
+    ? activePrivateRoom.members.map((member) => ({ id: member.profileId, name: member.displayName, detail: liveChatRoleLabel(member.role, false, false), avatarSrc: publicAsset("assets/CheetahProfilePic/Cheetah.png") }))
+    : rosterMembers;
+  const onlineCount = Math.max(displayedRosterMembers.length, 1);
   const isComposerInputDisabled = isSending;
   const isSendDisabled = isSending || !isLiveReady;
   const rosterId = `${idPrefix}-roster-members`;
@@ -5192,6 +5252,45 @@ function LiveChatRoomFrame({
     };
   }, [notifyIncomingLiveChatMessage]);
 
+  const refreshPrivateRooms = useCallback(async () => {
+    const roomsResult = await fetchPrivateChatRooms();
+    if (roomsResult.status !== "ok") {
+      if (roomsResult.status === "error") setPrivateRoomError(roomsResult.message);
+      return;
+    }
+    setPrivateRooms(roomsResult.data);
+    const authorizedIds = new Set(roomsResult.data.map((room) => room.id));
+    setPrivateMessages((current) => Object.fromEntries(Object.entries(current).filter(([roomId]) => authorizedIds.has(roomId))));
+    if (activeRoomId !== liveChatDefaultRoomId && activeRoomId !== liveChatMentionsRoomId && !authorizedIds.has(activeRoomId)) {
+      setActiveRoomId(liveChatDefaultRoomId);
+      setIsManageRoomOpen(false);
+    }
+    const loadedMessages = await Promise.all(roomsResult.data.map(async (room) => [room.id, await fetchPrivateChatMessages({ roomId: room.id })] as const));
+    setPrivateMessages(Object.fromEntries(loadedMessages.filter((entry) => entry[1].status === "ok").map(([roomId, result]) => [roomId, result.status === "ok" ? result.data : []])));
+  }, [activeRoomId]);
+
+  useEffect(() => {
+    if (!isLiveReady) {
+      setPrivateRooms([]);
+      setPrivateMessages({});
+      return;
+    }
+    void refreshPrivateRooms();
+    const subscription = subscribeToPrivateChatChanges({
+      onChange: () => { void refreshPrivateRooms(); },
+      onMessage: (message) => {
+        setPrivateMessages((current) => ({
+          ...current,
+          [message.roomId]: current[message.roomId]?.some((existing) => existing.id === message.id)
+            ? current[message.roomId]
+            : [...(current[message.roomId] ?? []), message]
+        }));
+        notifyIncomingLiveChatMessage(privateChatMessageToLiveChatMessage(message));
+      }
+    });
+    return subscription.cleanup;
+  }, [isLiveReady, notifyIncomingLiveChatMessage, refreshPrivateRooms]);
+
   useLayoutEffect(() => {
     const feed = messageFeedRef.current;
     if (!feed) return;
@@ -5217,6 +5316,73 @@ function LiveChatRoomFrame({
     isMessageFeedPinnedToBottomRef.current = isLiveChatFeedNearBottom(feed);
   };
 
+  const loadPrivateInvitees = async () => {
+    setIsLoadingInvitees(true);
+    const result = await fetchPrivateChatInvitees();
+    setIsLoadingInvitees(false);
+    if (result.status !== "ok") {
+      setPrivateRoomError(result.message);
+      return false;
+    }
+    setPrivateInvitees(result.data);
+    return true;
+  };
+
+  const openCreateRoomDialog = () => {
+    setPrivateRoomError("");
+    setIsCreateRoomOpen(true);
+    void loadPrivateInvitees();
+  };
+
+  const closeCreateRoomDialog = () => {
+    setIsCreateRoomOpen(false);
+    window.setTimeout(() => createRoomButtonRef.current?.focus(), 0);
+  };
+
+  const handleCreatePrivateRoom = async (input: { name: string; memberIds: string[]; tabColor: PrivateChatRoomColor }) => {
+    setPrivateRoomError("");
+    const result = await createPrivateChatRoom(input);
+    if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
+    await refreshPrivateRooms();
+    setActiveRoomId(result.data);
+    setIsCreateRoomOpen(false);
+    setLiveStatusMessage(`${input.name} created as a private room.`);
+  };
+
+  const openManageRoomDialog = () => {
+    setPrivateRoomError("");
+    setIsManageRoomOpen(true);
+    void loadPrivateInvitees();
+  };
+
+  const handleUpdatePrivateRoom = async (input: { name: string; memberIds: string[]; tabColor: PrivateChatRoomColor }) => {
+    if (!activePrivateRoom) return;
+    const result = await updatePrivateChatRoom({ roomId: activePrivateRoom.id, ...input });
+    if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
+    await refreshPrivateRooms();
+    setIsManageRoomOpen(false);
+  };
+
+  const handleDeletePrivateRoom = async () => {
+    if (!activePrivateRoom) return;
+    const result = await deletePrivateChatRoom({ roomId: activePrivateRoom.id });
+    if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
+    setIsManageRoomOpen(false);
+    setActiveRoomId(liveChatDefaultRoomId);
+    setLiveStatusMessage("Private room deleted. Cho's Room is active.");
+    await refreshPrivateRooms();
+  };
+
+  const handleLeavePrivateRoom = async () => {
+    if (!activePrivateRoom) return;
+    const result = await leavePrivateChatRoom({ roomId: activePrivateRoom.id });
+    if (result.status !== "ok") { setPrivateRoomError(result.message); return; }
+    setIsManageRoomOpen(false);
+    setActiveRoomId(liveChatDefaultRoomId);
+    setLiveStatusMessage("You left the private room. Cho's Room is active.");
+    await refreshPrivateRooms();
+  };
+
   const sendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSendError("");
@@ -5229,21 +5395,15 @@ function LiveChatRoomFrame({
 
     const targetRoom = isMentionsView ? chatRooms[0] : activeRoom;
 
-    if (targetRoom && !targetRoom.isDefault) {
-      setSendError("Only Cho's Room is available until additional rooms can save to Supabase.");
-      return;
-    }
-
     if (!isLiveReady) {
       setSendError("Live chat storage is unavailable. Messages are only sent when Supabase live chat is connected.");
       return;
     }
 
     setIsSending(true);
-    const result = await sendLiveChatMessage({
-      body: validation.body,
-      senderAvatarPath: managerProfile.photoDataUrl ? undefined : profileAvatarPath
-    });
+    const result = targetRoom && !targetRoom.isDefault
+      ? await sendPrivateChatMessage({ roomId: targetRoom.id, body: validation.body, senderAvatarPath: managerProfile.photoDataUrl ? undefined : profileAvatarPath })
+      : await sendLiveChatMessage({ body: validation.body, senderAvatarPath: managerProfile.photoDataUrl ? undefined : profileAvatarPath });
     setIsSending(false);
 
     if (result.status !== "ok") {
@@ -5252,7 +5412,15 @@ function LiveChatRoomFrame({
       return;
     }
 
-    setChatMessages((currentMessages) => appendUniqueLiveChatMessage(currentMessages, result.data));
+    if (targetRoom && !targetRoom.isDefault) {
+      const privateMessage = result.data as PrivateChatMessage;
+      setPrivateMessages((current) => ({
+        ...current,
+        [targetRoom.id]: current[targetRoom.id]?.some((message) => message.id === privateMessage.id) ? current[targetRoom.id] : [...(current[targetRoom.id] ?? []), privateMessage]
+      }));
+    } else {
+      setChatMessages((currentMessages) => appendUniqueLiveChatMessage(currentMessages, result.data as LiveChatMessage));
+    }
     setMessageText("");
   };
 
@@ -5266,7 +5434,7 @@ function LiveChatRoomFrame({
           data-orientation="vertical"
           hidden={isRosterCollapsed}
         >
-            {rosterMembers.map((member) => (
+            {displayedRosterMembers.map((member) => (
               <article className="manager-launcher-item live-chat-roster-member" key={member.id} aria-label={`${member.name}, ${member.detail}`}>
                 <span className="manager-launcher-graphic live-chat-roster-avatar">
                   <img className="manager-launcher-image live-chat-roster-image" src={member.avatarSrc} alt="" draggable="false" />
@@ -5304,6 +5472,11 @@ function LiveChatRoomFrame({
                 </div>
               </div>
               <p className="live-chat-status-copy" aria-live="polite">{isLoading ? "Loading live messages..." : formatLiveChatHeaderStatus(liveStatusMessage)}</p>
+              {activePrivateRoom && (
+                <button className="private-chat-manage-button" type="button" onClick={openManageRoomDialog}>
+                  {activePrivateRoom.creatorId === currentProfileId ? "Manage Room" : "Room Members"} · {activePrivateRoom.members.length}
+                </button>
+              )}
             </div>
             <div className="live-chat-controls">
               <div className="live-chat-tabs live-chat-room-tabs" role="tablist" aria-label="Live chat rooms">
@@ -5345,6 +5518,10 @@ function LiveChatRoomFrame({
                   </button>
                 </div>
               </div>
+              <button ref={createRoomButtonRef} className="live-chat-create-room-button live-chat-create-room-button--compact" type="button" onClick={openCreateRoomDialog}>
+                <Plus size={15} aria-hidden="true" />
+                <span>Create Room</span>
+              </button>
             </div>
           </div>
 
@@ -5385,6 +5562,27 @@ function LiveChatRoomFrame({
             </span>
           </div>
         </section>
+        <CreatePrivateRoomDialog
+          open={isCreateRoomOpen}
+          invitees={privateInvitees}
+          isLoadingInvitees={isLoadingInvitees}
+          error={privateRoomError}
+          onClose={closeCreateRoomDialog}
+          onCreate={handleCreatePrivateRoom}
+        />
+        {activePrivateRoom && (
+          <ManagePrivateRoomDialog
+            open={isManageRoomOpen}
+            room={activePrivateRoom}
+            currentProfileId={currentProfileId}
+            invitees={privateInvitees}
+            error={privateRoomError}
+            onClose={() => setIsManageRoomOpen(false)}
+            onUpdate={handleUpdatePrivateRoom}
+            onDelete={handleDeletePrivateRoom}
+            onLeave={handleLeavePrivateRoom}
+          />
+        )}
     </div>
   );
 }
@@ -5406,7 +5604,7 @@ function ProfileLiveChatPanel({ idPrefix }: { idPrefix: string }) {
 function LiveChatPage() {
   const { accountRole, currentChildAccount, logout, managerAccountAccess, session, students } = useAppState();
   const isManagerOwner = managerAccountAccess.isManagerOwner;
-  const sessionStudent = useMemo(() => liveChatSessionStudent(students, session?.email), [session?.email, students]);
+  const sessionStudent = useMemo(() => liveChatSessionStudent(students, session?.email, session?.studentId), [session?.email, session?.studentId, students]);
   const profileAvatarPath = accountRole === "student" && sessionStudent?.profileImagePath
     ? sessionStudent.profileImagePath
     : profileAvatarPathForSession(session?.email);
@@ -5820,16 +6018,19 @@ function HomeProfilePushSubscriptionControls({
 }
 
 function StudentProfilePage() {
-  const { currentChildAccount, directMessages, logout, scheduledClasses, sendDirectMessage, session, showToast, studioClasses, studioEvents, students } = useAppState();
+  const { accountRole, currentChildAccount, currentManagedAccount, directMessages, logout, scheduledClasses, sendDirectMessage, session, showToast, studioClasses, studioEvents, students } = useAppState();
   const navigate = useNavigate();
   const today = useLiveCalendarDate();
   const selectedStudent = useMemo(() => {
+    const authoritativeStudentId = session?.studentId ?? currentManagedAccount?.studentId;
+    if (authoritativeStudentId) return students.find((student) => student.id === authoritativeStudentId);
     const sessionEmail = session?.email.toLowerCase();
     const sessionStudent = sessionEmail ? students.find((student) => student.email.toLowerCase() === sessionEmail) : undefined;
     if (sessionStudent) return sessionStudent;
     if (currentChildAccount) return undefined;
+    if (accountRole === "student") return undefined;
     return students.find((student) => (student.status ?? "Active").toLowerCase() === "active") ?? students[0];
-  }, [currentChildAccount, session?.email, students]);
+  }, [accountRole, currentChildAccount, currentManagedAccount?.studentId, session?.email, session?.studentId, students]);
   const [studentProfile, setStudentProfile] = useState(() => readStudentProfile(session?.email, selectedStudent, currentChildAccount));
   const [studentProfileOpen, setStudentProfileOpen] = useState(false);
   const [studentUpdateHistoryOpen, setStudentUpdateHistoryOpen] = useState(false);
@@ -6755,6 +6956,10 @@ function StudentProfilePage() {
                   className="profile-editing-tool-button"
                   aria-haspopup="dialog"
                   onClick={() => setStudentUpdateHistoryOpen(true)}
+                  data-guided-onboarding-id="shared.profile-settings.app-updates.v1"
+                  data-guided-onboarding-title="App Updates"
+                  data-guided-onboarding-instruction="Opens every testing update so you can review past changes whenever you want."
+                  data-guided-onboarding-priority="700"
                 >
                   View App Updates
                 </button>
@@ -8033,6 +8238,10 @@ function ParentProfilePage() {
                   className="profile-editing-tool-button"
                   aria-haspopup="dialog"
                   onClick={() => setParentUpdateHistoryOpen(true)}
+                  data-guided-onboarding-id="shared.profile-settings.app-updates.v1"
+                  data-guided-onboarding-title="App Updates"
+                  data-guided-onboarding-instruction="Opens every testing update so you can review past changes whenever you want."
+                  data-guided-onboarding-priority="700"
                 >
                   View App Updates
                 </button>
@@ -9484,7 +9693,7 @@ function ManagerLauncherPage() {
   const sidebarToggleLabel = isSidebarCollapsed ? `Expand ${launcherName} app launcher` : `Collapse ${launcherName} app launcher`;
   const managerProfileNotificationChannels = profileNotificationChannels(messageNotificationSettings);
   const managerProfilePushSubscriptionReady = Boolean(messageNotificationSettings.pushSubscriptionEndpoint?.trim());
-  const studentRecord = selectSessionStudent(students, session?.email, currentManagedAccount?.studentId);
+  const studentRecord = selectSessionStudent(students, session?.email, session?.studentId ?? currentManagedAccount?.studentId, isStudentPanel);
   const studentPanelProfile = isStudentPanel ? readStudentProfile(session?.email, studentRecord) : undefined;
   const profileAvatarPath = profileAvatarPathForSession(session?.email);
   const profileActionPhoto = isStudentPanel
@@ -9684,7 +9893,7 @@ function ManagerLauncherPage() {
                   title={item.label}
                   aria-current={isSelected ? "page" : undefined}
                   data-future={item.future ? "true" : undefined}
-                  data-guided-onboarding-id={`${isStudentPanel ? "student" : "staff"}.launcher.${item.icon}.v1`}
+                  data-guided-onboarding-id={`${isStudentPanel ? "student" : "staff"}.launcher.${item.icon.toLowerCase()}.v1`}
                   data-guided-onboarding-title={onboardingCopy.title}
                   data-guided-onboarding-instruction={onboardingCopy.instruction}
                   data-guided-onboarding-priority={String(100 + index)}
@@ -9823,6 +10032,10 @@ function ManagerLauncherPage() {
                   className="profile-editing-tool-button"
                   aria-haspopup="dialog"
                   onClick={() => setUpdateHistoryOpen(true)}
+                  data-guided-onboarding-id="shared.profile-settings.app-updates.v1"
+                  data-guided-onboarding-title="App Updates"
+                  data-guided-onboarding-instruction="Opens every testing update so you can review past changes whenever you want."
+                  data-guided-onboarding-priority="700"
                 >
                   View App Updates
                 </button>
@@ -9845,6 +10058,7 @@ function ManagerLauncherPage() {
 type CreateAccountMode = "staff" | "student" | "parent";
 
 const createdAccountPasswordPolicyText = accountPasswordPolicyText;
+const createAccountReadinessText = "Required: full name; username with at least 3 letters, numbers, dots, underscores, or hyphens; temporary password with at least 12 characters, uppercase, lowercase, a number, a symbol, and no leading or trailing spaces; exact matching confirmation. The Create Account button becomes enabled and green when these field checks pass. Username availability and hosted authorization are confirmed after submission.";
 const createAccountStaffAccessOptions: { key: ManagerAccessKey; label: string; detail: string }[] = [
   { key: "dashboard", label: "Dashboard", detail: "Calendar and daily overview" },
   { key: "messages", label: "Messages", detail: "Live chat and text tools" },
@@ -9867,17 +10081,25 @@ function normalizeCreateUsername(username: string) {
     .replace(/^[._-]+|[._-]+$/g, "");
 }
 
+function studentIdForCreateUsername(username: string) {
+  const normalizedUsername = normalizeCreateUsername(username);
+  const encodedUsername = Array.from(normalizedUsername, (character) => character.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+  return `student-${encodedUsername}`;
+}
+
 const defaultStaffAccess = createAccountStaffAccessOptions.map((option) => option.key);
 
 function CreateAccountsPage() {
   const {
     accounts,
     addOperationsStudent,
+    childAccounts,
     createGuardianAccount,
     createManagedAccount,
     managedAccounts,
     managerAccountAccess,
     showToast,
+    syncOperationsStudent,
     updateManagedAccountStatus
   } = useAppState();
   const [mode, setMode] = useState<CreateAccountMode>("staff");
@@ -9887,8 +10109,6 @@ function CreateAccountsPage() {
     username: "",
     password: "",
     confirmPassword: "",
-    email: "",
-    phone: "",
     title: "Instructor",
     notes: "",
     access: defaultStaffAccess
@@ -9898,10 +10118,6 @@ function CreateAccountsPage() {
     username: "",
     password: "",
     confirmPassword: "",
-    studentEmail: "",
-    guardianName: "",
-    guardianPhone: "",
-    guardianEmail: "",
     program: "Youth Taekwondo",
     beltRank: "White",
     notes: ""
@@ -9911,8 +10127,6 @@ function CreateAccountsPage() {
     username: "",
     password: "",
     confirmPassword: "",
-    email: "",
-    phone: "",
     notes: ""
   });
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
@@ -9924,25 +10138,31 @@ function CreateAccountsPage() {
     username: string;
     password: string;
     role: AccountRole;
-    email: string;
+    email?: string;
     phone?: string;
     title?: string;
     notes?: string;
     access?: ManagerAccessKey[];
     studentId?: string;
+    program?: string;
+    beltRank?: string;
   }) => {
     if (!isSupabaseAuthConfigured()) return "local";
     if (!readSupabaseAuthSession()) {
-      showFormMessage("Sign into Supabase Manager123 before creating live accounts.");
-      showToast("Supabase Manager123 sign-in required before creating live accounts.");
+      showFormMessage("Sign into an authorized Supabase Developer or Manager account before creating live accounts.");
+      showToast("Supabase Developer or Manager sign-in required before creating live accounts.");
       return "handled";
     }
     setIsCreatingAccount(true);
     try {
       const result = await createSupabaseManagedAccount({ ...account, status: "active" });
       if (result.status === "ok") {
-        setFormMessage("");
-        showToast("Account created in Supabase.");
+        if (result.student) {
+          syncOperationsStudent(result.student);
+        }
+        const message = `${result.username} was created. Give the user their account name and temporary password so they can choose a personal password.`;
+        setFormMessage(message);
+        showToast(message);
         return "created";
       }
       const message = result.status === "error" ? result.message : "Supabase account creation is not configured.";
@@ -9955,15 +10175,29 @@ function CreateAccountsPage() {
   };
 
   const validatePasswordFields = (password: string, confirmPassword: string) => {
-    const cleanedPassword = password.trim();
-    if (!cleanedPassword || !confirmPassword.trim()) return "Enter and confirm a password.";
-    if (cleanedPassword !== confirmPassword.trim()) return "Passwords must match.";
-    if (validateAccountPasswordChange(cleanedPassword, cleanedPassword)) return createdAccountPasswordPolicyText;
+    if (!password.trim() || !confirmPassword.trim()) return "Enter and confirm a password.";
+    if (password !== password.trim() || confirmPassword !== confirmPassword.trim()) return "Temporary passwords cannot start or end with spaces.";
+    if (password !== confirmPassword) return "Passwords must match.";
+    if (validateAccountPasswordChange(password, confirmPassword)) return createdAccountPasswordPolicyText;
     return "";
   };
 
   const showFormMessage = (message: string) => {
     setFormMessage(message);
+  };
+
+  const isAccountFormReady = (fullName: string, username: string, password: string, confirmPassword: string) => (
+    Boolean(fullName.trim())
+    && normalizeCreateUsername(username).length >= 3
+    && !validatePasswordFields(password, confirmPassword)
+  );
+
+  const localUsernameExists = (username: string) => {
+    const normalizedUsername = normalizeCreateUsername(username);
+    return isReservedPrototypeUsername(normalizedUsername)
+      || managedAccounts.some((account) => normalizeCreateUsername(account.username) === normalizedUsername)
+      || accounts.some((account) => normalizeCreateUsername(account.email) === normalizedUsername)
+      || childAccounts.some((account) => normalizeCreateUsername(account.username) === normalizedUsername);
   };
 
   const createStaff = async (event: FormEvent) => {
@@ -9975,7 +10209,7 @@ function CreateAccountsPage() {
     }
     const username = normalizeCreateUsername(staffForm.username);
     const displayName = staffForm.displayName.trim();
-    if (!displayName || !username) {
+    if (!displayName || username.length < 3) {
       showFormMessage("Enter a unique staff username and profile name.");
       return;
     }
@@ -9985,14 +10219,12 @@ function CreateAccountsPage() {
         username,
         password: staffForm.password,
         role: "staff",
-        email: staffForm.email.trim() || `${username}@chos.prototype`,
-        phone: staffForm.phone,
         title: staffForm.title,
         notes: staffForm.notes,
         access: staffForm.access
       });
       if (liveCreated !== "local") {
-        if (liveCreated === "created") setStaffForm({ displayName: "", username: "", password: "", confirmPassword: "", email: "", phone: "", title: "Instructor", notes: "", access: defaultStaffAccess });
+        if (liveCreated === "created") setStaffForm({ displayName: "", username: "", password: "", confirmPassword: "", title: "Instructor", notes: "", access: defaultStaffAccess });
         return;
       }
     }
@@ -10001,8 +10233,6 @@ function CreateAccountsPage() {
       username,
       password: staffForm.password,
       role: "staff",
-      email: staffForm.email,
-      phone: staffForm.phone,
       title: staffForm.title,
       notes: staffForm.notes,
       access: staffForm.access
@@ -10012,7 +10242,7 @@ function CreateAccountsPage() {
       return;
     }
     setFormMessage("");
-    setStaffForm({ displayName: "", username: "", password: "", confirmPassword: "", email: "", phone: "", title: "Instructor", notes: "", access: defaultStaffAccess });
+    setStaffForm({ displayName: "", username: "", password: "", confirmPassword: "", title: "Instructor", notes: "", access: defaultStaffAccess });
     showToast(`${account.displayName} staff account created.`);
   };
 
@@ -10025,59 +10255,46 @@ function CreateAccountsPage() {
     }
     const username = normalizeCreateUsername(studentForm.username);
     const studentName = studentForm.fullName.trim();
-    if (!studentName || !username) {
+    if (!studentName || username.length < 3) {
       showFormMessage("Enter the student name, username, and password.");
       return;
     }
-    if (!studentForm.studentEmail.trim() || !studentForm.guardianPhone.trim()) {
-      showFormMessage("Enter the student email and parent/guardian phone.");
-      return;
-    }
-    const linkedStudentId = `student-${username.replace(/[^a-z0-9]+/g, "-")}`;
+    const linkedStudentId = studentIdForCreateUsername(username);
     if (isSupabaseAuthConfigured()) {
       const liveCreated = await createLiveSupabaseAccount({
         displayName: studentName,
         username,
         password: studentForm.password,
         role: "student",
-        email: studentForm.studentEmail.trim() || `${username}@chos.prototype`,
-        phone: studentForm.guardianPhone,
         title: `${studentForm.beltRank.trim() || "White"} Belt Student`,
         notes: studentForm.notes,
         access: [],
-        studentId: linkedStudentId
+        studentId: linkedStudentId,
+        program: studentForm.program,
+        beltRank: studentForm.beltRank
       });
       if (liveCreated !== "local") {
-        if (liveCreated === "created") {
-          addOperationsStudent({
-            studentId: linkedStudentId,
-            fullName: studentForm.fullName,
-            studentEmail: studentForm.studentEmail,
-            guardianName: studentForm.guardianName,
-            guardianPhone: studentForm.guardianPhone,
-            guardianEmail: studentForm.guardianEmail,
-            program: studentForm.program,
-            beltRank: studentForm.beltRank,
-            notes: studentForm.notes
-          });
-          setStudentForm({ fullName: "", username: "", password: "", confirmPassword: "", studentEmail: "", guardianName: "", guardianPhone: "", guardianEmail: "", program: "Youth Taekwondo", beltRank: "White", notes: "" });
-        }
+        if (liveCreated === "created") setStudentForm({ fullName: "", username: "", password: "", confirmPassword: "", program: "Youth Taekwondo", beltRank: "White", notes: "" });
         return;
       }
     }
+    if (localUsernameExists(username)) {
+      showFormMessage("Enter a unique student username linked to an active student.");
+      return;
+    }
     const student = addOperationsStudent({
+      studentId: linkedStudentId,
       fullName: studentForm.fullName,
-      studentEmail: studentForm.studentEmail,
-      guardianName: studentForm.guardianName,
-      guardianPhone: studentForm.guardianPhone,
-      guardianEmail: studentForm.guardianEmail,
+      studentEmail: "",
+      guardianPhone: "",
       program: studentForm.program,
       status: "Active",
       beltRank: studentForm.beltRank,
-      notes: studentForm.notes
+      notes: studentForm.notes,
+      allowEmptyContact: true
     });
     if (!student) {
-      showFormMessage("Enter the student name, email, guardian phone, and belt rank.");
+      showFormMessage("Enter the student name and belt rank.");
       return;
     }
     const localStudentName = fullName(student);
@@ -10098,7 +10315,7 @@ function CreateAccountsPage() {
       return;
     }
     setFormMessage("");
-    setStudentForm({ fullName: "", username: "", password: "", confirmPassword: "", studentEmail: "", guardianName: "", guardianPhone: "", guardianEmail: "", program: "Youth Taekwondo", beltRank: "White", notes: "" });
+    setStudentForm({ fullName: "", username: "", password: "", confirmPassword: "", program: "Youth Taekwondo", beltRank: "White", notes: "" });
     showToast(`${account.displayName} student account created.`);
   };
 
@@ -10111,7 +10328,7 @@ function CreateAccountsPage() {
     }
     const username = normalizeCreateUsername(parentForm.username);
     const displayName = parentForm.displayName.trim();
-    if (!displayName || !username) {
+    if (!displayName || username.length < 3) {
       showFormMessage("Enter a unique parent username and profile name.");
       return;
     }
@@ -10121,13 +10338,11 @@ function CreateAccountsPage() {
         username,
         password: parentForm.password,
         role: "guardian",
-        email: parentForm.email.trim() || `${username}@chos.prototype`,
-        phone: parentForm.phone,
         notes: parentForm.notes,
         access: []
       });
       if (liveCreated !== "local") {
-        if (liveCreated === "created") setParentForm({ displayName: "", username: "", password: "", confirmPassword: "", email: "", phone: "", notes: "" });
+        if (liveCreated === "created") setParentForm({ displayName: "", username: "", password: "", confirmPassword: "", notes: "" });
         return;
       }
     }
@@ -10135,8 +10350,6 @@ function CreateAccountsPage() {
       displayName: parentForm.displayName,
       username,
       password: parentForm.password,
-      email: parentForm.email,
-      phone: parentForm.phone,
       notes: parentForm.notes
     });
     if (!account) {
@@ -10144,7 +10357,7 @@ function CreateAccountsPage() {
       return;
     }
     setFormMessage("");
-    setParentForm({ displayName: "", username: "", password: "", confirmPassword: "", email: "", phone: "", notes: "" });
+    setParentForm({ displayName: "", username: "", password: "", confirmPassword: "", notes: "" });
     showToast(`${account.displayName ?? account.email} parent account created.`);
   };
 
@@ -10168,10 +10381,10 @@ function CreateAccountsPage() {
   const activeManagedAccounts = managedAccounts.filter((account) => account.status !== "inactive");
   const liveSupabaseAccountsEnabled = isSupabaseAuthConfigured();
   const createAccountPageText = liveSupabaseAccountsEnabled
-    ? "Create live Supabase sign-in profiles for staff, students, and parents. A Manager123 Supabase session is required before a live account is created."
+    ? "Create live Supabase sign-in profiles for staff, students, and parents. An authorized Developer or Manager Supabase session is required before a live account is created."
     : "Create local sign-in credentials for staff, students, and parents. Manager and Developer are the only accounts that can open this creator.";
   const creatorInstructions = liveSupabaseAccountsEnabled
-    ? "Choose the role, set the username and password, then create the account in Supabase for the family or staff member."
+    ? "Set a temporary password, then give the user their account name and temporary password. They will replace it from Access New Account."
     : "Choose the role, set the username and password, then hand the credentials to the family or staff member.";
 
   return (
@@ -10205,13 +10418,12 @@ function CreateAccountsPage() {
 
         {mode === "staff" && (
           <form className="create-account-form" aria-label="Create staff account" onSubmit={createStaff}>
+            <p className="operations-note create-account-readiness" id="create-staff-readiness">{createAccountReadinessText}</p>
             <div className="student-form-grid">
-              <label>Staff full name<input value={staffForm.displayName} onChange={(event) => setStaffForm({ ...staffForm, displayName: event.target.value })} /></label>
-              <label>Staff username<input autoComplete="username" value={staffForm.username} onChange={(event) => setStaffForm({ ...staffForm, username: event.target.value })} /></label>
-              <label>Staff password<input type="password" autoComplete="new-password" value={staffForm.password} onChange={(event) => setStaffForm({ ...staffForm, password: event.target.value })} /></label>
-              <label>Confirm staff password<input type="password" autoComplete="new-password" value={staffForm.confirmPassword} onChange={(event) => setStaffForm({ ...staffForm, confirmPassword: event.target.value })} /></label>
-              <label>Staff email<input type="email" value={staffForm.email} onChange={(event) => setStaffForm({ ...staffForm, email: event.target.value })} /></label>
-              <label>Staff phone<input value={staffForm.phone} onChange={(event) => setStaffForm({ ...staffForm, phone: event.target.value })} /></label>
+              <label>Staff full name<input required aria-required="true" aria-describedby="create-staff-readiness" value={staffForm.displayName} onChange={(event) => setStaffForm({ ...staffForm, displayName: event.target.value })} /></label>
+              <label>Staff username<input required aria-required="true" aria-describedby="create-staff-readiness" autoComplete="username" value={staffForm.username} onChange={(event) => setStaffForm({ ...staffForm, username: event.target.value })} /></label>
+              <label>Staff temporary password<input required aria-required="true" aria-describedby="create-staff-readiness" aria-label={liveSupabaseAccountsEnabled ? "Staff temporary password" : "Staff password"} type="password" autoComplete="new-password" value={staffForm.password} onChange={(event) => setStaffForm({ ...staffForm, password: event.target.value })} /></label>
+              <label>Confirm staff temporary password<input required aria-required="true" aria-describedby="create-staff-readiness" aria-label={liveSupabaseAccountsEnabled ? "Confirm staff temporary password" : "Confirm staff password"} type="password" autoComplete="new-password" value={staffForm.confirmPassword} onChange={(event) => setStaffForm({ ...staffForm, confirmPassword: event.target.value })} /></label>
               <label>Staff title<input value={staffForm.title} onChange={(event) => setStaffForm({ ...staffForm, title: event.target.value })} /></label>
             </div>
             <fieldset className="create-account-access-grid">
@@ -10225,45 +10437,41 @@ function CreateAccountsPage() {
             </fieldset>
             <label className="create-account-notes">Staff notes<textarea value={staffForm.notes} onChange={(event) => setStaffForm({ ...staffForm, notes: event.target.value })} /></label>
             <div className="student-editor-actions">
-              <button type="submit" disabled={isCreatingAccount}><CheckCircle2 size={18} /> Create Staff Account</button>
+              <button className="create-account-submit" type="submit" aria-label="Create Staff Account" aria-describedby="create-staff-readiness" disabled={isCreatingAccount || !isAccountFormReady(staffForm.displayName, staffForm.username, staffForm.password, staffForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
             </div>
           </form>
         )}
 
         {mode === "student" && (
           <form className="create-account-form" aria-label="Create student account" onSubmit={createStudent}>
+            <p className="operations-note create-account-readiness" id="create-student-readiness">{createAccountReadinessText}</p>
             <div className="student-form-grid">
-              <label>Student full name<input value={studentForm.fullName} onChange={(event) => setStudentForm({ ...studentForm, fullName: event.target.value })} /></label>
-              <label>Student username<input autoComplete="username" value={studentForm.username} onChange={(event) => setStudentForm({ ...studentForm, username: event.target.value })} /></label>
-              <label>Student password<input type="password" autoComplete="new-password" value={studentForm.password} onChange={(event) => setStudentForm({ ...studentForm, password: event.target.value })} /></label>
-              <label>Confirm student password<input type="password" autoComplete="new-password" value={studentForm.confirmPassword} onChange={(event) => setStudentForm({ ...studentForm, confirmPassword: event.target.value })} /></label>
-              <label>Student email<input type="email" value={studentForm.studentEmail} onChange={(event) => setStudentForm({ ...studentForm, studentEmail: event.target.value })} /></label>
-              <label>Parent/guardian phone<input value={studentForm.guardianPhone} onChange={(event) => setStudentForm({ ...studentForm, guardianPhone: event.target.value })} /></label>
-              <label>Parent/guardian name<input value={studentForm.guardianName} onChange={(event) => setStudentForm({ ...studentForm, guardianName: event.target.value })} /></label>
-              <label>Parent/guardian email<input type="email" value={studentForm.guardianEmail} onChange={(event) => setStudentForm({ ...studentForm, guardianEmail: event.target.value })} /></label>
+              <label>Student full name<input required aria-required="true" aria-describedby="create-student-readiness" value={studentForm.fullName} onChange={(event) => setStudentForm({ ...studentForm, fullName: event.target.value })} /></label>
+              <label>Student username<input required aria-required="true" aria-describedby="create-student-readiness" autoComplete="username" value={studentForm.username} onChange={(event) => setStudentForm({ ...studentForm, username: event.target.value })} /></label>
+              <label>Student temporary password<input required aria-required="true" aria-describedby="create-student-readiness" aria-label={liveSupabaseAccountsEnabled ? "Student temporary password" : "Student password"} type="password" autoComplete="new-password" value={studentForm.password} onChange={(event) => setStudentForm({ ...studentForm, password: event.target.value })} /></label>
+              <label>Confirm student temporary password<input required aria-required="true" aria-describedby="create-student-readiness" aria-label={liveSupabaseAccountsEnabled ? "Confirm student temporary password" : "Confirm student password"} type="password" autoComplete="new-password" value={studentForm.confirmPassword} onChange={(event) => setStudentForm({ ...studentForm, confirmPassword: event.target.value })} /></label>
               <label>Program<input value={studentForm.program} onChange={(event) => setStudentForm({ ...studentForm, program: event.target.value })} /></label>
               <label>Belt rank<input value={studentForm.beltRank} onChange={(event) => setStudentForm({ ...studentForm, beltRank: event.target.value })} /></label>
             </div>
             <label className="create-account-notes">Student notes<textarea value={studentForm.notes} onChange={(event) => setStudentForm({ ...studentForm, notes: event.target.value })} /></label>
             <div className="student-editor-actions">
-              <button type="submit" disabled={isCreatingAccount}><CheckCircle2 size={18} /> Create Student Account</button>
+              <button className="create-account-submit" type="submit" aria-label="Create Student Account" aria-describedby="create-student-readiness" disabled={isCreatingAccount || !isAccountFormReady(studentForm.fullName, studentForm.username, studentForm.password, studentForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
             </div>
           </form>
         )}
 
         {mode === "parent" && (
           <form className="create-account-form" aria-label="Create parent account" onSubmit={createParent}>
+            <p className="operations-note create-account-readiness" id="create-parent-readiness">{createAccountReadinessText}</p>
             <div className="student-form-grid">
-              <label>Parent full name<input value={parentForm.displayName} onChange={(event) => setParentForm({ ...parentForm, displayName: event.target.value })} /></label>
-              <label>Parent username<input autoComplete="username" value={parentForm.username} onChange={(event) => setParentForm({ ...parentForm, username: event.target.value })} /></label>
-              <label>Parent password<input type="password" autoComplete="new-password" value={parentForm.password} onChange={(event) => setParentForm({ ...parentForm, password: event.target.value })} /></label>
-              <label>Confirm parent password<input type="password" autoComplete="new-password" value={parentForm.confirmPassword} onChange={(event) => setParentForm({ ...parentForm, confirmPassword: event.target.value })} /></label>
-              <label>Parent email<input type="email" value={parentForm.email} onChange={(event) => setParentForm({ ...parentForm, email: event.target.value })} /></label>
-              <label>Parent phone<input value={parentForm.phone} onChange={(event) => setParentForm({ ...parentForm, phone: event.target.value })} /></label>
+              <label>Parent full name<input required aria-required="true" aria-describedby="create-parent-readiness" value={parentForm.displayName} onChange={(event) => setParentForm({ ...parentForm, displayName: event.target.value })} /></label>
+              <label>Parent username<input required aria-required="true" aria-describedby="create-parent-readiness" autoComplete="username" value={parentForm.username} onChange={(event) => setParentForm({ ...parentForm, username: event.target.value })} /></label>
+              <label>Parent temporary password<input required aria-required="true" aria-describedby="create-parent-readiness" aria-label={liveSupabaseAccountsEnabled ? "Parent temporary password" : "Parent password"} type="password" autoComplete="new-password" value={parentForm.password} onChange={(event) => setParentForm({ ...parentForm, password: event.target.value })} /></label>
+              <label>Confirm parent temporary password<input required aria-required="true" aria-describedby="create-parent-readiness" aria-label={liveSupabaseAccountsEnabled ? "Confirm parent temporary password" : "Confirm parent password"} type="password" autoComplete="new-password" value={parentForm.confirmPassword} onChange={(event) => setParentForm({ ...parentForm, confirmPassword: event.target.value })} /></label>
             </div>
             <label className="create-account-notes">Parent notes<textarea value={parentForm.notes} onChange={(event) => setParentForm({ ...parentForm, notes: event.target.value })} /></label>
             <div className="student-editor-actions">
-              <button type="submit" disabled={isCreatingAccount}><CheckCircle2 size={18} /> Create Parent Account</button>
+              <button className="create-account-submit" type="submit" aria-label="Create Parent Account" aria-describedby="create-parent-readiness" disabled={isCreatingAccount || !isAccountFormReady(parentForm.displayName, parentForm.username, parentForm.password, parentForm.confirmPassword)}><CheckCircle2 size={18} /> Create Account</button>
             </div>
           </form>
         )}
@@ -13821,11 +14029,11 @@ function CheckInsPage() {
   const { accountRole, currentManagedAccount, session, students, checkIns, recordStudentCheckIn, showToast } = useAppState();
   const today = toDateKey(useLiveCalendarDate());
   const isStudentMode = accountRole === "student";
-  const sessionStudent = isStudentMode ? selectSessionStudent(students, session?.email, currentManagedAccount?.studentId) : undefined;
+  const sessionStudent = isStudentMode ? selectSessionStudent(students, session?.email, session?.studentId ?? currentManagedAccount?.studentId, true) : undefined;
   const checkInStudents = useMemo(() => students.filter(isCurrentOperationsStudent), [students]);
   const firstStudentId = checkInStudents[0]?.id ?? "";
   const [selectedStudentId, setSelectedStudentId] = useState(firstStudentId);
-  const selectedStudent = sessionStudent ?? checkInStudents.find((student) => student.id === selectedStudentId) ?? checkInStudents[0];
+  const selectedStudent = isStudentMode ? sessionStudent : checkInStudents.find((student) => student.id === selectedStudentId) ?? checkInStudents[0];
   const selectedStudentCheckIns = selectedStudent ? checkIns.filter((checkIn) => checkIn.studentId === selectedStudent.id) : [];
   const todayStudentCheckIn = selectedStudentCheckIns.find((checkIn) => checkIn.date === today);
   const knownCheckInDates = [
@@ -14360,6 +14568,43 @@ function ManagerPanelRoute() {
 }
 
 export function OperationsApp() {
+  const { accountRole, logout, retryStudentAccessVerification, studentAccessVerification, studentAccessVerificationRequired } = useAppState();
+
+  if (accountRole === "student" && studentAccessVerificationRequired && studentAccessVerification.status !== "ready") {
+    const loading = studentAccessVerification.status === "loading" || studentAccessVerification.status === "not-required";
+    const retryable = studentAccessVerification.status === "error";
+    return (
+      <main className="manager-shell">
+        <section className="operations-page" aria-label={loading ? "Verifying student access" : "Student access unavailable"}>
+          <div className="operations-page-head">
+            <div className="operations-page-title-copy">
+              <h1>{loading ? "Verifying Student Access" : "Student Access Unavailable"}</h1>
+              <p>{loading ? "Checking the active student record linked to this account." : studentAccessVerification.message ?? "This account does not have a verified active student record."}</p>
+            </div>
+          </div>
+          {retryable && <button type="button" onClick={retryStudentAccessVerification}>Retry Verification</button>}
+          {!loading && <button type="button" onClick={logout}>Log Out</button>}
+        </section>
+      </main>
+    );
+  }
+
+  if (!accountRole) {
+    return (
+      <main className="manager-shell">
+        <section className="operations-page" aria-label="Account access unavailable">
+          <div className="operations-page-head">
+            <div className="operations-page-title-copy">
+              <h1>Account access unavailable</h1>
+              <p>Your signed-in account does not have a verified role. Sign out, then contact a manager if this continues.</p>
+            </div>
+          </div>
+          <button type="button" onClick={logout}>Log Out</button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <OperationsShell>
       <Routes>

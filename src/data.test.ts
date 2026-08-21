@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appTopics, categories, getProductsForCategory, moreTopics, parentTopics, products, studentTopics } from "./data";
+import { appTopics, categories, getProductsForCategory, moreTopics, parentTopics, products, studentTopics, termsSections } from "./data";
 
 describe("shop data", () => {
   it("maps every category slug to the requested products", () => {
@@ -32,6 +32,16 @@ describe("shop data", () => {
     ]);
 
     expect(products).toHaveLength(21);
+  });
+});
+
+describe("public privacy policy", () => {
+  it("publishes the required mobile privacy and SMS consent protections", () => {
+    const privacy = termsSections.find((section) => section.title === "Privacy Policy");
+
+    expect(privacy?.content).toContain("will not be shared, sold, rented, or disclosed");
+    expect(privacy?.content).toContain("third parties or affiliates for marketing or promotional purposes");
+    expect(privacy?.content).toContain("Reply STOP to opt out and HELP for help");
   });
 });
 

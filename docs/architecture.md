@@ -13,7 +13,7 @@ When `VITE_SUPABASE_URL`, a publishable key, and a Supabase Auth session are pre
 | Frontend | Vite 8, React 19, React Router 7, TypeScript | Preserve until a backend phase is approved |
 | Backend | Supabase Auth/REST tables for manager auth, account creation, messaging, and app state; device preferences remain local | Expand private backend surfaces by approved feature phase |
 | Database | Supabase staging for Auth profiles, message tables, and `app_state_items`; device preferences remain browser localStorage | Add production Supabase only after staging validation and launch approval |
-| Auth | Supabase Auth for configured staging Manager123 login; local prototype fallback only when Supabase env is absent | Harden production Auth settings before real users |
+| Auth | Supabase Auth for `Manager1`, `Dev123`, and administrator-created profiles; new profiles must replace an assigned temporary password through **Access New Account** | Keep public signup disabled and harden production Auth settings before real users |
 | Payments | None | Future Stripe test/live resources only if product scope requires payments |
 | Messaging | Browser queue/export contracts for Twilio and Web Push | Private server owns provider credentials, consent, audit logs, and sends |
 | Hosting | Cloudflare Pages Direct Upload from `xatori-dev/chos-martial-arts-operations-app`, verified at `https://chos-martial-arts-operations-app.pages.dev/` | Keep staging healthy; choose a client-facing custom domain only after launch approval |

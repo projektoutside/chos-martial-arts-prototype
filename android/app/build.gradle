@@ -1,5 +1,8 @@
 apply plugin: 'com.android.application'
 
+def releaseVersionCode = (System.getenv('ANDROID_VERSION_CODE') ?: '0') as Integer
+def releaseVersionName = System.getenv('ANDROID_VERSION_NAME') ?: ''
+
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
@@ -23,8 +26,6 @@ android {
         applicationId "com.xatoridev.chosmartialarts"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "0.1.6"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -32,9 +33,26 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    flavorDimensions "environment"
+    productFlavors {
+        stable {
+            dimension "environment"
+            applicationId "com.xatoridev.chosmartialarts"
+            versionCode releaseVersionCode > 0 ? releaseVersionCode : 7
+            versionName releaseVersionName ?: "0.1.6"
+        }
+        demo {
+            dimension "environment"
+            applicationId "com.xatoridev.chosmartialarts.testing"
+            versionCode releaseVersionCode > 0 ? releaseVersionCode : 1
+            versionName releaseVersionName ?: "0.1.0-testing"
+        }
+    }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -7,6 +7,9 @@ import {
   generateIcs,
   getInitialLaunchPhase,
   getLoginGateState,
+  isPrototypeManagerLogin,
+  isPrototypeManagerOwnerEmail,
+  isReservedPrototypeUsername,
   prototypeDeveloperLogin,
   prototypeManagerLogin,
   searchSite,
@@ -130,6 +133,19 @@ describe("login landing utilities", () => {
 
     expect(prototypeManagerLogin.password).toMatch(strongPasswordPattern);
     expect(prototypeDeveloperLogin.password).toMatch(strongPasswordPattern);
+  });
+
+  it("recognizes the live Manager1 session as a full-access owner", () => {
+    expect(isPrototypeManagerOwnerEmail("manager1")).toBe(true);
+    expect(isPrototypeManagerOwnerEmail("manager1@chos.prototype")).toBe(true);
+    expect(isPrototypeManagerLogin({ username: "Manager1", password: prototypeManagerLogin.password })).toBe(true);
+  });
+
+  it("reserves every built-in owner username from user-created accounts", () => {
+    expect(isReservedPrototypeUsername("Manager1")).toBe(true);
+    expect(isReservedPrototypeUsername(" manager123 ")).toBe(true);
+    expect(isReservedPrototypeUsername("DEV123")).toBe(true);
+    expect(isReservedPrototypeUsername("kai-cho.child")).toBe(false);
   });
 
   it("selects the reduced-motion launch phase", () => {

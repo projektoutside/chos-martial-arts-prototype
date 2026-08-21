@@ -1,5 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  accountPasswordPolicyText,
+  activationRequiredAppMetadata,
+  isStrongActivationPassword
+} from "../_shared/account-activation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,10 +12,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 
-const accountAuthDomain = "accounts.chosmartialarts.app";
 const allowedRoles = new Set(["staff", "student", "guardian"]);
 const allowedStatuses = new Set(["active", "inactive"]);
-const passwordPolicyMessage = "Use at least 12 characters with uppercase, lowercase, a number, and a symbol.";
+const accountAuthDomain = "accounts.chosmartialarts.app";
 const allowedAccess = new Set([
   "dashboard",
   "messages",
@@ -36,6 +40,8 @@ type AccountRequest = {
   notes?: unknown;
   access?: unknown;
   studentId?: unknown;
+  program?: unknown;
+  beltRank?: unknown;
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -66,10 +72,6 @@ function normalizeAccess(value: unknown, role: string) {
   return [...new Set(value.filter((item): item is string => typeof item === "string" && allowedAccess.has(item)))];
 }
 
-function isStrongPassword(password: string) {
-  return password.length >= 12 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405);
@@ -77,7 +79,6 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return jsonResponse({ error: "Supabase function secrets are not configured." }, 500);
   }
@@ -103,12 +104,11 @@ Deno.serve(async (req: Request) => {
   if (
     callerProfileError ||
     !callerProfile ||
-    callerProfile.username !== "manager123" ||
     callerProfile.role !== "staff" ||
     callerProfile.status !== "active" ||
     callerProfile.is_owner !== true
   ) {
-    return jsonResponse({ error: "Only the Manager123 owner account can manage accounts." }, 403);
+    return jsonResponse({ error: "Only an active Developer or Manager owner account can manage accounts." }, 403);
   }
 
   let body: AccountRequest;
@@ -128,20 +128,25 @@ Deno.serve(async (req: Request) => {
   const title = cleanString(body.title) || null;
   const notes = cleanString(body.notes) || null;
   const studentId = cleanString(body.studentId) || null;
+  const program = cleanString(body.program) || "Youth Taekwondo";
+  const beltRank = cleanString(body.beltRank) || "White";
   const access = normalizeAccess(body.access, role);
   const authEmail = authEmailForUsername(username);
 
   if (!username || username.length < 3 || !displayName || !password || !role) {
-    return jsonResponse({ error: "Display name, username, password, and role are required." }, 400);
+    return jsonResponse({ error: "Display name, username, temporary password, and role are required." }, 400);
   }
-  if (!isStrongPassword(password)) {
-    return jsonResponse({ error: passwordPolicyMessage }, 400);
+  if (!isStrongActivationPassword(password)) {
+    return jsonResponse({ error: accountPasswordPolicyText }, 400);
   }
-  if (username === "manager123" || username === "dev123" || username.endsWith(".child")) {
+  if (username === "manager123" || username === "manager1" || username === "dev123" || username.endsWith(".child")) {
     return jsonResponse({ error: "That username is reserved." }, 400);
   }
   if (role === "student" && !studentId) {
     return jsonResponse({ error: "Student accounts require a linked student id." }, 400);
+  }
+  if (role === "student" && status !== "active") {
+    return jsonResponse({ error: "New student accounts must start active." }, 400);
   }
 
   const { data: existingProfile, error: existingProfileError } = await adminClient
@@ -161,12 +166,13 @@ Deno.serve(async (req: Request) => {
       username,
       role,
       display_name: displayName,
-      contact_email: contactEmail
-    }
+      ...(contactEmail ? { contact_email: contactEmail } : {})
+    },
+    app_metadata: activationRequiredAppMetadata({ role })
   });
 
   if (createUserError || !createdUser.user) {
-    return jsonResponse({ error: createUserError?.message ?? "Could not create Supabase Auth user." }, 400);
+    return jsonResponse({ error: createUserError?.message ?? "Could not create the account." }, 400);
   }
 
   const profileRow = {
@@ -178,6 +184,10 @@ Deno.serve(async (req: Request) => {
     role,
     status,
     is_owner: false,
+    welcome_seen_at: null,
+    invitation_status: "pending",
+    invited_at: new Date().toISOString(),
+    invitation_accepted_at: null,
     phone,
     title,
     notes,
@@ -185,14 +195,7 @@ Deno.serve(async (req: Request) => {
     student_id: studentId,
     created_by: authData.user.id
   };
-
-  const { error: profileError } = await adminClient.from("profiles").insert(profileRow);
-  if (profileError) {
-    await adminClient.auth.admin.deleteUser(createdUser.user.id).catch(() => undefined);
-    return jsonResponse({ error: profileError.message }, 400);
-  }
-
-  await adminClient.from("account_creation_audit").insert({
+  const auditRow = {
     created_by: authData.user.id,
     created_user_id: createdUser.user.id,
     created_username: username,
@@ -201,14 +204,78 @@ Deno.serve(async (req: Request) => {
     created_role: role,
     request_ip: req.headers.get("x-forwarded-for"),
     user_agent: req.headers.get("user-agent")
+  };
+  const today = new Date().toISOString().slice(0, 10);
+  const nameParts = displayName.split(/\s+/).filter(Boolean);
+  const studentRecord = role === "student"
+    ? {
+        id: studentId,
+        firstName: nameParts[0] ?? displayName,
+        lastName: nameParts.slice(1).join(" "),
+        phone: "",
+        email: "",
+        enrollmentDate: today,
+        program,
+        status: status === "active" ? "Active" : "Inactive",
+        beltRank,
+        profileUpdatedAt: today,
+        joinedAt: today,
+        classesAttended: 0,
+        missedClassCount: 0,
+        ...(notes ? { notes } : {})
+      }
+    : null;
+
+  const { error: provisionError } = await adminClient.rpc("provision_managed_account", {
+    p_profile: profileRow,
+    p_audit: auditRow,
+    p_student_record: studentRecord
   });
 
+  if (provisionError) {
+    const { data: committedProfile, error: confirmationError } = await adminClient
+      .from("profiles")
+      .select("id, username, role, student_id")
+      .eq("id", createdUser.user.id)
+      .maybeSingle();
+    if (confirmationError) {
+      return jsonResponse({
+        error: "Account provisioning could not be confirmed. The Auth user was preserved for administrator review."
+      }, 503);
+    }
+    if (committedProfile) {
+      if (
+        committedProfile.username !== username
+        || committedProfile.role !== role
+        || (role === "student" && committedProfile.student_id !== studentId)
+      ) {
+        return jsonResponse({
+          error: "Account provisioning returned conflicting committed data. The account was preserved for administrator review."
+        }, 500);
+      }
+    } else {
+      const { error: rollbackError } = await adminClient.auth.admin.deleteUser(createdUser.user.id);
+      if (rollbackError) {
+        return jsonResponse({
+          error: "Account provisioning failed and the incomplete Auth user could not be removed. Contact an administrator."
+        }, 500);
+      }
+      return jsonResponse({ error: "Could not provision the account profile and linked records. No account was created." }, 500);
+    }
+  }
+
   return jsonResponse({
+    email: authEmail,
+    username,
+    activationRequired: true,
+    invitationStatus: "pending",
+    student: studentRecord,
     account: {
       id: createdUser.user.id,
       username,
       role,
-      status
+      status,
+      invitationStatus: "pending"
     }
   });
 });
